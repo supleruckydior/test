@@ -1495,16 +1495,15 @@ local herbController = {
 }
 
 -- 字符串扩展方法
-function string:count(pattern)
-    return select(2, self:gsub(pattern, ""))
+local function countSubstring(str, pattern)
+    return select(2, str:gsub(pattern, ""))
 end
-
 -- 安全数值转换
 local function parseNumber(text)
     local str = tostring(text):lower():gsub("%s+", ""):gsub(",", "")
     local numStr = str:gsub("[^%d%.]", "")
     
-    if numStr:count("%.") > 1 then
+    if countSubstring(numStr, "%.") > 1 then
         warn("[数值异常] 非法格式:", text)
         return 0
     end
@@ -1516,7 +1515,7 @@ local function parseNumber(text)
         multiplier = 1000000
     end
     
-    return (tonumber(numStr) or 0) * multiplier
+    return (tonumber(numStr) or  0) * multiplier
 end
 
 -- 数值获取（保持原始路径）
@@ -1549,11 +1548,7 @@ local function herbLoop()
             local firstItem = guilditemlist["\230\180\187\229\138\168\229\149\134\229\147\129\233\162\132\229\136\182\228\189\147"]
             if firstItem["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text == "1 Left" 
             and firstItem["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text == "Herb" then
-                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182")
-                    :WaitForChild("\229\133\172\231\148\168")
-                    :WaitForChild("\229\133\172\228\188\154")
-                    :WaitForChild("\229\133\145\230\141\162")
-                    :FireServer(1)
+                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\229\133\172\228\188\154"):WaitForChild("\229\133\145\230\141\162"):FireServer(1)
                 boughtAny = true
             end
 
