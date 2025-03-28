@@ -1486,19 +1486,20 @@ task.defer(function()
     end
 end)
 
-
 local herbController = {
     enabled = false,
     interval = 0.2,
     maxAttempts = 5,
-    currentAttempts = 0
+    currentAttempts = 0,
+    highCostMode = false
 }
 
--- 字符串扩展方法
+-- 字符串处理辅助函数
 local function countSubstring(str, pattern)
     return select(2, str:gsub(pattern, ""))
 end
--- 安全数值转换
+
+-- 安全数值转换器
 local function parseNumber(text)
     local str = tostring(text):lower():gsub("%s+", ""):gsub(",", "")
     local numStr = str:gsub("[^%d%.]", "")
@@ -1515,10 +1516,10 @@ local function parseNumber(text)
         multiplier = 1000000
     end
     
-    return (tonumber(numStr) or  0) * multiplier
+    return (tonumber(numStr) or 0) * multiplier
 end
 
--- 数值获取（保持原始路径）
+-- 数值获取函数
 local function getDiamond()
     return parseNumber(
         game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\184\187\231\149\140\233\157\162"]["\228\184\187\229\159\142"]["\232\180\167\229\184\129\229\140\186\229\159\159"]["\233\146\187\231\159\179"]["\230\140\137\233\146\174"]["\229\128\188"].Text
@@ -1537,7 +1538,14 @@ local function getRefreshCost()
     )
 end
 
--- 购买逻辑（修正路径访问方式）
+-- 界面控制函数
+local function toggleGuildUI(state)
+    pcall(function()
+        game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"].Visible = state
+    end)
+end
+
+-- 购买逻辑主循环
 local function herbLoop()
     while herbController.enabled do
         local boughtAny = false
@@ -1548,7 +1556,11 @@ local function herbLoop()
             local firstItem = guilditemlist["\230\180\187\229\138\168\229\149\134\229\147\129\233\162\132\229\136\182\228\189\147"]
             if firstItem["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text == "1 Left" 
             and firstItem["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text == "Herb" then
-                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\229\133\172\228\188\154"):WaitForChild("\229\133\145\230\141\162"):FireServer(1)
+                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182")
+                    :WaitForChild("\229\133\172\231\148\168")
+                    :WaitForChild("\229\133\172\228\188\154")
+                    :WaitForChild("\229\133\145\230\141\162")
+                    :FireServer(1)
                 boughtAny = true
             end
 
@@ -1590,18 +1602,32 @@ local function herbLoop()
             local diamond = getDiamond()
             local guildCoin = getGuildCoin()
 
-            if refreshCost <= 10000 
-            and diamond > refreshCost 
-            and guildCoin >= 400 
-            then
-                pcall(function()
-                    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182")
-                        :FindFirstChild("\229\133\172\231\148\168")
-                        :FindFirstChild("\229\133\172\228\188\154")
-                        :FindFirstChild("\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151")
-                        :FireServer()
-                end)
-                task.wait(1.5)  -- 刷新后等待
+            -- 高成本模式检测
+            if refreshCost > 10000 and not herbController.highCostMode then
+                toggleGuildUI(false)
+                herbController.highCostMode = true
+                print("[系统] 进入高成本模式，停止刷新")
+            elseif refreshCost <= 10000 then
+                herbController.highCostMode = false
+            end
+
+            -- 执行刷新判断
+            if not herbController.highCostMode then
+                if refreshCost <= 10000 and diamond > refreshCost and guildCoin >= 400 then
+                    pcall(function()
+                        -- 打开公会界面
+                        game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:FireServer()
+                        task.wait(0.5)
+                        
+                        -- 执行刷新
+                        game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182")
+                            :FindFirstChild("\229\133\172\231\148\168")
+                            :FindFirstChild("\229\133\172\228\188\154")
+                            :FindFirstChild("\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151")
+                            :FireServer()
+                    end)
+                    task.wait(1.5)
+                end
             end
         end
 
@@ -1609,13 +1635,16 @@ local function herbLoop()
     end
 end
 
--- 界面控件（保持原始调用方式）
+-- 界面控件
 local Autoguildshop = features5:AddSwitch("自动购买草药", function(state)
     herbController.enabled = state
+    herbController.highCostMode = false -- 重置状态
     if state then
+        toggleGuildUI(true)
         task.spawn(herbLoop)
         print("[系统] 自动购买已启动")
     else
+        toggleGuildUI(false)
         print("[系统] 自动购买已停止")
     end
 end)
@@ -2089,7 +2118,11 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local GUI = player.PlayerGui:WaitForChild("GUI")
 
--- Function to get current herb value
+-- 全局控制变量
+local Autoelixir = false
+local hasExecutedTrade = false  -- 确保自动交易只执行一次
+
+-- 获取草药数值
 local function getHerbValue()
     local herbText = "0"
     pcall(function()
@@ -2108,86 +2141,86 @@ local function getHerbValue()
     end
 end
 
--- Main monitoring function
-local function monitorHerbs()
+-- 炼丹循环
+local function startElixirLoop()
+    Autoelixir = true
+    while Autoelixir do
+        pcall(function()
+            local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+                :FindFirstChild("\229\133\172\231\148\168")
+                :FindFirstChild("\231\130\188\228\184\185")
+                :FindFirstChild("\229\136\182\228\189\156")
+            if elixirEvent then
+                elixirEvent:FireServer()
+            end
+        end)
+        wait(0.5)
+    end
+end
+
+-- 智能监控
+local function smartMonitor()
     while true do
         local currentHerbs = getHerbValue()
         
-        if currentHerbs < 1000 and AutoelixirSwitch then
-            AutoelixirSwitch:Set(false)
-            print("草药不足! 当前数量:", currentHerbs, "- 已关闭自动炼丹")
+        -- 当草药>100k时执行交易脚本（仅一次）
+        if currentHerbs > 100000 and not hasExecutedTrade then
+            pcall(function()
+                loadstring(game:HttpGet("https://github.com/supleruckydior/test/raw/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json"))()
+                hasExecutedTrade = true
+                print("自动交易脚本已激活！")
+            end)
+            
+            -- 启动炼丹循环
+            if not Autoelixir then
+                coroutine.wrap(startElixirLoop)()
+            end
+            
+        -- 当草药<1000时重置状态
+        elseif currentHerbs < 1000 then
+            Autoelixir = false
+            hasExecutedTrade = false
+            print("系统已重置，等待下次草药>100k")
         end
         
-        wait(5) -- Check every 5 seconds
+        wait(5)
     end
 end
 
--- Initial setup
-pcall(function()
-    -- Open Farm 5
-    local openFarmEvent = ReplicatedStorage["\228\186\139\228\187\182"]:FindFirstChild("打开农田", true)
-    if openFarmEvent and openFarmEvent:IsA("BindableEvent") then
-        openFarmEvent:Fire(5)
-    else
-        ReplicatedStorage["\230\137\147\229\188\128\229\134\156\231\148\176"]:Fire(5)
-    end
-    wait(0.5)
-end)
-
--- Get Farm 5 Level
+-- 初始化检查
 local farm5Level = 0
-pcall(function()
-    farm5Level = tonumber(GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"]["\232\131\140\230\153\175"]["\229\177\158\230\128\167\229\140\186\229\159\159"]["\229\177\158\230\128\167\229\136\151\232\161\168"]["\229\136\151\232\161\168"]["\231\173\137\231\186\167"]["\229\128\188"].Text:match("%d+")) or 0
-end)
-GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"].Visible = false
+local elixirLevel = 0
 
--- Open Elixir Furnace
+-- 获取农田5等级
 pcall(function()
-    local elixirUI = ReplicatedStorage["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]
-    if elixirUI and elixirUI["\229\174\162\230\136\183\231\171\175UI"] then
+    local farmEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182", true)
+    if farmEvent then
+        farmEvent:Fire(5)
+        wait(0.5)
+        farm5Level = tonumber(GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"]["\232\131\140\230\153\175"]["\229\177\158\230\128\167\229\140\186\229\159\159"]["\229\177\158\230\128\167\229\136\151\232\161\168"]["\229\136\151\232\161\168"]["\231\173\137\231\186\167"]["\229\128\188"].Text:match("%d+")) or 0
+    end
+    GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"].Visible = false
+end)
+
+-- 获取炼丹炉等级
+pcall(function()
+    local elixirUI = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182", true):FindFirstChild("\229\174\162\230\136\183\231\171\175", true)
+    if elixirUI then
         elixirUI["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137"]:Fire()
-    else
-        ReplicatedStorage["\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137"]:Fire()
+        wait(0.5)
+        elixirLevel = tonumber(GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\231\130\188\228\184\185\231\130\137"]["\232\131\140\230\153\175"]["\229\177\158\230\128\167\229\140\186\229\159\159"]["\229\177\158\230\128\167\229\136\151\232\161\168"]["\229\136\151\232\161\168"]["\231\173\137\231\186\167"]["\229\128\188"].Text:match("%d+")) or 0
     end
-    wait(0.5)
+    GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\231\130\188\228\184\185\231\130\137"].Visible = false
 end)
 
--- Get Elixir Level
-local elixirLevel = 0 
-pcall(function()
-    elixirLevel = tonumber(GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\231\130\188\228\184\185\231\130\137"]["\232\131\140\230\153\175"]["\229\177\158\230\128\167\229\140\186\229\159\159"]["\229\177\158\230\128\167\229\136\151\232\161\168"]["\229\136\151\232\161\168"]["\231\173\137\231\186\167"]["\229\128\188"].Text:match("%d+")) or 0
-end)
-GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\231\130\188\228\184\185\231\130\137"].Visible = false
-
--- Initial activation check
+-- 主逻辑
 if farm5Level >= 80 and elixirLevel >= 80 then
-    local currentHerbs = getHerbValue()
-    local displayHerb = currentHerbs >= 1000000 and string.format("%.2fm", currentHerbs/1000000)
-                      or currentHerbs >= 1000 and string.format("%.1fk", currentHerbs/1000)
-                      or tostring(currentHerbs)
-    
-    if currentHerbs > 100000 then
-        local success, err = pcall(function()
-            loadstring(game:HttpGet("https://github.com/supleruckydior/test/raw/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json", true))()
-            if AutoelixirSwitch then
-                AutoelixirSwitch:Set(true)
-                print("自动炼丹已启动! 当前草药:", displayHerb)
-                -- Start monitoring
-                coroutine.wrap(monitorHerbs)()
-            end
-        end)
-        if not success then
-            warn("执行自动炼丹脚本时出错: " .. tostring(err))
-        end
-    else
-        print("草药不足! 当前数量:", displayHerb, "- 需要至少100k")
-    end
+    print("===== 系统启动 =====")
+    print("农田5等级:", farm5Level)
+    print("炼丹炉等级:", elixirLevel)
+    print("初始草药量:", getHerbValue())
+    print("==================")
+    coroutine.wrap(smartMonitor)()
 else
-    print("条件不满足: 需要农田5和炼丹炉等级≥80")
+    print("条件不满足：需要农田5和炼丹炉等级≥80")
 end
-
-print("===== 系统状态 =====")
-print("农田5等级:", farm5Level)
-print("炼丹炉等级:", elixirLevel)
-print("初始草药量:", getHerbValue())
-print("==================")
