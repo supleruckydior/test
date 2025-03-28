@@ -1494,36 +1494,54 @@ local herbController = {
     currentAttempts = 0
 }
 
+-- 数值转换函数
+local function parseNumber(text)
+    text = tostring(text):gsub(",", "")
+    if text:find("K") then
+        return tonumber(text:gsub("K", "")) * 1000
+    end
+    return tonumber(text) or 0
+end
+
+-- 数值获取函数
+local function getDiamond()
+    return parseNumber(game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\184\187\231\149\140\233\157\162"]["\228\184\187\229\159\142"]["\232\180\167\229\184\129\229\140\186\229\159\159"]["\233\146\187\231\159\179"]["\230\140\137\233\146\174"]["\229\128\188"].Text)
+end
+
+local function getGuildCoin()
+    return parseNumber(game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\149\134\229\186\151"]["\229\133\172\228\188\154\229\184\129"]["\230\140\137\233\146\174"]["\229\128\188"].Text)
+end
+
+local function getRefreshCost()
+    return parseNumber(game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\149\134\229\186\151"]["\229\136\183\230\150\176"]["\230\140\137\233\146\174"]["\229\128\188"].Text)
+end
+
 -- 带保护的购买循环
 local function herbLoop()
     while herbController.enabled do
+        local boughtAny = false
         local success = pcall(function()
-            -- █ 保留原有路径访问方式
             local guilditemlist = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\149\134\229\186\151"]["\229\136\151\232\161\168"]
-            
+
             -- 优先检查第一个物品栏
             local item1stock = guilditemlist["\230\180\187\229\138\168\229\149\134\229\147\129\233\162\132\229\136\182\228\189\147"]["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text
             local item1info = guilditemlist["\230\180\187\229\138\168\229\149\134\229\147\129\233\162\132\229\136\182\228\189\147"]["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text
             
             if item1stock == "1 Left" and item1info == "Herb" then
-                local args = {1}
+                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\229\133\172\228\188\154"):WaitForChild("\229\133\145\230\141\162"):FireServer(1)
+                boughtAny = true
+            end
 
-game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\229\133\172\228\188\154"):WaitForChild("\229\133\145\230\141\162"):FireServer(unpack(args))
-            else
-                -- 遍历后续物品栏(4-18)
-                for i = 4, 18 do
-                    if not herbController.enabled then break end -- 随时检测开关状态
-                    local child = guilditemlist:GetChildren()[i]
-                    if child then
-                        local itemstock = child["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text
-                        local iteminfo = child["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text
-                        if itemstock == "1 Left" and iteminfo == "Herb" then
-                            i= i- 2
-local args = {i}
-
-game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\229\133\172\228\188\154"):WaitForChild("\229\133\145\230\141\162"):FireServer(unpack(args))
-                            break
-                        end
+            -- 遍历后续物品栏
+            for i = 4, 18 do
+                if not herbController.enabled then break end
+                local child = guilditemlist:GetChildren()[i]
+                if child then
+                    local itemstock = child["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text
+                    local iteminfo = child["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text
+                    if itemstock == "1 Left" and iteminfo == "Herb" then
+                        game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\229\133\172\228\188\154"):WaitForChild("\229\133\145\230\141\162"):FireServer(i-2)
+                        boughtAny = true
                     end
                 end
             end
@@ -1537,6 +1555,23 @@ game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):Wa
             if herbController.currentAttempts >= herbController.maxAttempts then
                 warn("[草药] 连续失败次数过多，自动停止")
                 herbController.enabled = false
+                break
+            end
+        end
+
+        -- 当没有购买到任何草药时检查刷新条件
+        if not boughtAny then
+            local refreshCost = getRefreshCost()
+            local diamond = getDiamond()
+            local guildCoin = getGuildCoin()
+
+            if refreshCost <= 10000 and diamond > refreshCost and guildCoin >= 400 then
+                pcall(function()
+                    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\229\133\172\228\188\154"):FindFirstChild("\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151"):FireServer()
+                end)
+                task.wait(1) -- 等待商店刷新
+            elseif refreshCost > 10000 then
+                -- 当刷新成本过高时保持循环但不刷新
             end
         end
 
@@ -1544,11 +1579,11 @@ game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):Wa
     end
 end
 
--- 修改后的开关控件
+-- 开关控件
 local Autoguildshop = features5:AddSwitch("购买草药", function(isActive)
     herbController.enabled = isActive
     if isActive then
-        task.spawn(herbLoop) -- 使用异步任务
+        task.spawn(herbLoop)
     end
 end)
 
