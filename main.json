@@ -1601,8 +1601,6 @@ local function herbLoop()
             local refreshCost = getRefreshCost()
             local diamond = getDiamond()
             local guildCoin = getGuildCoin()
-
-            -- 高成本模式检测
             if refreshCost > 10000 and not herbController.highCostMode then
                 toggleGuildUI(false)
                 herbController.highCostMode = true
@@ -1616,7 +1614,7 @@ local function herbLoop()
                 if refreshCost <= 10000 and diamond > refreshCost and guildCoin >= 400 then
                     pcall(function()
                         -- 打开公会界面
-                        game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:FireServer()
+                        game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:Fire()
                         task.wait(0.5)
                         
                         -- 执行刷新
@@ -2193,14 +2191,9 @@ local elixirLevel = 0
 
 -- 获取农田5等级
 pcall(function()
-    local farmEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182", true)
-    if farmEvent then
-        farmEvent:Fire(5)
-        wait(0.5)
-        farm5Level = tonumber(GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"]["\232\131\140\230\153\175"]["\229\177\158\230\128\167\229\140\186\229\159\159"]["\229\177\158\230\128\167\229\136\151\232\161\168"]["\229\136\151\232\161\168"]["\231\173\137\231\186\167"]["\229\128\188"].Text:match("%d+")) or 0
-    end
-    GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"].Visible = false
+    farm5Level = tonumber(GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"]["\232\131\140\230\153\175"]["\229\177\158\230\128\167\229\140\186\229\159\159"]["\229\177\158\230\128\167\229\136\151\232\161\168"]["\229\136\151\232\161\168"]["\231\173\137\231\186\167"]["\229\128\188"].Text:match("%d+")) or 0
 end)
+GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\134\156\231\148\176"].Visible = false
 
 -- 获取炼丹炉等级
 pcall(function()
