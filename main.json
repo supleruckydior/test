@@ -1494,19 +1494,18 @@ local herbController = {
     currentAttempts = 0
 }
 
--- 扩展字符串方法
+-- 字符串扩展方法
 function string:count(pattern)
     return select(2, self:gsub(pattern, ""))
 end
 
--- 安全数值转换器
+-- 安全数值转换
 local function parseNumber(text)
     local str = tostring(text):lower():gsub("%s+", ""):gsub(",", "")
     local numStr = str:gsub("[^%d%.]", "")
     
-    -- 防止无效数字格式
     if numStr:count("%.") > 1 then
-        warn("[数值异常] 检测到非法数值格式:", text)
+        warn("[数值异常] 非法格式:", text)
         return 0
     end
     
@@ -1520,7 +1519,7 @@ local function parseNumber(text)
     return (tonumber(numStr) or 0) * multiplier
 end
 
--- 数值获取函数（保持原始转义路径）
+-- 数值获取（保持原始路径）
 local function getDiamond()
     return parseNumber(
         game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\184\187\231\149\140\233\157\162"]["\228\184\187\229\159\142"]["\232\180\167\229\184\129\229\140\186\229\159\159"]["\233\146\187\231\159\179"]["\230\140\137\233\146\174"]["\229\128\188"].Text
@@ -1539,30 +1538,38 @@ local function getRefreshCost()
     )
 end
 
--- 增强版购买循环
+-- 购买逻辑（修正路径访问方式）
 local function herbLoop()
     while herbController.enabled do
         local boughtAny = false
         local success, err = pcall(function()
             local guilditemlist = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\149\134\229\186\151"]["\229\136\151\232\161\168"]
-
-            -- 优先检查首栏
+            
+            -- 检查第一个物品栏
             local firstItem = guilditemlist["\230\180\187\229\138\168\229\149\134\229\147\129\233\162\132\229\136\182\228\189\147"]
             if firstItem["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text == "1 Left" 
             and firstItem["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text == "Herb" then
-                game:GetService("ReplicatedStorage").\228\186\139\228\187\182.\229\133\172\231\148\168.\229\133\172\228\188\154.\229\133\145\230\141\162:FireServer(1)
+                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182")
+                    :WaitForChild("\229\133\172\231\148\168")
+                    :WaitForChild("\229\133\172\228\188\154")
+                    :WaitForChild("\229\133\145\230\141\162")
+                    :FireServer(1)
                 boughtAny = true
             end
 
-            -- 遍历4-18号栏位
-            for index = 4, 18 do
+            -- 遍历其他物品栏
+            for i = 4, 18 do
                 if not herbController.enabled then break end
-                local itemFrame = guilditemlist:GetChildren()[index]
-                if itemFrame and itemFrame:FindFirstChild("\230\140\137\233\146\174") then
-                    local button = itemFrame["\230\140\137\233\146\174"]
+                local item = guilditemlist:GetChildren()[i]
+                if item and item:FindFirstChild("\230\140\137\233\146\174") then
+                    local button = item["\230\140\137\233\146\174"]
                     if button["\229\186\147\229\173\152"].Text == "1 Left" 
                     and button["\229\144\141\231\167\176"].Text == "Herb" then
-                        game:GetService("ReplicatedStorage").\228\186\139\228\187\182.\229\133\172\231\148\168.\229\133\172\228\188\154.\229\133\145\230\141\162:FireServer(index - 2)
+                        game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182")
+                            :WaitForChild("\229\133\172\231\148\168")
+                            :WaitForChild("\229\133\172\228\188\154")
+                            :WaitForChild("\229\133\145\230\141\162")
+                            :FireServer(i - 2)
                         boughtAny = true
                         break
                     end
@@ -1572,37 +1579,34 @@ local function herbLoop()
 
         -- 错误处理
         if not success then
-            warn("[运行错误]", err)
-            herbController.currentAttempts += 1
+            herbController.currentAttempts = herbController.currentAttempts + 1
+            warn("[运行错误] 第"..herbController.currentAttempts.."次失败:", err)
             if herbController.currentAttempts >= herbController.maxAttempts then
                 herbController.enabled = false
-                warn("[严重错误] 达到最大错误次数，自动停止")
-                break
+                warn("[自动停止] 连续失败超过最大次数")
             end
         else
             herbController.currentAttempts = 0
         end
 
-        -- 刷新条件判断
+        -- 商店刷新逻辑
         if not boughtAny then
-            local currentDiamond = getDiamond()
-            local currentGuildCoin = getGuildCoin()
             local refreshCost = getRefreshCost()
+            local diamond = getDiamond()
+            local guildCoin = getGuildCoin()
 
             if refreshCost <= 10000 
-            and currentDiamond > refreshCost 
-            and currentGuildCoin >= 400 
+            and diamond > refreshCost 
+            and guildCoin >= 400 
             then
                 pcall(function()
-                    game:GetService("ReplicatedStorage").\228\186\139\228\187\182.\229\133\172\231\148\168.\229\133\172\228\188\154.\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151:FireServer()
+                    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182")
+                        :FindFirstChild("\229\133\172\231\148\168")
+                        :FindFirstChild("\229\133\172\228\188\154")
+                        :FindFirstChild("\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151")
+                        :FireServer()
                 end)
-                task.wait(1.5) -- 等待商店刷新
-            elseif refreshCost > 10000 then
-                -- 高消耗模式日志
-                print(string.format(
-                    "[状态] 当前刷新成本 %.2f 超过阈值，停止刷新",
-                    refreshCost
-                ))
+                task.wait(1.5)  -- 刷新后等待
             end
         end
 
@@ -1610,14 +1614,14 @@ local function herbLoop()
     end
 end
 
--- 界面控件
+-- 界面控件（保持原始调用方式）
 local Autoguildshop = features5:AddSwitch("自动购买草药", function(state)
     herbController.enabled = state
     if state then
         task.spawn(herbLoop)
-        print("[系统] 草药自动购买已启动")
+        print("[系统] 自动购买已启动")
     else
-        print("[系统] 草药自动购买已停止")
+        print("[系统] 自动购买已停止")
     end
 end)
 
