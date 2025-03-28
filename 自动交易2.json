@@ -1,0 +1,165 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local UserInputService = game:GetService("UserInputService")
+
+-- 等待界面加载完成
+local GUI = PlayerGui:WaitForChild("GUI")
+local BaseUI = GUI:WaitForChild("\229\159\186\231\161\128")
+local TimeIndicator = BaseUI:WaitForChild("\229\128\146\232\174\161\230\151\182\230\161\134")
+
+-- 获取事件对象
+local elixirSyncEvent = ReplicatedStorage
+    ["\228\186\139\228\187\182"]          -- 药水
+    ["\229\174\162\230\136\183\231\171\175"] -- 同步模块
+    ["\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175"] -- 同步控制器
+    ["\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150"] -- 数据更新事件
+
+local addTradeItemEvent = ReplicatedStorage
+    ["\228\186\139\228\187\182"]  -- 药水
+    ["\229\133\172\231\148\168"]  -- 功能
+    ["\228\186\164\230\152\147"]  -- 交易
+    ["\230\150\176\229\162\158\228\186\164\230\152\147\231\137\169\229\147\129"] -- 新增交易物品
+
+local confirmTradeEvent = ReplicatedStorage
+    ["\228\186\139\228\187\182"]  -- 药水
+    ["\229\133\172\231\148\168"]  -- 功能
+    ["\228\186\164\230\152\147"]  -- 交易
+    :WaitForChild("\233\148\129\229\174\154\228\186\164\230\152\147") -- 确认交易
+
+local elixirData = {}
+
+-- 数据同步处理
+elixirSyncEvent.Event:Connect(function(data)
+    elixirData = data
+end)
+
+-- 系统控制变量
+local running = true
+
+-- 创建监控界面
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoTradeMonitor"
+if syn then syn.protect_gui(screenGui) end
+screenGui.Parent = PlayerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 320, 0, 120)
+mainFrame.Position = UDim2.new(0, 10, 1, -130)  -- 左下角定位
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)    -- 黑底
+mainFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)     -- 红边
+mainFrame.BorderSizePixel = 2
+mainFrame.Parent = screenGui
+
+-- 信息显示
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(0.9, 0, 0.7, 0)
+infoLabel.Position = UDim2.new(0.05, 0, 0.1, 0)
+infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)   -- 白字
+infoLabel.BackgroundTransparency = 1
+infoLabel.Font = Enum.Font.SourceSansBold
+infoLabel.TextSize = 20
+infoLabel.TextXAlignment = Enum.TextXAlignment.Center  -- 水平居中
+infoLabel.TextYAlignment = Enum.TextYAlignment.Center  -- 垂直居中
+
+-- 添加红色文字描边
+local textStroke = Instance.new("UIStroke")
+textStroke.Color = Color3.fromRGB(255, 0, 0)  -- 红色描边
+textStroke.Thickness = 0.1
+textStroke.Parent = infoLabel
+infoLabel.Text = "自动交易启动..."
+infoLabel.Parent = mainFrame
+
+-- 控制按钮组
+local buttonContainer = Instance.new("Frame")
+buttonContainer.Size = UDim2.new(0.9, 0, 0.2, 0)
+buttonContainer.Position = UDim2.new(0.05, 0, 0.82, 0)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.Parent = mainFrame
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0.45, 0, 1, 0)
+closeButton.Position = UDim2.new(0.55, 0, 0, 0)
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+closeButton.BorderColor3 = Color3.fromRGB(255, 0, 0)  -- 红色边框
+closeButton.Text = "关闭系统"
+closeButton.Parent = buttonContainer
+
+-- 窗口拖拽系统
+local dragging = false
+local dragStart, startPos
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local newX = math.clamp(startPos.X.Offset + delta.X, 0, workspace.CurrentCamera.ViewportSize.X - mainFrame.AbsoluteSize.X)
+        local newY = math.clamp(startPos.Y.Offset + delta.Y, 0, workspace.CurrentCamera.ViewportSize.Y - mainFrame.AbsoluteSize.Y)
+        
+        mainFrame.Position = UDim2.new(
+            0, newX,
+            0, newY
+        )
+    end
+end)
+
+-- 按钮功能
+closeButton.MouseButton1Click:Connect(function()
+    running = false
+    screenGui:Destroy()
+end)
+
+-- 交易监听逻辑
+coroutine.wrap(function()
+    while running do
+        if TimeIndicator.Visible then
+            -- 触发交易请求
+            game:GetService("ReplicatedStorage")
+                :WaitForChild("\228\186\139\228\187\182")
+                :WaitForChild("\229\133\172\231\148\168")
+                :WaitForChild("\228\186\164\230\152\147")
+                :WaitForChild("\231\148\179\232\175\183\228\186\164\230\152\147")
+                :FireServer()
+
+            -- 第一阶段等待
+            wait(0.5)
+
+            -- 执行交易操作
+            if elixirData["背包"] then
+                for slot, item in pairs(elixirData["背包"]) do
+                    local itemIndex = item["索引"] or item.Index or item.id
+                    if itemIndex then
+                        addTradeItemEvent:FireServer("丹药", itemIndex, 999999)
+                        print("已发送交易请求:", itemIndex)
+                    end
+                end
+            end
+
+            -- 第二阶段等待
+            wait(0.5)
+
+            -- 确认交易
+            pcall(function()
+                confirmTradeEvent:FireServer(true)
+            end)
+
+            -- 添加额外间隔防止频繁操作
+            wait(0.5)
+        else
+            -- 当不可见时降低检测频率
+            wait(0.5)
+        end
+    end
+end)()
+
+-- 初始化完成提示
+infoLabel.Text = "自动交易已启动！"
