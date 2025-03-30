@@ -1,0 +1,305 @@
+-- 创建控制GUI
+local player = game:GetService("Players").LocalPlayer
+local gui = Instance.new("ScreenGui")
+gui.Name = "BossCDMonitor"
+gui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 280, 0, 350)
+frame.Position = UDim2.new(0.5, -140, 0.5, -175)
+frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+frame.Active = true
+frame.Selectable = true
+frame.Parent = gui
+
+-- 改进的拖动功能
+local UserInputService = game:GetService("UserInputService")
+local dragging
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+-- GUI元素
+local title = Instance.new("TextLabel")
+title.Text = "双功能监控系统 (拖动标题栏)"
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Parent = frame
+
+-- 功能区标签
+local tab1 = Instance.new("TextLabel")
+tab1.Text = "Boss CD监控"
+tab1.Size = UDim2.new(1, 0, 0, 20)
+tab1.Position = UDim2.new(0, 0, 0, 40)
+tab1.TextColor3 = Color3.fromRGB(200, 200, 200)
+tab1.BackgroundTransparency = 1
+tab1.Parent = frame
+
+-- Boss区域选择按钮
+local buttonsFrame = Instance.new("Frame")
+buttonsFrame.Size = UDim2.new(1, -20, 0, 150)
+buttonsFrame.Position = UDim2.new(0, 10, 0, 70)
+buttonsFrame.BackgroundTransparency = 1
+buttonsFrame.Parent = frame
+
+local areaButtons = {}
+local areaConfig = {
+    [100] = false, [101] = false, [102] = false,
+    [103] = false, [104] = false, [105] = false, 
+    [106] = false
+}
+
+local function createAreaButton(areaId, position)
+    local button = Instance.new("TextButton")
+    button.Text = string.format("区域 %d: 关闭", areaId)
+    button.Size = UDim2.new(0.45, 0, 0, 30)
+    button.Position = position
+    button.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    
+    button.MouseButton1Click:Connect(function()
+        areaConfig[areaId] = not areaConfig[areaId]
+        button.Text = string.format("区域 %d: %s", areaId, areaConfig[areaId] and "开启" or "关闭")
+        button.BackgroundColor3 = areaConfig[areaId] and Color3.fromRGB(30, 80, 30) or Color3.fromRGB(80, 30, 30)
+    end)
+    
+    button.Parent = buttonsFrame
+    areaButtons[areaId] = button
+end
+
+-- 创建Boss区域按钮
+for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
+    local row = math.floor((i-1)/2)
+    local col = (i-1)%2
+    createAreaButton(areaId, UDim2.new(col*0.55, 0, row*0.1, row*30))
+end
+
+-- 灵兽系统监控
+local tab2 = Instance.new("TextLabel")
+tab2.Text = "灵兽系统监控"
+tab2.Size = UDim2.new(1, 0, 0, 20)
+tab2.Position = UDim2.new(0, 0, 0, 230)
+tab2.TextColor3 = Color3.fromRGB(200, 200, 200)
+tab2.BackgroundTransparency = 1
+tab2.Parent = frame
+
+local lingShouToggle = Instance.new("TextButton")
+lingShouToggle.Text = "灵兽监控: 关闭"
+lingShouToggle.Size = UDim2.new(0.8, 0, 0, 30)
+lingShouToggle.Position = UDim2.new(0.1, 0, 0, 260)
+lingShouToggle.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
+lingShouToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+lingShouToggle.Parent = frame
+
+local lingShouStatus = false
+lingShouToggle.MouseButton1Click:Connect(function()
+    lingShouStatus = not lingShouStatus
+    lingShouToggle.Text = "灵兽监控: " .. (lingShouStatus and "开启" or "关闭")
+    lingShouToggle.BackgroundColor3 = lingShouStatus and Color3.fromRGB(30, 80, 30) or Color3.fromRGB(80, 30, 30)
+end)
+
+local stopButton = Instance.new("TextButton")
+stopButton.Text = "停止所有监控"
+stopButton.Size = UDim2.new(0.8, 0, 0, 30)
+stopButton.Position = UDim2.new(0.1, 0, 0, 300)
+stopButton.Parent = frame
+
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- 主逻辑
+local running = true
+
+stopButton.MouseButton1Click:Connect(function()
+    running = false
+    gui:Destroy()
+end)
+
+gui.Destroying:Connect(function()
+    running = false
+end)
+
+-- 安全获取对象函数
+local function safeGet(path)
+    local current = game
+    for _, part in ipairs(path) do
+        local success, child = pcall(function() return current[part] end)
+        if not success or not child then
+            return nil
+        end
+        current = child
+    end
+    return current
+end
+
+-- 检查GuiAth下所有LabCdTime
+local function checkAnyLabCdTime(areaId)
+    local guiAthPath = {"Workspace", "AreaModel", "101", "Area", "CommonGui", "ArenaSoloShower_"..areaId, "GuiAth"}
+    local guiAth = safeGet(guiAthPath)
+    
+    if not guiAth then
+        warn("["..areaId.."] GuiAth路径获取失败")
+        return false
+    end
+    
+    -- 递归搜索所有LabCdTime
+    local function searchLabCdTime(instance)
+        if instance:IsA("TextLabel") and instance.Name == "LabCdTime" then
+            local text = instance.Text
+            if text == "LabCdTime" or text == "CD: 00:00:00" then
+                return true
+            end
+        end
+        
+        for _, child in ipairs(instance:GetChildren()) do
+            if searchLabCdTime(child) then
+                return true
+            end
+        end
+        
+        return false
+    end
+    
+    return searchLabCdTime(guiAth)
+end
+
+-- 灵兽系统检查函数
+local function checkLingShouSystem()
+    -- 检查WaitClearFrame是否可见
+    local framePath = {"Players", player.Name, "PlayerGui", "MainGui", "ScreenGui", "ArenaStatusView", "WaitClearFrame"}
+    local waitFrame = safeGet(framePath)
+    
+    if not waitFrame or not waitFrame:IsA("Frame") then
+        warn("灵兽框架获取失败")
+        return false
+    end
+    
+    if waitFrame.Visible then
+        print("检测到灵兽触发条件")
+        
+        -- 获取第一个怪物
+        local monsters = workspace.Monsters:GetChildren()
+        if #monsters == 0 then
+            warn("没有找到怪物")
+            return false
+        end
+        
+        local monster = monsters[1]
+        local monsterName = monster.Name
+        local number = string.match(monsterName, "%d+")
+        
+        if not number then
+            warn("无法从怪物名称中提取数字:", monsterName)
+            return false
+        end
+        
+        number = tonumber(number)
+        print("找到怪物ID:", number)
+        
+        -- 执行三次调用
+        for i = 1, 3 do
+            local args = {
+                "LingShouSystemRollChannel",
+                number,
+                1
+            }
+            
+            print("正在执行第"..i.."次灵兽调用...")
+            local success, err = pcall(function()
+                game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
+            end)
+            
+            if success then
+                print("第"..i.."次灵兽调用成功")
+            else
+                warn("第"..i.."次灵兽调用失败:", err)
+            end
+            
+            if i < 3 then
+                wait(1)
+            end
+        end
+        return true
+    end
+    return false
+end
+
+-- 主循环
+local function main()
+    while running and gui.Parent do
+        -- 检查Boss区域
+        for areaId, enabled in pairs(areaConfig) do
+            if enabled then
+                local success, result = pcall(checkAnyLabCdTime, areaId)
+                if success and result then
+                    print("["..areaId.."] 检测到可战斗Boss")
+                    
+                    local args = {"ArenaStartSoloArenaChannel", areaId}
+                    local invokeSuccess, err = pcall(function()
+                        game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
+                    end)
+                    
+                    if not invokeSuccess then
+                        warn("["..areaId.."] Boss执行失败:", err)
+                    end
+                elseif not success then
+                    warn("["..areaId.."] Boss检查出错:", result)
+                end
+            end
+        end
+        
+        -- 检查灵兽系统
+        if lingShouStatus then
+            local success, err = pcall(checkLingShouSystem)
+            if not success then
+                warn("灵兽系统检查出错:", err)
+            end
+        end
+        
+        wait(1)
+    end
+    
+    if gui and gui.Parent then 
+        gui:Destroy()
+    end
+end
+
+-- 启动脚本
+local success, err = pcall(main)
+if not success then
+    warn("主循环错误:", err)
+    if gui and gui.Parent then
+        gui:Destroy()
+    end
+end
