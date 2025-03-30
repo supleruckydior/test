@@ -116,7 +116,7 @@ tab2.BackgroundTransparency = 1
 tab2.Parent = frame
 
 local lingShouToggle = Instance.new("TextButton")
-lingShouToggle.Text = "灵兽监控: 关闭"
+lingShouToggle.Text = "宠物抓取: 关闭"
 lingShouToggle.Size = UDim2.new(0.8, 0, 0, 30)
 lingShouToggle.Position = UDim2.new(0.1, 0, 0, 260)
 lingShouToggle.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
@@ -126,7 +126,7 @@ lingShouToggle.Parent = frame
 local lingShouStatus = false
 lingShouToggle.MouseButton1Click:Connect(function()
     lingShouStatus = not lingShouStatus
-    lingShouToggle.Text = "灵兽监控: " .. (lingShouStatus and "开启" or "关闭")
+    lingShouToggle.Text = "宠物抓取: " .. (lingShouStatus and "开启" or "关闭")
     lingShouToggle.BackgroundColor3 = lingShouStatus and Color3.fromRGB(30, 80, 30) or Color3.fromRGB(80, 30, 30)
 end)
 
