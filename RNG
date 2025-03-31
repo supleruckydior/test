@@ -113,6 +113,8 @@ gui.Parent = player:WaitForChild("PlayerGui")
 -- ========== 核心功能 ==========
 local running = true
 local currentFloatTask = nil
+local hasEnteredBattle = false
+local targetPosition = Vector3.new(-70, 18, -62)
 
 -- 安全获取对象函数
 local function safeGet(path)
@@ -252,7 +254,6 @@ local function checkBossArea(areaId)
 end
 
 -- 灵兽系统（改进版）
--- 灵兽系统（改进版）
 local function checkLingShouSystem()
     -- 安全检测WaitClearFrame
     local waitFrame = safeGet({
@@ -343,6 +344,7 @@ local function main()
                     
                     if invokeSuccess then
                         print("战斗请求已发送")
+                        hasEnteredBattle = true
                         
                         local startTime = os.time()
                         local hasTriggered = false
@@ -359,6 +361,20 @@ local function main()
                     else
                         warn("战斗请求失败:", err)
                     end
+                end
+            end
+        end
+
+        -- 战斗结束后传送到目标位置
+        if hasEnteredBattle and not isInBattle() then
+            local character = player.Character
+            if character then
+                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                if humanoidRootPart then
+                    print("战斗结束，传送到目标位置")
+                    wait(5)
+                    humanoidRootPart.CFrame = CFrame.new(targetPosition)
+                    hasEnteredBattle = false
                 end
             end
         end
