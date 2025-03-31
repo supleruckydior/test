@@ -57,6 +57,7 @@ buttonsFrame.Position = UDim2.new(0, 10, 0, 40)
 buttonsFrame.BackgroundTransparency = 1
 buttonsFrame.Parent = frame
 
+
 local areaConfig = {
     [100] = false, [101] = false, [102] = false,
     [103] = false, [104] = false, [105] = false, 
@@ -109,7 +110,49 @@ stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 stopButton.Parent = frame
 
 gui.Parent = player:WaitForChild("PlayerGui")
+-- 在标题栏添加折叠按钮 (添加到frame的创建之后)
+local toggleButton = Instance.new("TextButton")
+toggleButton.Text = "▼"
+toggleButton.Size = UDim2.new(0, 30, 0, 30)
+toggleButton.Position = UDim2.new(1, -30, 0, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Parent = title
 
+-- 存储需要折叠的元素
+local collapsibleElements = {
+    buttonsFrame,
+    lingShouToggle,
+    stopButton
+}
+
+-- 初始状态
+local isCollapsed = false
+local originalFrameSize = frame.Size
+local collapsedFrameSize = UDim2.new(0, 280, 0, 30) -- 只保留标题栏高度
+
+-- 折叠/展开功能
+local function toggleCollapse()
+    isCollapsed = not isCollapsed
+    
+    if isCollapsed then
+        -- 折叠状态
+        toggleButton.Text = "▲"
+        frame.Size = collapsedFrameSize
+        for _, element in ipairs(collapsibleElements) do
+            element.Visible = false
+        end
+    else
+        -- 展开状态
+        toggleButton.Text = "▼"
+        frame.Size = originalFrameSize
+        for _, element in ipairs(collapsibleElements) do
+            element.Visible = true
+        end
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleCollapse)
 -- ========== 核心功能 ==========
 local running = true
 local currentFloatTask = nil
