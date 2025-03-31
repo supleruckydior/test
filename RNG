@@ -222,6 +222,7 @@ local function floatAbovePosition()
                 bodyForce:Destroy()
                 Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             end)
+        wait(1)
         else
         wait(1)
         end
