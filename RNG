@@ -140,7 +140,7 @@ local function getWaitClearVisible()
             "Players", player.Name, 
             "PlayerGui", "MainGui", 
             "ScreenGui", "ArenaStatusView", 
-            "WaitClearFrame"
+            "ResultFrame"
         })
         
         if waitFrame and waitFrame:IsA("Frame") and waitFrame.Visible then
