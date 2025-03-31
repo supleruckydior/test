@@ -133,7 +133,7 @@ end
 local function getWaitClearVisible()
     local totalVisibleTime = 0
     local checkInterval = 0.3
-    local requiredDuration = 3
+    local requiredDuration = 0.8
     
     while running do
         local waitFrame = safeGet({
