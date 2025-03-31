@@ -1870,102 +1870,66 @@ features8:AddButton("▼ 降低農田目標", function()
     UpdateFarmDisplay()
 end)
 local isWorkingFarm = false
-features8:AddButton("▶ 啟用農田超頻", function()
+features8:AddButton("▶ 農田超頻 (精準版)", function()
     isWorkingFarm = not isWorkingFarm
     spawn(function()
         if isWorkingFarm then
             local originalTarget = targetLevel
-            local shouldBreak = false  -- 全局中断标志
+            Farm_choose.Text = "  ⚡ 計算強化次數中..."
 
-            Farm_choose.Text = "  ⚡ 啟動全農田超頻..."
             pcall(function()
                 for farmIndex = 1, 5 do
-                    if not isWorkingFarm or shouldBreak then break end
-                    
+                    if not isWorkingFarm then break end
+
                     -- 切換農田
                     currentFarm = farmIndex
                     local openEvent = REPLICATED_STORAGE:FindFirstChild("打开农田", true)
                     if openEvent and openEvent:IsA("BindableEvent") then
                         openEvent:Fire(farmIndex)
-                        wait(UI_LOAD_DELAY * 3)  -- 增加延迟以确保UI更新
+                        wait(0.1)  -- 确保UI切换
                     end
-                    
-                    -- 获取当前农田的等级
+
+                    -- 獲取當前等級
                     local currentLevel = GetLevel("\229\134\156\231\148\176")
-                    local lastCheckLevel = currentLevel  -- 当前农田的等级
-                    local noProgressCount = 0  -- 无进度计数器
-                    
-                    -- 如果当前农田已经达到目标等级，跳过
                     if currentLevel >= targetLevel then
-                        Farm_choose.Text = string.format("  ✅ 農田%d已達標，跳過...", farmIndex)
-                        wait(UI_LOAD_DELAY)
+                        Farm_choose.Text = string.format("  ✅ 農田%d已達標 (%d級)", farmIndex, currentLevel)
+                        wait(0.05)
                         continue
                     end
-                    
-                    Farm_choose.Text = string.format("  ⚡ 正在超頻農田%d (%d→%d)", 
-                        farmIndex, currentLevel, targetLevel)
-                    
-                    -- 循环升级，直到达到目标等级或失败次数达到上限
-                    while currentLevel < targetLevel do
-                        if not isWorkingFarm or shouldBreak then break end
-                        
-                        -- 升級前記錄當前等級
-                        local preLevel = currentLevel
-                        
-                        -- 執行升級
+
+                    -- 計算需要強化的次數
+                    local neededUpgrades = targetLevel - currentLevel
+                    Farm_choose.Text = string.format("  ⚡ 農田%d將強化 %d次 (%d→%d)", 
+                        farmIndex, neededUpgrades, currentLevel, targetLevel)
+
+                    -- 分批發送請求 (每10次一組，組間隔0.05秒)
+                    local BATCH_SIZE = 10
+                    for i = 1, neededUpgrades do
+                        if not isWorkingFarm then break end
+
                         pcall(FARM_UPGRADE_EVENT.FireServer, FARM_UPGRADE_EVENT, farmIndex)
-                        
-                        -- 增加延迟以确保UI更新
-                        wait(UI_LOAD_DELAY * 2)
-                        
-                        -- 獲取升級後等級
-                        currentLevel = GetLevel("\229\134\156\231\148\176")
-                        
-                        -- 檢測等級變化
-                        if currentLevel <= preLevel then
-                            noProgressCount = noProgressCount + 1
-                            Farm_choose.Text = string.format("  ⚠ 農田%d未升級 (%d/3)", 
-                                farmIndex, noProgressCount)
-                            
-                            if noProgressCount >= 3 then
-                                shouldBreak = true
-                                Farm_choose.Text = string.format("  ❌ 農田%d連續3次未升級，中止進程！", farmIndex)
-                                break
-                            end
-                        else
-                            noProgressCount = 0  -- 重置計數器
-                            -- 更新進度顯示
-                            Farm_choose.Text = string.format("  ⚡ 農田%d進度: %d/%d (%.1f%%)", 
-                                farmIndex, currentLevel, targetLevel, 
-                                (currentLevel/targetLevel)*100)
+
+                        -- 分批處理
+                        if i % BATCH_SIZE == 0 then
+                            wait(0.05)
+                            Farm_choose.Text = string.format("  ⚡ 農田%d: %d/%d次 (%.1f%%)", 
+                                farmIndex, i, neededUpgrades, (i/neededUpgrades)*100)
                         end
-                        
-                        wait(UI_LOAD_DELAY)
                     end
-                    
-                    -- 检查当前农田是否达到目标等级
-                    if currentLevel < targetLevel then
-                        shouldBreak = true
-                        Farm_choose.Text = string.format("  ❌ 農田%d未達標，中止進程！", farmIndex)
-                        break
-                    end
-                    
+
                     -- 最終確認
-                    Farm_choose.Text = string.format("  ✅ 農田%d已完成 %d級", 
-                        farmIndex, currentLevel)
-                    wait(UI_LOAD_DELAY * 2)
+                    local finalLevel = GetLevel("\229\134\156\231\148\176")
+                    Farm_choose.Text = string.format("  ✅ 農田%d完成 %d級 (實際+%d級)", 
+                        farmIndex, finalLevel, finalLevel - currentLevel)
+                    wait(0.1)
                 end
-                
-                if shouldBreak then
-                    Farm_choose.Text = "  ❌ 升級進程已強制中止！"
-                else
-                    Farm_choose.Text = "  ✅ 所有農田已達80級"
-                    currentFarm = 1
-                    openEvent:Fire(currentFarm)
-                end
+
+                Farm_choose.Text = "  ✅ 所有農田強化完畢"
+                currentFarm = 1
+                local openEvent = REPLICATED_STORAGE:FindFirstChild("打开农田", true)
+                if openEvent then openEvent:Fire(currentFarm) end
             end)
-            
-            targetLevel = originalTarget
+
             isWorkingFarm = false
             UpdateFarmDisplay()
         end
@@ -1998,40 +1962,52 @@ end)
 
 
 -- 炼丹炉超频模式
-features8:AddButton("▶ 啟用丹爐超頻", function()
-    local isWorkingElixir = false  -- 改为局部变量
-    spawn(function()  -- 用 spawn 隔离作用域
-        isWorkingElixir = not isWorkingElixir
+features8:AddButton("▶ 丹爐超頻 (精準版)", function()
+    local isWorkingElixir = not isWorkingElixir
+    spawn(function()
         if isWorkingElixir then
+            Elixir_choose.Text = "  ⚡ 計算丹爐強化次數中..."
+            
             pcall(function()
+                -- 開啟丹爐界面
                 game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137"]:Fire()
-                wait(UI_LOAD_DELAY * 2)
-            end)
-            
-            Elixir_choose.Text = "  ⚡ 丹爐超頻啟動..."
-            local initialLevel = GetLevel("\231\130\188\228\184\185\231\130\137")
-            lastElixirLevel = initialLevel
-            local required = targetElixirLevel - initialLevel
-            
-            if required <= 0 then
-                Elixir_choose.Text = string.format("✅ 丹爐%d已達標 %d級", currentElixir, targetElixirLevel)
-                isWorkingElixir = false
-                return
-            end
-            
-            for i = 1, required do
-                if not isWorkingElixir then break end
-                pcall(ELIXIR_UPGRADE_EVENT.FireServer, ELIXIR_UPGRADE_EVENT)
-                wait(UI_LOAD_DELAY)
-                lastElixirLevel = GetLevel("\231\130\188\228\184\185\231\130\137")
-                Elixir_choose.Text = string.format("⚡ 丹爐升級中 (%d/%d)", i, required)
-                
-                if lastElixirLevel >= targetElixirLevel then
-                    Elixir_choose.Text = string.format("✅ 丹爐%d已達標 %d級", currentElixir, targetElixirLevel)
+                wait(0.1)  -- 基礎UI等待
+
+                -- 獲取當前等級
+                local currentLevel = GetLevel("\231\130\188\228\184\185\231\130\137")
+                if currentLevel >= targetElixirLevel then
+                    Elixir_choose.Text = string.format("  ✅ 丹爐已達標 (%d級)", currentLevel)
                     isWorkingElixir = false
-                    break
+                    return
                 end
-            end
+
+                -- 計算需要強化的次數
+                local neededUpgrades = targetElixirLevel - currentLevel
+                Elixir_choose.Text = string.format("  ⚡ 需要強化 %d次 (%d→%d)", 
+                    neededUpgrades, currentLevel, targetElixirLevel)
+
+                -- 分批發送請求 (每15次一組，組間隔0.03秒)
+                local BATCH_SIZE = 15
+                for i = 1, neededUpgrades do
+                    if not isWorkingElixir then break end
+
+                    pcall(ELIXIR_UPGRADE_EVENT.FireServer, ELIXIR_UPGRADE_EVENT)
+
+                    -- 分批處理與進度更新
+                    if i % BATCH_SIZE == 0 then
+                        wait(0.03)
+                        local nowLevel = GetLevel("\231\130\188\228\184\185\231\130\137")
+                        Elixir_choose.Text = string.format("  ⚡ 進度: %d/%d次 (實際:%d級)", 
+                            i, neededUpgrades, nowLevel)
+                    end
+                end
+
+                -- 最終確認
+                local finalLevel = GetLevel("\231\130\188\228\184\185\231\130\137")
+                Elixir_choose.Text = string.format("  ✅ 完成強化 (實際:%d級 提升:%d級)", 
+                    finalLevel, finalLevel - currentLevel)
+            end)
+
             isWorkingElixir = false
         end
     end)
