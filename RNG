@@ -318,6 +318,7 @@ local function checkLingShouSystem()
             end
             
             if i < 3 then
+            wait(1)
             end
         end
     end
