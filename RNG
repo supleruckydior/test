@@ -318,7 +318,6 @@ local function checkLingShouSystem()
             end
             
             if i < 3 then
-                wait(1)
             end
         end
     end
@@ -371,7 +370,7 @@ local function main()
                 local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
                 if humanoidRootPart then
                     print("战斗结束，传送到目标位置")
-                    wait(12)
+                    wait(2)
                     humanoidRootPart.CFrame = CFrame.new(targetPosition)
                     hasEnteredBattle = false
                 end
