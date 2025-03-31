@@ -296,7 +296,7 @@ local function checkLingShouSystem()
         return false
     end
     
-    wait(3)
+    wait(9)
     
     -- 对每个怪物ID执行三次灵兽调用
     for _, monsterId in ipairs(monsterIds) do
