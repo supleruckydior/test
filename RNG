@@ -372,7 +372,7 @@ local function main()
                 local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
                 if humanoidRootPart then
                     print("战斗结束，传送到目标位置")
-                    wait(5)
+                    wait(8)
                     humanoidRootPart.CFrame = CFrame.new(targetPosition)
                     hasEnteredBattle = false
                 end
