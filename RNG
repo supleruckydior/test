@@ -235,7 +235,7 @@ local function floatAbovePosition()
 
     -- 创建浮空控制器
     local bodyPos = Instance.new("BodyPosition")
-    bodyPos.Position = HumanoidRootPart.Position + Vector3.new(0, 19, 0)
+    bodyPos.Position = HumanoidRootPart.Position + Vector3.new(0, 21, 0)
     bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bodyPos.D = 1000
     bodyPos.P = 10000
