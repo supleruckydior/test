@@ -3,7 +3,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "BossCDMonitor"
 gui.ResetOnSpawn = false
 
--- ========== GUI拖动功能 ==========
+-- ========== GUI界面 ==========
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 280, 0, 350)
 frame.Position = UDim2.new(0.5, -140, 0.5, -175)
@@ -12,6 +12,7 @@ frame.Active = true
 frame.Selectable = true
 frame.Parent = gui
 
+-- GUI拖动功能
 local UserInputService = game:GetService("UserInputService")
 local dragging = false
 local dragStart = Vector2.new(0, 0)
@@ -41,15 +42,15 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- ========== GUI界面 ==========
+-- 标题
 local title = Instance.new("TextLabel")
-title.Text = "Boss监控系统 v2.3"
+title.Text = "Boss监控系统 v3.0"
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Parent = frame
 
--- Boss区域选择
+-- 区域选择
 local buttonsFrame = Instance.new("Frame")
 buttonsFrame.Size = UDim2.new(1, -20, 0, 150)
 buttonsFrame.Position = UDim2.new(0, 10, 0, 40)
@@ -62,7 +63,6 @@ local areaConfig = {
     [106] = false
 }
 
--- 创建两列按钮布局
 for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
     local col = (i-1) % 2
     local row = math.floor((i-1) / 2)
@@ -83,7 +83,7 @@ for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
     button.Parent = buttonsFrame
 end
 
--- 灵兽系统开关
+-- 功能开关
 local lingShouToggle = Instance.new("TextButton")
 lingShouToggle.Text = "灵兽监控: 关闭"
 lingShouToggle.Size = UDim2.new(0.8, 0, 0, 30)
@@ -113,10 +113,12 @@ gui.Parent = player:WaitForChild("PlayerGui")
 -- ========== 核心功能 ==========
 local running = true
 local currentFloatTask = nil
+local currentCircleTask = nil
+local currentCenterPosition = nil
 local hasEnteredBattle = false
 local targetPosition = Vector3.new(-70, 18, -62)
 
--- 安全获取对象函数
+-- 安全获取对象
 local function safeGet(path)
     local current = game
     for _, part in ipairs(path) do
@@ -129,35 +131,17 @@ local function safeGet(path)
     return current
 end
 
--- 优化后的WaitClearFrame检测（持续3秒可见才触发）
-local function getWaitClearVisible()
-    local totalVisibleTime = 0
-    local checkInterval = 0.3
-    local requiredDuration = 0.8
-    
-    while running do
-        local waitFrame = safeGet({
-            "Players", player.Name, 
-            "PlayerGui", "MainGui", 
-            "ScreenGui", "ArenaStatusView", 
-            "ResultFrame"
-        })
-        
-        if waitFrame and waitFrame:IsA("Frame") and waitFrame.Visible then
-            totalVisibleTime = totalVisibleTime + checkInterval
-            if totalVisibleTime >= requiredDuration then
-                return true
-            end
-        else
-            totalVisibleTime = 0
-        end
-        
-        wait(checkInterval)
-    end
-    return false
+-- 战斗状态检测
+local function isWaitClearVisible()
+    local waitFrame = safeGet({
+        "Players", player.Name, 
+        "PlayerGui", "MainGui", 
+        "ScreenGui", "ArenaStatusView", 
+        "ResultFrame"
+    })
+    return waitFrame and waitFrame:IsA("Frame") and waitFrame.Visible
 end
 
--- 安全检测ArenaStatusView是否存在
 local function isInBattle()
     local arenaView = safeGet({
         "Players", player.Name,
@@ -167,13 +151,75 @@ local function isInBattle()
     return arenaView and arenaView:IsA("Frame")
 end
 
--- 浮空控制函数
+-- 获取视角前方20单位的位置
+local function getViewForwardCenter()
+    local Character = player.Character
+    if not Character then return nil end
+    
+    local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    if not HumanoidRootPart then return nil end
+
+    local camera = workspace.CurrentCamera
+    if camera then
+        local cameraCF = camera.CFrame
+        return Vector3.new(
+            cameraCF.Position.X + cameraCF.LookVector.X * 100,
+            HumanoidRootPart.Position.Y,
+            cameraCF.Position.Z + cameraCF.LookVector.Z * 100
+        )
+    end
+    return HumanoidRootPart.Position
+end
+
+-- 圆形移动（半径30）
+local function startCircleMovement()
+    if currentCircleTask then
+        currentCircleTask:Disconnect()
+        currentCircleTask = nil
+    end
+
+    local Character = player.Character
+    if not Character then return end
+    
+    local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    if not HumanoidRootPart then return end
+
+    local radius = 60
+    local angle = 0
+    local speed = 0.013
+    
+    currentCircleTask = game:GetService("RunService").Heartbeat:Connect(function(dt)
+        if not running or not currentCenterPosition or not HumanoidRootPart or not HumanoidRootPart.Parent then
+            if currentCircleTask then
+                currentCircleTask:Disconnect()
+                currentCircleTask = nil
+            end
+            return
+        end
+
+        angle = angle + speed * dt * 60
+        local x = currentCenterPosition.X + math.cos(angle) * radius
+        local z = currentCenterPosition.Z + math.sin(angle) * radius
+        
+        HumanoidRootPart.CFrame = CFrame.new(
+            Vector3.new(x, HumanoidRootPart.Position.Y, z),
+            currentCenterPosition
+        )
+    end)
+end
+
+-- 浮空控制
 local function floatAbovePosition()
     -- 清理现有状态
     if currentFloatTask then
         currentFloatTask:Disconnect()
         currentFloatTask = nil
     end
+    if currentCircleTask then
+        currentCircleTask:Disconnect()
+        currentCircleTask = nil
+    end
+    currentCenterPosition = nil
 
     local Character = player.Character or player.CharacterAdded:Wait()
     local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
@@ -186,7 +232,7 @@ local function floatAbovePosition()
         end
     end
 
-    -- 创建新控制器
+    -- 创建浮空控制器
     local bodyPos = Instance.new("BodyPosition")
     bodyPos.Position = HumanoidRootPart.Position + Vector3.new(0, 25, 0)
     bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -200,6 +246,17 @@ local function floatAbovePosition()
 
     Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 
+    -- 等待浮空稳定
+    task.wait(0.5)
+    
+    -- 设置中心点并开始圆形移动
+    currentCenterPosition = getViewForwardCenter()
+    if currentCenterPosition then
+        startCircleMovement()
+    else
+        warn("无法获取中心点位置")
+    end
+
     -- 战斗结束检测
     currentFloatTask = game:GetService("RunService").Heartbeat:Connect(function()
         if not running then
@@ -210,21 +267,24 @@ local function floatAbovePosition()
             return
         end
 
-        if getWaitClearVisible() then
-            print("检测到WaitClearFrame持续3秒，取消浮空")
+        if isWaitClearVisible() then
+            print("战斗结束，停止所有效果")
+            -- 清理所有状态
             if currentFloatTask then
                 currentFloatTask:Disconnect()
                 currentFloatTask = nil
             end
+            if currentCircleTask then
+                currentCircleTask:Disconnect()
+                currentCircleTask = nil
+            end
+            currentCenterPosition = nil
             
             pcall(function()
                 bodyPos:Destroy()
                 bodyForce:Destroy()
                 Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             end)
-        wait(1)
-        else
-        wait(1)
         end
     end)
 end
@@ -256,83 +316,9 @@ local function checkBossArea(areaId)
     return searchLabCd(guiAth)
 end
 
--- 灵兽系统（改进版）
-local function checkLingShouSystem()
-    -- 安全检测WaitClearFrame
-    local waitFrame = safeGet({
-        "Players", player.Name, 
-        "PlayerGui", "MainGui", 
-        "ScreenGui", "ArenaStatusView", 
-        "WaitClearFrame"
-    })
-    
-    if not waitFrame or not waitFrame:IsA("Frame") or not waitFrame.Visible then
-        return false
-    end
-
-    print("检测到灵兽触发条件")
-    
-    -- 获取所有怪物
-    local monsters = workspace.Monsters:GetChildren()
-    if #monsters == 0 then
-        warn("没有找到怪物")
-        return false
-    end
-    
-    -- 收集所有有效的怪物ID
-    local monsterIds = {}
-    for _, monster in ipairs(monsters) do
-        local monsterName = monster.Name
-        local number = string.match(monsterName, "%d+")
-        
-        if number then
-            number = tonumber(number)
-            table.insert(monsterIds, number)
-            print("找到怪物ID:", number)
-        else
-            warn("无法从怪物名称中提取数字:", monsterName)
-        end
-    end
-    
-    if #monsterIds == 0 then
-        warn("没有有效的怪物ID")
-        return false
-    end
-  
-    
-    -- 对每个怪物ID执行三次灵兽调用
-    for _, monsterId in ipairs(monsterIds) do
-        for i = 1, 3 do
-            local args = {
-                "LingShouSystemRollChannel",
-                monsterId,
-                1
-            }
-            
-            print(string.format("正在对怪物ID %d 执行第%d次灵兽调用...", monsterId, i))
-            local success, err = pcall(function()
-                game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
-            end)
-            
-            if success then
-                print(string.format("怪物ID %d 第%d次灵兽调用成功", monsterId, i))
-            else
-                warn(string.format("怪物ID %d 第%d次灵兽调用失败:", monsterId, i), err)
-            end
-            
-            if i < 3 then
-            wait(1)
-            end
-        end
-    end
-    
-    return true
-end
-
--- ========== 主循环 ==========
+-- 主循环
 local function main()
     while running and gui.Parent do
-        -- Boss区域检测
         for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() then
                 local success, ready = pcall(checkBossArea, areaId)
@@ -353,7 +339,7 @@ local function main()
                         
                         while running and (os.time() - startTime < 15) do
                             if isInBattle() and not hasTriggered then
-                                print("进入战斗，启动浮空")
+                                print("进入战斗，启动浮空系统")
                                 floatAbovePosition()
                                 hasTriggered = true
                                 break
@@ -367,40 +353,39 @@ local function main()
             end
         end
 
-        -- 战斗结束后传送到目标位置
         if hasEnteredBattle and not isInBattle() then
             local character = player.Character
             if character then
                 local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
                 if humanoidRootPart then
                     print("战斗结束，传送到目标位置")
-                    wait(2)
+                    task.wait(2)
                     humanoidRootPart.CFrame = CFrame.new(targetPosition)
                     hasEnteredBattle = false
                 end
             end
         end
 
-        -- 灵兽系统检测
-        if lingShouStatus then
-            pcall(checkLingShouSystem)
-        end
-
         task.wait(1)
     end
 end
 
--- ========== 停止功能 ==========
+-- 停止功能
 stopButton.MouseButton1Click:Connect(function()
     running = false
     if currentFloatTask then
         currentFloatTask:Disconnect()
         currentFloatTask = nil
     end
+    if currentCircleTask then
+        currentCircleTask:Disconnect()
+        currentCircleTask = nil
+    end
+    currentCenterPosition = nil
     gui:Destroy()
 end)
 
--- ========== 启动脚本 ==========
+-- 启动脚本
 local success, err = pcall(main)
 if not success then
     warn("脚本错误:", err)
