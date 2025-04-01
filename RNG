@@ -1,28 +1,295 @@
 if not game:IsLoaded() then
-	game.Loaded:Wait()
+    game.Loaded:Wait()
 end
 wait(5)
+
 local player = game:GetService("Players").LocalPlayer
+
+-- ========== 美观的GUI界面 ==========
 local gui = Instance.new("ScreenGui")
 gui.Name = "BossCDMonitor"
 gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- ========== GUI界面 ==========
+-- 主框架
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 350)
-frame.Position = UDim2.new(0.5, -140, 0.5, -175)
-frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+frame.Size = UDim2.new(0, 350, 0, 500)
+frame.Position = UDim2.new(0.5, -175, 0.5, -250)
+frame.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
+frame.BackgroundTransparency = 0.2
+frame.BorderSizePixel = 0
 frame.Active = true
 frame.Selectable = true
 frame.Parent = gui
 
--- GUI拖动功能
+-- 添加圆角
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+-- 添加阴影
+local shadow = Instance.new("ImageLabel")
+shadow.Name = "Shadow"
+shadow.Image = "rbxassetid://1316045217"
+shadow.ImageColor3 = Color3.new(0, 0, 0)
+shadow.ImageTransparency = 0.8
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+shadow.Size = UDim2.new(1, 20, 1, 20)
+shadow.Position = UDim2.new(0, -10, 0, -10)
+shadow.BackgroundTransparency = 1
+shadow.ZIndex = -1
+shadow.Parent = frame
+
+-- 标题栏
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = frame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 8)
+titleCorner.Parent = titleBar
+
+local title = Instance.new("TextLabel")
+title.Text = "BOSS监控系统 v3.3"
+title.Size = UDim2.new(0.7, 0, 1, 0)
+title.Position = UDim2.new(0.15, 0, 0, 0)
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.Parent = titleBar
+
+-- 折叠按钮
+local toggleButton = Instance.new("TextButton")
+toggleButton.Text = "▼"
+toggleButton.Size = UDim2.new(0, 30, 0, 30)
+toggleButton.Position = UDim2.new(1, -35, 0.5, -15)
+toggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Font = Enum.Font.Gotham
+toggleButton.TextSize = 14
+toggleButton.Parent = titleBar
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 6)
+toggleCorner.Parent = toggleButton
+
+-- 内容区域
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, -20, 1, -70)
+contentFrame.Position = UDim2.new(0, 10, 0, 50)
+contentFrame.BackgroundTransparency = 1
+contentFrame.ClipsDescendants = true
+contentFrame.Parent = frame
+
+-- 区域标签
+local areaLabel = Instance.new("TextLabel")
+areaLabel.Text = "BOSS区域监控"
+areaLabel.Size = UDim2.new(1, 0, 0, 25)
+areaLabel.Position = UDim2.new(0, 0, 0, 0)
+areaLabel.BackgroundTransparency = 1
+areaLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+areaLabel.Font = Enum.Font.Gotham
+areaLabel.TextSize = 14
+areaLabel.TextXAlignment = Enum.TextXAlignment.Left
+areaLabel.Parent = contentFrame
+
+-- 区域按钮容器
+local areaButtons = Instance.new("ScrollingFrame")
+areaButtons.Size = UDim2.new(1, 0, 0, 150)
+areaButtons.Position = UDim2.new(0, 0, 0, 25)
+areaButtons.BackgroundTransparency = 1
+areaButtons.ScrollBarThickness = 5
+areaButtons.CanvasSize = UDim2.new(0, 0, 0, 150)
+areaButtons.Parent = contentFrame
+
+-- 灵兽标签
+local lsLabel = Instance.new("TextLabel")
+lsLabel.Text = "灵兽捕捉设置"
+lsLabel.Size = UDim2.new(1, 0, 0, 25)
+lsLabel.Position = UDim2.new(0, 0, 0, 185)
+lsLabel.BackgroundTransparency = 1
+lsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+lsLabel.Font = Enum.Font.Gotham
+lsLabel.TextSize = 14
+lsLabel.TextXAlignment = Enum.TextXAlignment.Left
+lsLabel.Parent = contentFrame
+
+-- 灵兽按钮容器
+local lsButtons = Instance.new("ScrollingFrame")
+lsButtons.Size = UDim2.new(1, 0, 0, 150)
+lsButtons.Position = UDim2.new(0, 0, 0, 210)
+lsButtons.BackgroundTransparency = 1
+lsButtons.ScrollBarThickness = 5
+lsButtons.CanvasSize = UDim2.new(0, 0, 0, 150)
+lsButtons.Parent = contentFrame
+
+-- 创建漂亮的按钮
+local function createButton(text, parent, defaultColor, activeColor)
+    local button = Instance.new("TextButton")
+    button.Text = text
+    button.Size = UDim2.new(0.23, 0, 0, 28)
+    button.BackgroundColor3 = defaultColor
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.Gotham
+    button.TextSize = 12
+    button.AutoButtonColor = false
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Color = Color3.fromRGB(80, 80, 80)
+    stroke.Thickness = 1
+    stroke.Parent = button
+    
+    button.Parent = parent
+    
+    -- 悬停效果
+    button.MouseEnter:Connect(function()
+        local targetColor = button.BackgroundColor3 == activeColor and activeColor or 
+                          Color3.fromRGB(
+                              math.floor(defaultColor.R * 255 + 20),
+                              math.floor(defaultColor.G * 255 + 20),
+                              math.floor(defaultColor.B * 255 + 20)
+                          )
+        game:GetService("TweenService"):Create(
+            button,
+            TweenInfo.new(0.2),
+            {BackgroundColor3 = targetColor}
+        ):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        local targetColor = button.BackgroundColor3 == activeColor and activeColor or defaultColor
+        game:GetService("TweenService"):Create(
+            button,
+            TweenInfo.new(0.2),
+            {BackgroundColor3 = targetColor}
+        ):Play()
+    end)
+    
+    return button
+end
+
+-- 区域配置
+local areaConfig = {
+    [100] = false, [101] = false, [102] = false,
+    [103] = false, [104] = false, [105] = false, 
+    [106] = false
+}
+
+-- 灵兽区域配置
+local lingShouAreaConfig = {
+    [100] = false, [101] = false, [102] = false,
+    [103] = false, [104] = false, [105] = false, 
+    [106] = false
+}
+
+-- 区域名称映射
+local areaNames = {
+    [100] = "区域1野猪",
+    [101] = "区域2熊猫",
+    [102] = "区域3白狼",
+    [103] = "区域4猛犸",
+    [104] = "区域5白虎",
+    [105] = "区域6长老龙",
+    [106] = "区域7远古龙"
+}
+
+-- 灵兽名称映射
+local petNames = {
+    [100] = "灵兽1野猪",
+    [101] = "灵兽2熊猫",
+    [102] = "灵兽3白狼",
+    [103] = "灵兽4猛犸",
+    [104] = "灵兽5白虎",
+    [105] = "灵兽6长老龙",
+    [106] = "灵兽7远古龙"
+}
+
+-- 创建区域按钮
+for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
+    local row = math.floor((i-1)/4)
+    local col = (i-1) % 4
+    
+    -- Boss监控按钮
+    local bossBtn = createButton(areaNames[areaId], areaButtons, 
+                               Color3.fromRGB(80, 40, 40),
+                               Color3.fromRGB(40, 80, 40))
+    bossBtn.Position = UDim2.new(col * 0.25 + 0.025, 0, 0, row * 35)
+    
+    bossBtn.MouseButton1Click:Connect(function()
+        areaConfig[areaId] = not areaConfig[areaId]
+        if areaConfig[areaId] then
+            bossBtn.Text = areaNames[areaId]..":ON"
+            bossBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+        else
+            bossBtn.Text = areaNames[areaId]
+            bossBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+        end
+    end)
+    
+    -- 灵兽捕捉按钮
+    local lsBtn = createButton(petNames[areaId], lsButtons, 
+                             Color3.fromRGB(40, 40, 80),
+                             Color3.fromRGB(40, 80, 40))
+    lsBtn.Position = UDim2.new(col * 0.25 + 0.025, 0, 0, row * 35)
+    
+    lsBtn.MouseButton1Click:Connect(function()
+        lingShouAreaConfig[areaId] = not lingShouAreaConfig[areaId]
+        if lingShouAreaConfig[areaId] then
+            lsBtn.Text = petNames[areaId]..":ON"
+            lsBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+        else
+            lsBtn.Text = petNames[areaId]
+            lsBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+        end
+    end)
+end
+
+-- 停止按钮
+local stopBtn = createButton("停止所有监控", contentFrame, Color3.fromRGB(180, 50, 50), Color3.fromRGB(150, 30, 30))
+stopBtn.Size = UDim2.new(1, 0, 0, 36)
+stopBtn.Position = UDim2.new(0, 0, 1, -40)
+
+-- 折叠功能
+local collapsibleElements = {contentFrame}
+local isCollapsed = false
+
+local function toggleCollapse()
+    isCollapsed = not isCollapsed
+    
+    if isCollapsed then
+        toggleButton.Text = "▲"
+        frame.Size = UDim2.new(0, 350, 0, 40)
+        for _, element in ipairs(collapsibleElements) do
+            element.Visible = false
+        end
+    else
+        toggleButton.Text = "▼"
+        frame.Size = UDim2.new(0, 350, 0, 500)
+        for _, element in ipairs(collapsibleElements) do
+            element.Visible = true
+        end
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleCollapse)
+
+-- 拖动功能
 local UserInputService = game:GetService("UserInputService")
 local dragging = false
 local dragStart = Vector2.new(0, 0)
 local startPos = frame.Position
 
-frame.InputBegan:Connect(function(input)
+titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
@@ -30,7 +297,7 @@ frame.InputBegan:Connect(function(input)
     end
 end)
 
-frame.InputEnded:Connect(function(input)
+titleBar.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = false
     end
@@ -46,124 +313,14 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- 标题
-local title = Instance.new("TextLabel")
-title.Text = "Boss监控系统 v3.1"
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Parent = frame
-
--- 区域选择
-local buttonsFrame = Instance.new("Frame")
-buttonsFrame.Size = UDim2.new(1, -20, 0, 150)
-buttonsFrame.Position = UDim2.new(0, 10, 0, 40)
-buttonsFrame.BackgroundTransparency = 1
-buttonsFrame.Parent = frame
-
-
-local areaConfig = {
-    [100] = false, [101] = false, [102] = false,
-    [103] = false, [104] = false, [105] = false, 
-    [106] = false
-}
-
-for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
-    local col = (i-1) % 2
-    local row = math.floor((i-1) / 2)
-    
-    local button = Instance.new("TextButton")
-    button.Text = string.format("区域 %d: 关闭", areaId)
-    button.Size = UDim2.new(0.45, 0, 0, 30)
-    button.Position = UDim2.new(col * 0.55, 0, row * 0.1, row * 30)
-    button.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    
-    button.MouseButton1Click:Connect(function()
-        areaConfig[areaId] = not areaConfig[areaId]
-        button.Text = string.format("区域 %d: %s", areaId, areaConfig[areaId] and "开启" or "关闭")
-        button.BackgroundColor3 = areaConfig[areaId] and Color3.fromRGB(30, 80, 30) or Color3.fromRGB(80, 30, 30)
-    end)
-    
-    button.Parent = buttonsFrame
-end
-
--- 功能开关
-local lingShouToggle = Instance.new("TextButton")
-lingShouToggle.Text = "灵兽监控: 关闭"
-lingShouToggle.Size = UDim2.new(0.8, 0, 0, 30)
-lingShouToggle.Position = UDim2.new(0.1, 0, 0, 200)
-lingShouToggle.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-lingShouToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-lingShouToggle.Parent = frame
-
-local lingShouStatus = false
-lingShouToggle.MouseButton1Click:Connect(function()
-    lingShouStatus = not lingShouStatus
-    lingShouToggle.Text = "灵兽监控: " .. (lingShouStatus and "开启" or "关闭")
-    lingShouToggle.BackgroundColor3 = lingShouStatus and Color3.fromRGB(30, 80, 30) or Color3.fromRGB(80, 30, 30)
-end)
-
--- 停止按钮
-local stopButton = Instance.new("TextButton")
-stopButton.Text = "停止所有监控"
-stopButton.Size = UDim2.new(0.8, 0, 0, 30)
-stopButton.Position = UDim2.new(0.1, 0, 0, 240)
-stopButton.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
-stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-stopButton.Parent = frame
-
 gui.Parent = player:WaitForChild("PlayerGui")
--- 在标题栏添加折叠按钮 (添加到frame的创建之后)
-local toggleButton = Instance.new("TextButton")
-toggleButton.Text = "▼"
-toggleButton.Size = UDim2.new(0, 30, 0, 30)
-toggleButton.Position = UDim2.new(1, -30, 0, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.Parent = title
 
--- 存储需要折叠的元素
-local collapsibleElements = {
-    buttonsFrame,
-    lingShouToggle,
-    stopButton
-}
-
--- 初始状态
-local isCollapsed = false
-local originalFrameSize = frame.Size
-local collapsedFrameSize = UDim2.new(0, 280, 0, 30) -- 只保留标题栏高度
-
--- 折叠/展开功能
-local function toggleCollapse()
-    isCollapsed = not isCollapsed
-    
-    if isCollapsed then
-        -- 折叠状态
-        toggleButton.Text = "▲"
-        frame.Size = collapsedFrameSize
-        for _, element in ipairs(collapsibleElements) do
-            element.Visible = false
-        end
-    else
-        -- 展开状态
-        toggleButton.Text = "▼"
-        frame.Size = originalFrameSize
-        for _, element in ipairs(collapsibleElements) do
-            element.Visible = true
-        end
-    end
-end
-
-toggleButton.MouseButton1Click:Connect(toggleCollapse)
 -- ========== 核心功能 ==========
 local running = true
 local currentFloatTask = nil
 local currentCircleTask = nil
 local currentCenterPosition = nil
 local hasEnteredBattle = false
-local lastLingShouCheck = 0
 local targetPosition = Vector3.new(-70, 18, -62)
 
 -- 安全获取对象
@@ -199,7 +356,7 @@ local function isInBattle()
     return arenaView and arenaView:IsA("Frame")
 end
 
--- 获取视角前方20单位的位置
+-- 获取视角前方位置
 local function getViewForwardCenter()
     local Character = player.Character
     if not Character then return nil end
@@ -219,7 +376,7 @@ local function getViewForwardCenter()
     return HumanoidRootPart.Position
 end
 
--- 圆形移动（半径30）
+-- 圆形移动
 local function startCircleMovement()
     if currentCircleTask then
         currentCircleTask:Disconnect()
@@ -256,9 +413,8 @@ local function startCircleMovement()
     end)
 end
 
--- 浮空控制
-local function floatAbovePosition()
-    -- 清理现有状态
+-- 清理运动效果
+local function cleanupMovement()
     if currentFloatTask then
         currentFloatTask:Disconnect()
         currentFloatTask = nil
@@ -267,18 +423,40 @@ local function floatAbovePosition()
         currentCircleTask:Disconnect()
         currentCircleTask = nil
     end
-    currentCenterPosition = nil
+    
+    local Character = player.Character
+    if Character then
+        local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+        if HumanoidRootPart then
+            for _, child in ipairs(HumanoidRootPart:GetChildren()) do
+                if child:IsA("BodyPosition") or child:IsA("BodyForce") then
+                    child:Destroy()
+                end
+            end
+        end
+        local Humanoid = Character:FindFirstChild("Humanoid")
+        if Humanoid then
+            Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+    end
+end
+
+-- 退出战斗
+local function leaveArena()
+    cleanupMovement()
+    local args = {"ArenaSystemLeaveChannel"}
+    pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("CommonLibrary"):WaitForChild("Tool"):WaitForChild("RemoteManager"):WaitForChild("Funcs"):WaitForChild("DataPullFunc"):InvokeServer(unpack(args))
+    end)
+end
+
+-- 浮空控制
+local function floatAbovePosition()
+    cleanupMovement()
 
     local Character = player.Character or player.CharacterAdded:Wait()
     local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
     local Humanoid = Character:WaitForChild("Humanoid")
-
-    -- 清理旧控制器
-    for _, child in ipairs(HumanoidRootPart:GetChildren()) do
-        if child:IsA("BodyPosition") or child:IsA("BodyForce") then
-            child:Destroy()
-        end
-    end
 
     -- 创建浮空控制器
     local bodyPos = Instance.new("BodyPosition")
@@ -294,10 +472,8 @@ local function floatAbovePosition()
 
     Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 
-    -- 等待浮空稳定
     task.wait(0.5)
     
-    -- 设置中心点并开始圆形移动
     currentCenterPosition = getViewForwardCenter()
     if currentCenterPosition then
         startCircleMovement()
@@ -305,34 +481,14 @@ local function floatAbovePosition()
         warn("无法获取中心点位置")
     end
 
-    -- 战斗结束检测
     currentFloatTask = game:GetService("RunService").Heartbeat:Connect(function()
         if not running then
-            if currentFloatTask then
-                currentFloatTask:Disconnect()
-                currentFloatTask = nil
-            end
+            cleanupMovement()
             return
         end
 
         if isWaitClearVisible() then
-            print("战斗结束，停止所有效果")
-            -- 清理所有状态
-            if currentFloatTask then
-                currentFloatTask:Disconnect()
-                currentFloatTask = nil
-            end
-            if currentCircleTask then
-                currentCircleTask:Disconnect()
-                currentCircleTask = nil
-            end
-            currentCenterPosition = nil
-            
-            pcall(function()
-                bodyPos:Destroy()
-                bodyForce:Destroy()
-                Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            end)
+            cleanupMovement()
         end
     end)
 end
@@ -364,30 +520,36 @@ local function checkBossArea(areaId)
     return searchLabCd(guiAth)
 end
 
--- 灵兽系统（完全修复版）
-local function checkLingShouSystem()
-    -- 安全检测WaitClearFrame
+-- 检查灵兽触发条件
+local function checkLingShouCondition()
     local waitFrame = safeGet({
         "Players", player.Name, 
         "PlayerGui", "MainGui", 
         "ScreenGui", "ArenaStatusView", 
         "WaitClearFrame"
     })
-    
-    if not waitFrame or not waitFrame:IsA("Frame") or not waitFrame.Visible then
+    return waitFrame and waitFrame:IsA("Frame") and waitFrame.Visible
+end
+
+-- 灵兽系统检测（修复版）
+local function checkLingShouSystem(areaId)
+    if not lingShouAreaConfig[areaId] then
+        print("当前区域未启用灵兽抓取，执行退出")
+        leaveArena()
         return false
     end
 
     print("检测到灵兽触发条件")
     
-    -- 获取所有怪物
+    -- 先停止运动效果
+    cleanupMovement()
+    
     local monsters = workspace.Monsters:GetChildren()
     if #monsters == 0 then
         warn("没有找到怪物")
         return false
     end
     
-    -- 收集所有有效的怪物ID
     local monsterIds = {}
     for _, monster in ipairs(monsters) do
         local monsterName = monster.Name
@@ -406,9 +568,7 @@ local function checkLingShouSystem()
         warn("没有有效的怪物ID")
         return false
     end
-  
     
-    -- 对每个怪物ID执行三次灵兽调用
     for _, monsterId in ipairs(monsterIds) do
         for i = 1, 3 do
             local args = {
@@ -429,18 +589,19 @@ local function checkLingShouSystem()
             end
             
             if i < 3 then
-            wait(0.1)
+                wait(0.1)
             end
         end
     end
     
+    -- 灵兽捕捉完成后确保清理运动效果
+    cleanupMovement()
     return true
 end
 
--- 主循环（完整修复版）
+-- 主循环
 local function main()
     while running and gui.Parent do
-        -- Boss区域检测
         for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() then
                 local success, ready = pcall(checkBossArea, areaId)
@@ -464,9 +625,17 @@ local function main()
                                 print("进入战斗，启动浮空系统")
                                 floatAbovePosition()
                                 hasTriggered = true
+                                
+                                -- 战斗内循环
+                                while running and isInBattle() do
+                                    if checkLingShouCondition() then
+                                        checkLingShouSystem(areaId)
+                                    end
+                                    wait(0.5)
+                                end
                                 break
                             end
-                            task.wait(0.3)
+                            wait(0.3)
                         end
                     else
                         warn("战斗请求失败:", err)
@@ -482,16 +651,11 @@ local function main()
                 local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
                 if humanoidRootPart then
                     print("战斗结束，传送到目标位置")
-                    task.wait(2)
+                    wait(2)
                     humanoidRootPart.CFrame = CFrame.new(targetPosition)
                     hasEnteredBattle = false
                 end
             end
-        end
-
-        -- 灵兽系统检测（修复版）
-        if lingShouStatus then
-            pcall(checkLingShouSystem)
         end
 
         wait(1)
@@ -499,17 +663,9 @@ local function main()
 end
 
 -- 停止功能
-stopButton.MouseButton1Click:Connect(function()
+stopBtn.MouseButton1Click:Connect(function()
     running = false
-    if currentFloatTask then
-        currentFloatTask:Disconnect()
-        currentFloatTask = nil
-    end
-    if currentCircleTask then
-        currentCircleTask:Disconnect()
-        currentCircleTask = nil
-    end
-    currentCenterPosition = nil
+    cleanupMovement()
     gui:Destroy()
 end)
 
