@@ -5,6 +5,104 @@ wait(5)
 
 local player = game:GetService("Players").LocalPlayer
 
+-- ========== JSON设置保存功能 ==========
+local HttpService = game:GetService("HttpService")
+local settingsFileName = "BossMonitorSettings.json"
+
+-- 默认设置
+local defaultSettings = {
+    areaConfig = {
+        [100] = false, [101] = false, [102] = false,
+        [103] = false, [104] = false, [105] = false, 
+        [106] = false
+    },
+    lingShouAreaConfig = {
+        [100] = false, [101] = false, [102] = false,
+        [103] = false, [104] = false, [105] = false, 
+        [106] = false
+    },
+    windowPosition = {x = 0.5, y = 0.5},
+    isCollapsed = false,
+    autoReconnect = false
+}
+
+-- 尝试加载设置
+local function loadSettings()
+    local success, loadedSettings = pcall(function()
+        if not isfolder("BossMonitor") then
+            makefolder("BossMonitor")
+        end
+        
+        local filePath = "BossMonitor/"..settingsFileName
+        if not isfile(filePath) then
+            return defaultSettings
+        end
+        
+        local fileContent = readfile(filePath)
+        return HttpService:JSONDecode(fileContent)
+    end)
+    
+    if success and loadedSettings then
+        -- 修复键类型问题：将字符串键转换为数字键
+        local function fixKeyTypes(configTable)
+            local fixed = {}
+            for k, v in pairs(configTable) do
+                fixed[tonumber(k) or k] = v
+            end
+            return fixed
+        end
+        
+        -- 确保所有配置表都存在
+        loadedSettings.areaConfig = loadedSettings.areaConfig or {}
+        loadedSettings.lingShouAreaConfig = loadedSettings.lingShouAreaConfig or {}
+        
+        -- 修复键类型
+        loadedSettings.areaConfig = fixKeyTypes(loadedSettings.areaConfig)
+        loadedSettings.lingShouAreaConfig = fixKeyTypes(loadedSettings.lingShouAreaConfig)
+        
+        -- 合并默认设置
+        for k, v in pairs(defaultSettings) do
+            if loadedSettings[k] == nil then
+                loadedSettings[k] = v
+            elseif type(v) == "table" then
+                -- 仅合并缺失的键，不覆盖现有值
+                for subk, subv in pairs(v) do
+                    if loadedSettings[k][subk] == nil then
+                        loadedSettings[k][subk] = subv
+                    end
+                end
+            end
+        end
+        
+        return loadedSettings
+    else
+        return defaultSettings
+    end
+end
+-- 保存设置
+local function saveSettings(settings)
+    local success, err = pcall(function()
+        if not isfolder("BossMonitor") then
+            makefolder("BossMonitor")
+        end
+        
+        local filePath = "BossMonitor/"..settingsFileName
+        local json = HttpService:JSONEncode(settings)
+        writefile(filePath, json)
+    end)
+    
+    if not success then
+        warn("保存设置失败:", err)
+    end
+end
+
+-- 加载设置
+local settings = loadSettings()
+local areaConfig = settings.areaConfig
+local lingShouAreaConfig = settings.lingShouAreaConfig
+print("加载后的 areaConfig[100]:", settings.areaConfig[100])
+print("加载后的 areaConfig[100]:", settings.areaConfig[101])
+print("加载后的 areaConfig[100]:", settings.areaConfig[105])
 -- ========== 美观的GUI界面 ==========
 local gui = Instance.new("ScreenGui")
 gui.Name = "BossCDMonitor"
@@ -13,8 +111,8 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 -- 主框架
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 350, 0, 500)
-frame.Position = UDim2.new(0.5, -175, 0.5, -250)
+frame.Size = UDim2.new(0, 350, 0, 550)
+frame.Position = UDim2.new(settings.windowPosition.x, -175, settings.windowPosition.y, -275)
 frame.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
 frame.BackgroundTransparency = 0.2
 frame.BorderSizePixel = 0
@@ -54,7 +152,7 @@ titleCorner.CornerRadius = UDim.new(0, 8)
 titleCorner.Parent = titleBar
 
 local title = Instance.new("TextLabel")
-title.Text = "BOSS监控系统 v3.3"
+title.Text = "BOSS监控系统 v3.4.2"
 title.Size = UDim2.new(0.7, 0, 1, 0)
 title.Position = UDim2.new(0.15, 0, 0, 0)
 title.BackgroundTransparency = 1
@@ -65,7 +163,7 @@ title.Parent = titleBar
 
 -- 折叠按钮
 local toggleButton = Instance.new("TextButton")
-toggleButton.Text = "▼"
+toggleButton.Text = settings.isCollapsed and "▲" or "▼"
 toggleButton.Size = UDim2.new(0, 30, 0, 30)
 toggleButton.Position = UDim2.new(1, -35, 0.5, -15)
 toggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
@@ -84,6 +182,7 @@ contentFrame.Size = UDim2.new(1, -20, 1, -70)
 contentFrame.Position = UDim2.new(0, 10, 0, 50)
 contentFrame.BackgroundTransparency = 1
 contentFrame.ClipsDescendants = true
+contentFrame.Visible = not settings.isCollapsed
 contentFrame.Parent = frame
 
 -- 区域标签
@@ -120,13 +219,13 @@ lsLabel.TextXAlignment = Enum.TextXAlignment.Left
 lsLabel.Parent = contentFrame
 
 -- 灵兽按钮容器
-local lsButtons = Instance.new("ScrollingFrame")
-lsButtons.Size = UDim2.new(1, 0, 0, 150)
-lsButtons.Position = UDim2.new(0, 0, 0, 210)
-lsButtons.BackgroundTransparency = 1
-lsButtons.ScrollBarThickness = 5
-lsButtons.CanvasSize = UDim2.new(0, 0, 0, 150)
-lsButtons.Parent = contentFrame
+local lsButtonsFrame = Instance.new("ScrollingFrame")
+lsButtonsFrame.Size = UDim2.new(1, 0, 0, 150)
+lsButtonsFrame.Parent = contentFrame
+lsButtonsFrame.Position = UDim2.new(0, 0, 0, 210)
+lsButtonsFrame.BackgroundTransparency = 1
+lsButtonsFrame.ScrollBarThickness = 5
+lsButtonsFrame.CanvasSize = UDim2.new(0, 0, 0, 150)
 
 -- 创建漂亮的按钮
 local function createButton(text, parent, defaultColor, activeColor)
@@ -178,20 +277,6 @@ local function createButton(text, parent, defaultColor, activeColor)
     return button
 end
 
--- 区域配置
-local areaConfig = {
-    [100] = false, [101] = false, [102] = false,
-    [103] = false, [104] = false, [105] = false, 
-    [106] = false
-}
-
--- 灵兽区域配置
-local lingShouAreaConfig = {
-    [100] = false, [101] = false, [102] = false,
-    [103] = false, [104] = false, [105] = false, 
-    [106] = false
-}
-
 -- 区域名称映射
 local areaNames = {
     [100] = "区域1野猪",
@@ -215,53 +300,95 @@ local petNames = {
 }
 
 -- 创建区域按钮
+local function updateButtonState(button, isActive, name, activeColor, defaultColor)
+    if isActive then
+        button.Text = name..":ON"
+        button.BackgroundColor3 = activeColor
+    else
+        button.Text = name
+        button.BackgroundColor3 = defaultColor
+    end
+end
+
+-- 创建BOSS监控按钮
+local lsButtonInstances = {} 
 for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
     local row = math.floor((i-1)/4)
     local col = (i-1) % 4
     
     -- Boss监控按钮
-    local bossBtn = createButton(areaNames[areaId], areaButtons, 
-                               Color3.fromRGB(80, 40, 40),
-                               Color3.fromRGB(40, 80, 40))
+    local bossBtn = createButton(
+        areaConfig[areaId] and (areaNames[areaId]..":ON") or areaNames[areaId],  -- 文本
+        areaButtons,  -- 父级（正确的Instance对象）
+        areaConfig[areaId] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(80, 40, 40),  -- 默认颜色
+        Color3.fromRGB(40, 80, 40)  -- 激活颜色
+    )
     bossBtn.Position = UDim2.new(col * 0.25 + 0.025, 0, 0, row * 35)
     
     bossBtn.MouseButton1Click:Connect(function()
         areaConfig[areaId] = not areaConfig[areaId]
-        if areaConfig[areaId] then
-            bossBtn.Text = areaNames[areaId]..":ON"
-            bossBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-        else
-            bossBtn.Text = areaNames[areaId]
-            bossBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-        end
+        updateButtonState(bossBtn, areaConfig[areaId], areaNames[areaId], Color3.fromRGB(40, 80, 40), Color3.fromRGB(80, 40, 40))
+        settings.areaConfig = areaConfig
+        saveSettings(settings)
     end)
     
     -- 灵兽捕捉按钮
-    local lsBtn = createButton(petNames[areaId], lsButtons, 
-                             Color3.fromRGB(40, 40, 80),
-                             Color3.fromRGB(40, 80, 40))
+
+ 
+-- 创建灵兽捕捉按钮
+local lsButtonInstances = {} -- 重命名存储按钮的变量
+for i, areaId in ipairs({100, 101, 102, 103, 104, 105, 106}) do
+    local row = math.floor((i-1)/4)
+    local col = (i-1) % 4
+    
+    local isActive = lingShouAreaConfig[areaId]
+    local defaultColor = isActive and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(40, 40, 80)
+    
+    -- 使用正确的ScrollingFrame实例lsButtons作为parent
+   local lsBtn = createButton(petNames[areaId], lsButtonsFrame, defaultColor, Color3.fromRGB(40, 80, 40))
     lsBtn.Position = UDim2.new(col * 0.25 + 0.025, 0, 0, row * 35)
+    updateButtonState(lsBtn, isActive, petNames[areaId], Color3.fromRGB(40, 80, 40), Color3.fromRGB(40, 40, 80))
     
     lsBtn.MouseButton1Click:Connect(function()
         lingShouAreaConfig[areaId] = not lingShouAreaConfig[areaId]
-        if lingShouAreaConfig[areaId] then
-            lsBtn.Text = petNames[areaId]..":ON"
-            lsBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-        else
-            lsBtn.Text = petNames[areaId]
-            lsBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-        end
+        settings.lingShouAreaConfig = lingShouAreaConfig
+        updateButtonState(lsBtn, lingShouAreaConfig[areaId], petNames[areaId], Color3.fromRGB(40, 80, 40), Color3.fromRGB(40, 40, 80))
+        saveSettings(settings)
     end)
+    
+    lsButtonInstances[areaId] = lsBtn -- 使用新变量存储按钮实例
 end
+end
+
+-- 自动重连按钮
+local autoReconnectBtn = createButton("自动重连: "..(settings.autoReconnect and "ON" or "OFF"), contentFrame, 
+                                   settings.autoReconnect and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(80, 40, 40),
+                                   Color3.fromRGB(40, 80, 40))
+autoReconnectBtn.Size = UDim2.new(1, 0, 0, 36)
+autoReconnectBtn.Position = UDim2.new(0, 0, 0, 370)
+autoReconnectBtn.Text = "自动重连 (30分钟): "..(settings.autoReconnect and "ON" or "OFF")
+
+autoReconnectBtn.MouseButton1Click:Connect(function()
+    settings.autoReconnect = not settings.autoReconnect
+    autoReconnectBtn.Text = "自动重连 (30分钟): "..(settings.autoReconnect and "ON" or "OFF")
+    autoReconnectBtn.BackgroundColor3 = settings.autoReconnect and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(80, 40, 40)
+    saveSettings(settings)
+    
+    if settings.autoReconnect then
+        print("自动重连已启用，将在30分钟后执行")
+    else
+        print("自动重连已禁用")
+    end
+end)
 
 -- 停止按钮
 local stopBtn = createButton("停止所有监控", contentFrame, Color3.fromRGB(180, 50, 50), Color3.fromRGB(150, 30, 30))
 stopBtn.Size = UDim2.new(1, 0, 0, 36)
-stopBtn.Position = UDim2.new(0, 0, 1, -40)
+stopBtn.Position = UDim2.new(0, 0, 0, 410)
 
 -- 折叠功能
 local collapsibleElements = {contentFrame}
-local isCollapsed = false
+local isCollapsed = settings.isCollapsed
 
 local function toggleCollapse()
     isCollapsed = not isCollapsed
@@ -274,11 +401,14 @@ local function toggleCollapse()
         end
     else
         toggleButton.Text = "▼"
-        frame.Size = UDim2.new(0, 350, 0, 500)
+        frame.Size = UDim2.new(0, 350, 0, 550)
         for _, element in ipairs(collapsibleElements) do
             element.Visible = true
         end
     end
+    
+    settings.isCollapsed = isCollapsed
+    saveSettings(settings)
 end
 
 toggleButton.MouseButton1Click:Connect(toggleCollapse)
@@ -288,6 +418,14 @@ local UserInputService = game:GetService("UserInputService")
 local dragging = false
 local dragStart = Vector2.new(0, 0)
 local startPos = frame.Position
+
+local function saveWindowPosition()
+    settings.windowPosition = {
+        x = frame.Position.X.Scale,
+        y = frame.Position.Y.Scale
+    }
+    saveSettings(settings)
+end
 
 titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -300,6 +438,7 @@ end)
 titleBar.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = false
+        saveWindowPosition()
     end
 end)
 
@@ -322,6 +461,8 @@ local currentCircleTask = nil
 local currentCenterPosition = nil
 local hasEnteredBattle = false
 local targetPosition = Vector3.new(-70, 18, -62)
+local reconnectTimer = nil
+local lastReconnectTime = 0
 
 -- 安全获取对象
 local function safeGet(path)
@@ -413,8 +554,13 @@ local function startCircleMovement()
     end)
 end
 
--- 清理运动效果
+-- 清理运动效果并验证
 local function cleanupMovement()
+    -- 记录清理开始时间
+    local startTime = os.time()
+    local maxWaitTime = 5 -- 最大等待时间(秒)
+    
+    -- 先停止所有任务
     if currentFloatTask then
         currentFloatTask:Disconnect()
         currentFloatTask = nil
@@ -424,35 +570,124 @@ local function cleanupMovement()
         currentCircleTask = nil
     end
     
+    -- 获取角色和部件
     local Character = player.Character
-    if Character then
-        local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-        if HumanoidRootPart then
-            for _, child in ipairs(HumanoidRootPart:GetChildren()) do
-                if child:IsA("BodyPosition") or child:IsA("BodyForce") then
-                    child:Destroy()
-                end
-            end
-        end
-        local Humanoid = Character:FindFirstChild("Humanoid")
-        if Humanoid then
-            Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    if not Character then
+        warn("清理运动效果: 角色不存在")
+        return false
+    end
+    
+    local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    local Humanoid = Character:FindFirstChild("Humanoid")
+    
+    if not HumanoidRootPart or not Humanoid then
+        warn("清理运动效果: 缺少必要部件")
+        return false
+    end
+    
+    -- 移除所有物理控制器
+    for _, child in ipairs(HumanoidRootPart:GetChildren()) do
+        if child:IsA("BodyPosition") or child:IsA("BodyForce") then
+            child:Destroy()
         end
     end
+    
+    -- 恢复角色状态
+    Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    
+    -- 验证浮空是否成功关闭
+    local function isFloatingCleared()
+        -- 检查是否还有物理控制器
+        for _, child in ipairs(HumanoidRootPart:GetChildren()) do
+            if child:IsA("BodyPosition") or child:IsA("BodyForce") then
+                return false
+            end
+        end
+        
+        -- 检查角色状态
+        if Humanoid:GetState() == Enum.HumanoidStateType.Physics then
+            return false
+        end
+        
+        -- 检查角色是否在地面
+        if not Humanoid:GetState() == Enum.HumanoidStateType.Running and 
+           not Humanoid:GetState() == Enum.HumanoidStateType.RunningNoPhysics then
+            -- 额外检查: 使用射线检测判断是否在地面
+            local rayOrigin = HumanoidRootPart.Position
+            local rayDirection = Vector3.new(0, -5, 0)
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+            if not raycastResult then
+                return false
+            end
+        end
+        
+        return true
+    end
+    
+    -- 等待直到浮空效果清除或超时
+    while os.time() - startTime < maxWaitTime do
+        if isFloatingCleared() then
+            print("浮空效果已成功清除")
+            return true
+        end
+        wait(0.1)
+    end
+    
+    warn("清理运动效果: 超时未能完全清除浮空效果")
+    return false
 end
 
--- 退出战斗
+-- 修改退出战斗函数，添加验证
 local function leaveArena()
-    cleanupMovement()
-    local args = {"ArenaSystemLeaveChannel"}
-    pcall(function()
-        game:GetService("ReplicatedStorage"):WaitForChild("CommonLibrary"):WaitForChild("Tool"):WaitForChild("RemoteManager"):WaitForChild("Funcs"):WaitForChild("DataPullFunc"):InvokeServer(unpack(args))
-    end)
+    local cleanupSuccess = false
+    local maxAttempts = 3
+    local attempts = 0
+    
+    repeat
+        attempts = attempts + 1
+        print(string.format("尝试离开竞技场 (第%d次)...", attempts))
+        
+        -- 先尝试清理运动效果
+        cleanupSuccess = cleanupMovement()
+        
+        if cleanupSuccess then
+            -- 发送离开请求
+            local args = {"ArenaSystemLeaveChannel"}
+            local success, err = pcall(function()
+                game:GetService("ReplicatedStorage"):WaitForChild("CommonLibrary"):WaitForChild("Tool"):WaitForChild("RemoteManager"):WaitForChild("Funcs"):WaitForChild("DataPullFunc"):InvokeServer(unpack(args))
+            end)
+            
+            if success then
+                print("成功发送离开竞技场请求")
+                return true
+            else
+                warn("离开竞技场请求失败:", err)
+            end
+        else
+            warn("清理运动效果失败，将重试...")
+        end
+        
+        wait(1)
+    until cleanupSuccess or attempts >= maxAttempts
+    
+    if not cleanupSuccess then
+        warn("多次尝试后仍未能离开竞技场")
+    end
+    
+    return cleanupSuccess
 end
 
--- 浮空控制
+-- 修改浮空控制函数，添加验证
 local function floatAbovePosition()
-    cleanupMovement()
+    -- 先确保之前的运动效果已清除
+    if not cleanupMovement() then
+        warn("无法启动新浮空: 之前的运动效果未清除")
+        return false
+    end
 
     local Character = player.Character or player.CharacterAdded:Wait()
     local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
@@ -471,6 +706,38 @@ local function floatAbovePosition()
     bodyForce.Parent = HumanoidRootPart
 
     Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+    -- 验证浮空是否成功启动
+    local function isFloatingStarted()
+        -- 检查控制器是否存在
+        if not HumanoidRootPart:FindFirstChildOfClass("BodyPosition") or
+           not HumanoidRootPart:FindFirstChildOfClass("BodyForce") then
+            return false
+        end
+        
+        -- 检查角色状态
+        if Humanoid:GetState() ~= Enum.HumanoidStateType.Physics then
+            return false
+        end
+        
+        return true
+    end
+    
+    local startTime = os.time()
+    local maxWaitTime = 2 -- 最大等待时间(秒)
+    
+    while os.time() - startTime < maxWaitTime do
+        if isFloatingStarted() then
+            break
+        end
+        wait(0.1)
+    end
+    
+    if not isFloatingStarted() then
+        warn("浮空启动验证失败")
+        cleanupMovement()
+        return false
+    end
 
     task.wait(0.5)
     
@@ -491,6 +758,8 @@ local function floatAbovePosition()
             cleanupMovement()
         end
     end)
+    
+    return true
 end
 
 -- Boss区域检测
@@ -599,9 +868,98 @@ local function checkLingShouSystem(areaId)
     return true
 end
 
+-- 重新连接服务器
+local RECONNECT_INTERVAL = 30 * 60 -- 30分钟(秒)
+local lastReconnectTime = os.time() -- 初始化为当前时间
+local lastCheckTime = os.time()
+local isReconnecting = false
+
+local function getTimeDifferenceString(seconds)
+    if seconds < 60 then
+        return string.format("%d秒", seconds)
+    elseif seconds < 3600 then
+        return string.format("%d分钟", math.floor(seconds/60))
+    else
+        return string.format("%d小时%d分钟", math.floor(seconds/3600), math.floor((seconds%3600)/60))
+    end
+end
+local function shouldReconnect()
+    if not settings.autoReconnect or isReconnecting then
+        return false
+    end
+    
+    local currentTime = os.time()
+    local timeDiff = currentTime - lastReconnectTime
+    
+    -- 调试输出
+    print(string.format("时间检查: 当前=%d 上次=%d 差值=%d (%s)", 
+        currentTime, lastReconnectTime, timeDiff, getTimeDifferenceString(timeDiff)))
+    
+    return timeDiff >= RECONNECT_INTERVAL
+end
+
+-- 改进的重连函数
+local function reconnectToServer()
+    if not shouldReconnect() then return end
+    
+    isReconnecting = true
+    print("开始执行自动重连流程...")
+    
+    -- 保存当前时间戳到文件（确保持久化）
+    settings.lastReconnectTimestamp = os.time()
+    saveSettings(settings)
+    
+    -- 停止监控
+    running = false
+    cleanupMovement()
+    
+    -- 延迟确保清理完成
+    task.wait(1)
+    
+    -- 执行重连（使用TeleportService）
+    local TeleportService = game:GetService("TeleportService")
+    local success, err = pcall(function()
+        TeleportService:Teleport(game.PlaceId, player)
+    end)
+    
+    if not success then
+        warn("重连失败:", err)
+        isReconnecting = false
+        running = true
+    end
+end
+local function initializeTime()
+    -- 从设置加载上次重连时间（如果有）
+    if settings.lastReconnectTimestamp then
+        lastReconnectTime = settings.lastReconnectTimestamp
+    else
+        lastReconnectTime = os.time()
+        settings.lastReconnectTimestamp = lastReconnectTime
+        saveSettings(settings)
+    end
+    
+    print(string.format("时间初始化完成。当前时间: %d 上次重连: %d (差值: %d)", 
+        os.time(), lastReconnectTime, os.time() - lastReconnectTime))
+end
+
+-- 在脚本启动时调用
+initializeTime()
 -- 主循环
 local function main()
-    while running and gui.Parent do
+ while running do
+        local currentTime = os.time()
+        
+        -- 每分钟检查一次（带调试输出）
+        if currentTime - lastCheckTime >= 60 then
+            lastCheckTime = currentTime
+            print("执行定期检查...")
+            
+            if shouldReconnect() then
+                print("满足重连条件，开始重连...")
+                reconnectToServer()
+            end
+        end
+        
         for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() then
                 local success, ready = pcall(checkBossArea, areaId)
@@ -619,21 +977,32 @@ local function main()
                         
                         local startTime = os.time()
                         local hasTriggered = false
+                        local floatSuccess = false
                         
                         while running and (os.time() - startTime < 15) do
                             if isInBattle() and not hasTriggered then
                                 print("进入战斗，启动浮空系统")
-                                floatAbovePosition()
-                                hasTriggered = true
+                                floatSuccess = floatAbovePosition()
                                 
-                                -- 战斗内循环
-                                while running and isInBattle() do
-                                    if checkLingShouCondition() then
-                                        checkLingShouSystem(areaId)
+                                if floatSuccess then
+                                    hasTriggered = true
+                                    
+                                    -- 战斗内循环
+                                    while running and isInBattle() do
+                                        if checkLingShouCondition() then
+                                            local lsSuccess = checkLingShouSystem(areaId)
+                                            if not lsSuccess then
+                                                -- 灵兽捕捉失败，可能需要重新尝试
+                                                wait(1)
+                                            end
+                                        end
+                                        wait(0.5)
                                     end
-                                    wait(0.5)
+                                    break
+                                else
+                                    warn("浮空启动失败，将重试...")
+                                    wait(1)
                                 end
-                                break
                             end
                             wait(0.3)
                         end
@@ -650,10 +1019,15 @@ local function main()
             if character then
                 local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
                 if humanoidRootPart then
-                    print("战斗结束，传送到目标位置")
-                    wait(2)
-                    humanoidRootPart.CFrame = CFrame.new(targetPosition)
-                    hasEnteredBattle = false
+                    -- 确保运动效果已清除
+                    if cleanupMovement() then
+                        print("战斗结束，传送到目标位置")
+                        wait(2)
+                        humanoidRootPart.CFrame = CFrame.new(targetPosition)
+                        hasEnteredBattle = false
+                    else
+                        warn("无法安全传送: 运动效果未完全清除")
+                    end
                 end
             end
         end
