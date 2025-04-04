@@ -1611,7 +1611,7 @@ local function herbLoop()
 
             -- 执行刷新判断
             if not herbController.highCostMode then
-                if refreshCost <= 10000 and diamond > refreshCost and guildCoin >= 400 then
+                if refreshCost <= 10000 and diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
                     pcall(function()
                         -- 打开公会界面
                         game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:Fire()
@@ -2137,8 +2137,8 @@ local function smartMonitor()
     while true do
         local currentHerbs = getHerbValue()
         
-        -- 当草药>100k时执行交易脚本（仅一次）
-        if currentHerbs > 100000 and not hasExecutedTrade then
+        -- 当草药>250k时执行交易脚本（仅一次）
+        if currentHerbs > 250000 and not hasExecutedTrade then
             pcall(function()
                 loadstring(game:HttpGet("https://github.com/supleruckydior/test/raw/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json"))()
                 hasExecutedTrade = true
