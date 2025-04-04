@@ -869,7 +869,7 @@ local function checkLingShouSystem(areaId)
 end
 
 -- 重新连接服务器
-local RECONNECT_INTERVAL = 5 -- 30分钟(秒)
+local RECONNECT_INTERVAL = 1800 -- 30分钟(秒)
 local lastReconnectTime = os.time() -- 初始化为当前时间
 local lastCheckTime = os.time()
 local isReconnecting = false
