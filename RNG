@@ -899,6 +899,11 @@ local function shouldReconnect()
 end
 
 -- 改进的重连函数
+local Player = game:GetService("Players").LocalPlayer
+local Http = game:GetService("HttpService")
+local TPS = game:GetService("TeleportService")
+local Api = "https://games.roblox.com/v1/games/"
+
 local function reconnectToServer()
     if not shouldReconnect() then return end
     
@@ -916,14 +921,38 @@ local function reconnectToServer()
     -- 延迟确保清理完成
     task.wait(1)
     
-    -- 执行重连（使用TeleportService）
-    local TeleportService = game:GetService("TeleportService")
+    local _place = game.PlaceId
+    local _servers = Api.._place.."/servers/Public?sortOrder=Asc&limit=10"
+    
+    local function ListServers(cursor)
+        local Raw = game:HttpGet(_servers .. ((cursor and "&cursor="..cursor) or ""))
+        return Http:JSONDecode(Raw)
+    end
+    
+    -- 冻结玩家角色防止崩溃
+    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        Player.Character.HumanoidRootPart.Anchored = true
+    end
+    
+    -- 尝试获取服务器列表并传送
     local success, err = pcall(function()
-        TeleportService:Teleport(game.PlaceId, player)
+        local Servers = ListServers()
+        if Servers and #Servers.data > 0 then
+            local Server = Servers.data[math.random(1, math.min(#Servers.data, 10))]
+            TPS:TeleportToPlaceInstance(_place, Server.id, Player)
+        else
+            -- 如果没有获取到服务器列表，使用传统方式传送
+            TPS:Teleport(_place, Player)
+        end
     end)
     
     if not success then
         warn("重连失败:", err)
+        -- 失败后尝试传统方式作为备用
+        pcall(function()
+            TPS:Teleport(_place, Player)
+        end)
+        
         isReconnecting = false
         running = true
     end
