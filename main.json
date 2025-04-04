@@ -85,20 +85,17 @@ local function checkPlayersInRange()
 	end
 	if playerInRange then
 		if (timescheck == 0) then
-			print("有玩家在範圍內");
 			savemodetime2 = 2;
 			savemodetime = 5;
 			timescheck = 1;
 			hasPrintedNoPlayer = true;
 		end
 	elseif (timescheck == 1) then
-		print("範圍內玩家已離開");
 		timescheck = 0;
 		savemodetime2 = 0;
 		hasPrintedNoPlayer = false;
 	end
 	if (not playerInRange and not hasPrintedNoPlayer) then
-		print("範圍內無玩家");
 		savemodetime = 3;
 		savemodetime2 = 0;
 		hasPrintedNoPlayer = true;
@@ -1445,7 +1442,6 @@ end
 local function executeDonation()
     pcall(function()
         DonationEvent:FireServer()
-        print("执行公会捐献操作")
     end)
 end
 
