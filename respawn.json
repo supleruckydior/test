@@ -181,7 +181,7 @@ function dailyspin()
 
  for i = 1, 6 do
         spin:FireServer()
-        task.wait(1)
+        task.wait(300)
     end
 end
 
