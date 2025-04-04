@@ -870,49 +870,13 @@ end
 
 -- 重新连接服务器
 local RECONNECT_INTERVAL = 1800 -- 30分钟(秒)
-local lastReconnectTime = os.time() -- 初始化为当前时间
-local lastCheckTime = os.time()
-local isReconnecting = false
+local lastReconnectCheck = os.time()
 
-local function getTimeDifferenceString(seconds)
-    if seconds < 60 then
-        return string.format("%d秒", seconds)
-    elseif seconds < 3600 then
-        return string.format("%d分钟", math.floor(seconds/60))
-    else
-        return string.format("%d小时%d分钟", math.floor(seconds/3600), math.floor((seconds%3600)/60))
-    end
-end
-local function shouldReconnect()
-    if not settings.autoReconnect or isReconnecting then
-        return false
-    end
-    
-    local currentTime = os.time()
-    local timeDiff = currentTime - lastReconnectTime
-    
-    -- 调试输出
-    print(string.format("时间检查: 当前=%d 上次=%d 差值=%d (%s)", 
-        currentTime, lastReconnectTime, timeDiff, getTimeDifferenceString(timeDiff)))
-    
-    return timeDiff >= RECONNECT_INTERVAL
-end
-
--- 改进的重连函数
-local Player = game:GetService("Players").LocalPlayer
-local Http = game:GetService("HttpService")
-local TPS = game:GetService("TeleportService")
-local Api = "https://games.roblox.com/v1/games/"
-
+-- 保留你的重连函数，但移除时间检查
 local function reconnectToServer()
-    if not shouldReconnect() then return end
+    if not settings.autoReconnect then return end
     
-    isReconnecting = true
     print("开始执行自动重连流程...")
-    
-    -- 保存当前时间戳到文件（确保持久化）
-    settings.lastReconnectTimestamp = os.time()
-    saveSettings(settings)
     
     -- 停止监控
     running = false
@@ -922,27 +886,25 @@ local function reconnectToServer()
     task.wait(1)
     
     local _place = game.PlaceId
-    local _servers = Api.._place.."/servers/Public?sortOrder=Asc&limit=10"
-    
-    local function ListServers(cursor)
-        local Raw = game:HttpGet(_servers .. ((cursor and "&cursor="..cursor) or ""))
-        return Http:JSONDecode(Raw)
-    end
+    local _servers = "https://games.roblox.com/v1/games/".._place.."/servers/Public?sortOrder=Asc&limit=10"
+    local Http = game:GetService("HttpService")
+    local TPS = game:GetService("TeleportService")
     
     -- 冻结玩家角色防止崩溃
-    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-        Player.Character.HumanoidRootPart.Anchored = true
+    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        player.Character.HumanoidRootPart.Anchored = true
     end
     
     -- 尝试获取服务器列表并传送
     local success, err = pcall(function()
-        local Servers = ListServers()
+        local Raw = game:HttpGet(_servers)
+        local Servers = Http:JSONDecode(Raw)
         if Servers and #Servers.data > 0 then
             local Server = Servers.data[math.random(1, math.min(#Servers.data, 10))]
-            TPS:TeleportToPlaceInstance(_place, Server.id, Player)
+            TPS:TeleportToPlaceInstance(_place, Server.id, player)
         else
             -- 如果没有获取到服务器列表，使用传统方式传送
-            TPS:Teleport(_place, Player)
+            TPS:Teleport(_place, player)
         end
     end)
     
@@ -950,32 +912,44 @@ local function reconnectToServer()
         warn("重连失败:", err)
         -- 失败后尝试传统方式作为备用
         pcall(function()
-            TPS:Teleport(_place, Player)
+            TPS:Teleport(_place, player)
         end)
-        
-        isReconnecting = false
         running = true
     end
 end
-local function initializeTime()
-    -- 从设置加载上次重连时间（如果有）
-    if settings.lastReconnectTimestamp then
-        lastReconnectTime = settings.lastReconnectTimestamp
-    else
-        lastReconnectTime = os.time()
-        settings.lastReconnectTimestamp = lastReconnectTime
-        saveSettings(settings)
-    end
-    
-    print(string.format("时间初始化完成。当前时间: %d 上次重连: %d (差值: %d)", 
-        os.time(), lastReconnectTime, os.time() - lastReconnectTime))
+
+-- 启动重连计时器
+local function shouldReconnect()
+    if not settings.autoReconnect then return false end
+    return os.time() - lastReconnectCheck >= RECONNECT_INTERVAL
 end
 
--- 在脚本启动时调用
-initializeTime()
+-- 自动重连按钮点击事件
+autoReconnectBtn.MouseButton1Click:Connect(function()
+    settings.autoReconnect = not settings.autoReconnect
+    autoReconnectBtn.Text = "自动重连 (30分钟): "..(settings.autoReconnect and "ON" or "OFF")
+    autoReconnectBtn.BackgroundColor3 = settings.autoReconnect and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(80, 40, 40)
+    saveSettings(settings)
+    
+    -- 不再需要取消计时器，因为现在是通过主循环检查
+    -- 只需更新 lastReconnectCheck 以确保从当前时间开始计算
+    lastReconnectCheck = os.time()
+    
+    if settings.autoReconnect then
+        print("自动重连已启用，将在30分钟后执行")
+    else
+        print("自动重连已禁用")
+    end
+end)
+
+-- 初始启动计时器
+
 -- 主循环
 local function main()
- while running do
+     lastReconnectCheck = os.time()
+    local lastCheckTime = os.time()
+    
+    while running do
         local currentTime = os.time()
         
         -- 每分钟检查一次（带调试输出）
@@ -986,6 +960,7 @@ local function main()
             if shouldReconnect() then
                 print("满足重连条件，开始重连...")
                 reconnectToServer()
+                lastReconnectCheck = os.time() -- 重置计时器
             end
         end
         
