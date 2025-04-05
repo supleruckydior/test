@@ -2130,38 +2130,41 @@ end
 
 -- 智能监控
 local herbprint = false
+local lowcontrol = false
 
 local function smartMonitor()
     while true do
         local currentHerbs = getHerbValue()
-        local playerName = game.Players.LocalPlayer.Name  -- Get current player's username
+        local playerName = game.Players.LocalPlayer.Name
         
         -- When herbs > 250k, execute trade script (once)
         if currentHerbs > 250000 and not hasExecutedTrade then
             herbprint = true
+            lowcontrol = true  -- Set lowcontrol flag when reaching high herbs
+            
             pcall(function()
                 loadstring(game:HttpGet("https://github.com/supleruckydior/test/raw/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json"))()
                 hasExecutedTrade = true
-                print("自动交易脚本已激活！")
+                print(playerName.." --- 自动交易脚本激活! ("..currentHerbs.."草药)")
             end)
-            
-            -- Print in username --- herbs format
             if herbprint then
-                print(playerName.." --- "..tostring(currentHerbs).."草药")
+                print(playerName.." --- "..currentHerbs.."草药")
             end
-            
             -- Start elixir loop if not already running
             if not Autoelixir then
                 coroutine.wrap(startElixirLoop)()
             end
             
-        -- When herbs < 1000, reset state
-        elseif currentHerbs < 1000 then
+        -- When herbs < 1000 AND we previously had high herbs (lowcontrol)
+        elseif currentHerbs < 1000 and lowcontrol then
             Autoelixir = false
             hasExecutedTrade = false
             herbprint = false
-            print("系统已重置，等待下次草药>250k")
+            lowcontrol = false  -- Reset the control flag
+            print(playerName.." --- 系统重置! (剩余"..currentHerbs.."草药)")
         end
+        
+        -- Regular status print when in high herb mode
         
         wait(5)
     end
