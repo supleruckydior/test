@@ -2147,9 +2147,6 @@ local function smartMonitor()
                 hasExecutedTrade = true
                 print(playerName.." --- 自动交易脚本激活! ("..currentHerbs.."草药)")
             end)
-            if herbprint then
-                print(playerName.." --- "..currentHerbs.."草药")
-            end
             -- Start elixir loop if not already running
             if not Autoelixir then
                 coroutine.wrap(startElixirLoop)()
@@ -2163,7 +2160,9 @@ local function smartMonitor()
             lowcontrol = false  -- Reset the control flag
             print(playerName.." --- 系统重置! (剩余"..currentHerbs.."草药)")
         end
-        
+        if herbprint and hasExecutedTrade then
+        print(playerName.." --- "..currentHerbs.."草药")
+         end
         -- Regular status print when in high herb mode
         
         wait(5)
