@@ -39,7 +39,7 @@ end
 -- 主循环
 local executionCount = 0
 local maxExecutions = 2
-local interval = 20 -- 20秒间隔
+local interval = 10 -- 20秒间隔
 
 while true do
     local crystalExists = CheckCrystalExists()
