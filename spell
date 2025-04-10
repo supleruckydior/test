@@ -1,7 +1,7 @@
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
-wait(10)
+wait(5)
 -- 检查水晶是否存在 (如果不存在，crystalExists 为 false)
 local crystalExists = pcall(function()
     return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"] ~= nil
@@ -27,7 +27,6 @@ for i = 4, 18 do
         end
     end
 end
-
 -- 只有在水晶不存在 且 (公会1按钮可见 或 公会2-16任一按钮可见) 时才执行
 if not crystalExists and (guild1Visible or guild2to16Visible) then
 local gamecode = {"ilovethisgame","welcome","30klikes","40klikes","halloween","artistkapouki","45klikes","60klikes"};
