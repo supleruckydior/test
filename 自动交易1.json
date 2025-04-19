@@ -1,0 +1,196 @@
+-- 完整手动控制交易脚本 v2.0
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+-- 保留原始转义路径
+local TradeRequest = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+    :FindFirstChild("\229\133\172\231\148\168")
+    :FindFirstChild("\228\186\164\230\152\147")
+    :FindFirstChild("\231\148\179\232\175\183\228\186\164\230\152\147")
+
+local ConfirmTrade = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+    :FindFirstChild("\229\133\172\231\148\168")
+    :FindFirstChild("\228\186\164\230\152\147")
+    :FindFirstChild("\233\148\129\229\174\154\228\186\164\230\152\147")
+
+-- 配置参数
+local SETTINGS = {
+    RequestInterval = 7,   -- 请求间隔（秒）
+    ConfirmDelay = 2,        -- 确认延迟（秒）
+    MaxRetries = 3           -- 最大重试次数
+}
+
+-- 状态控制
+local isTrading = false
+local tradedPlayers = {}
+local currentCoroutine = nil
+
+-- 调试日志
+local function debugLog(message)
+    print("[DEBUG]["..os.date("%H:%M:%S").."] "..message)
+end
+
+-- 打印玩家列表
+local function printPlayerList()
+    debugLog("=== 当前在线玩家列表 ===")
+    for _, p in ipairs(Players:GetPlayers()) do
+        debugLog(string.format("%s (ID: %d)%s", 
+            p.Name, 
+            p.UserId, 
+            p == player and " <自己>" or ""
+        ))
+    end
+    debugLog("========================")
+end
+
+-- 获取有效玩家
+local function getValidPlayers()
+    local valid = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and not table.find(tradedPlayers, p.UserId) then
+            table.insert(valid, p)
+        end
+    end
+    return valid
+end
+
+-- 安全交易流程
+local function safeTrade(target)
+    debugLog("开始与 "..target.Name.." 交易")
+    
+    for retry = 1, SETTINGS.MaxRetries do
+        -- 发送请求
+        local success1, err1 = pcall(function()
+            TradeRequest:FireServer(target)
+            debugLog("请求发送成功")
+            return true
+        end)
+        
+        if not success1 then
+            debugLog("请求失败: "..err1)
+            task.wait(2)
+            continue
+        end
+
+        -- 确认交易
+        local success2, err2 = pcall(function()
+            task.wait(SETTINGS.ConfirmDelay)
+            ConfirmTrade:FireServer(true)
+            debugLog("确认发送成功")
+            table.insert(tradedPlayers, target.UserId)
+            return true
+        end)
+
+        if success2 then return true end
+        debugLog("确认失败: "..err2)
+        task.wait(1)
+    end
+    return false
+end
+
+-- 主交易循环
+local function tradeLoop()
+    debugLog("交易循环启动")
+    
+    while isTrading do
+        printPlayerList()
+        local candidates = getValidPlayers()
+        
+        if #candidates > 0 then
+            local target = candidates[math.random(#candidates)]
+            debugLog("选中目标: "..target.Name)
+            
+            if safeTrade(target) then
+                debugLog("与 "..target.Name.." 交易成功")
+            else
+                debugLog("与 "..target.Name.." 交易失败")
+            end
+        else
+            debugLog("没有可交易目标")
+        end
+
+        -- 可中断等待
+        for i = 1, SETTINGS.RequestInterval do
+            if not isTrading then break end
+            task.wait(1)
+        end
+    end
+    debugLog("交易循环终止")
+end
+
+-- 创建UI界面
+local function createControlPanel()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "TradeControlPanel"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 240, 0, 120)
+    frame.Position = UDim2.new(0.5, -120, 0, 20)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+
+    -- 控制按钮
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0.9, 0, 0.4, 0)
+    toggleBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
+    toggleBtn.Text = "▶ 启动自动交易"
+    toggleBtn.TextColor3 = Color3.new(1,1,1)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    toggleBtn.Parent = frame
+
+    -- 状态显示
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(0.9, 0, 0.3, 0)
+    statusLabel.Position = UDim2.new(0.05, 0, 0.5, 0)
+    statusLabel.Text = "状态：未启动"
+    statusLabel.TextColor3 = Color3.new(0.9,0.9,0.9)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Parent = frame
+
+    -- 玩家计数
+    local countLabel = Instance.new("TextLabel")
+    countLabel.Size = UDim2.new(0.9, 0, 0.2, 0)
+    countLabel.Position = UDim2.new(0.05, 0, 0.8, 0)
+    countLabel.Text = "可交易玩家：0"
+    countLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
+    countLabel.BackgroundTransparency = 1
+    countLabel.Parent = frame
+
+    -- 按钮点击事件
+    toggleBtn.MouseButton1Click:Connect(function()
+        isTrading = not isTrading
+        toggleBtn.Text = isTrading and "⏹ 停止交易" or "▶ 启动交易"
+        statusLabel.Text = "状态："..(isTrading and "运行中" or "已停止")
+        
+        if isTrading then
+            tradedPlayers = {}
+            debugLog("手动启动交易")
+            currentCoroutine = coroutine.create(tradeLoop)
+            coroutine.resume(currentCoroutine)
+        else
+            if currentCoroutine then
+                coroutine.close(currentCoroutine)
+                debugLog("手动终止交易")
+            end
+        end
+    end)
+
+    -- 实时更新玩家计数
+    game:GetService("RunService").Heartbeat:Connect(function()
+        countLabel.Text = "可交易玩家："..#getValidPlayers()
+    end)
+end
+
+-- 初始化验证
+debugLog("==== 系统初始化 ====")
+debugLog("交易请求事件: "..tostring(TradeRequest ~= nil))
+debugLog("确认交易事件: "..tostring(ConfirmTrade ~= nil))
+printPlayerList()
+
+-- 创建控制面板
+createControlPanel()
+debugLog("控制面板已加载")
