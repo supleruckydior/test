@@ -1,0 +1,227 @@
+-- 最终定制版本（黑底白字红边）
+local request = (syn and syn.request) or http_request
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+-- Discord Webhook配置
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1344800303819784274/RS7UQ8Krgse-n63IZZVA3Q7dCW9if-380cMYpzZNmGR64yyb6chWLJgc0YN7XfXw8C5j"
+
+-- 系统控制变量
+local running = true
+local currencyValue = 0
+local initialGold = 0
+local startTime = os.time()
+
+-- 数值格式化函数
+local function formatNumber(num)
+    return num >= 1000 and string.format("%.1fk", num/1000) or tostring(math.floor(num))
+end
+
+-- 金币路径初始化
+local function initializeCurrency()
+    local success, currencyObj = pcall(function()
+        return player:WaitForChild("值"):WaitForChild("货币"):WaitForChild("金币")
+    end)
+    
+    if success and currencyObj then
+        initialGold = currencyObj.Value
+        currencyValue = initialGold
+        currencyObj:GetPropertyChangedSignal("Value"):Connect(function()
+            currencyValue = currencyObj.Value
+        end)
+        return true
+    end
+    return false
+end
+
+if not initializeCurrency() then return end
+
+-- 创建监控界面
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GoldMonitor_Final"
+if syn then syn.protect_gui(screenGui) end
+screenGui.Parent = player.PlayerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 320, 0, 220)
+mainFrame.Position = UDim2.new(0, 10, 1, -230)  -- 左下角定位
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)    -- 黑底
+mainFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)     -- 红边
+mainFrame.BorderSizePixel = 2
+mainFrame.Parent = screenGui
+
+-- 信息显示
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(0.9, 0, 0.7, 0)
+infoLabel.Position = UDim2.new(0.05, 0, 0.1, 0)
+infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)   -- 白字
+infoLabel.BackgroundTransparency = 1
+infoLabel.Font = Enum.Font.SourceSansBold
+infoLabel.TextSize = 20
+infoLabel.TextXAlignment = Enum.TextXAlignment.Center  -- 水平居中
+infoLabel.TextYAlignment = Enum.TextYAlignment.Center  -- 垂直居中
+
+-- 添加红色文字描边
+local textStroke = Instance.new("UIStroke")
+textStroke.Color = Color3.fromRGB(255, 0, 0)  -- 红色描边
+textStroke.Thickness = 0.1
+textStroke.Parent = infoLabel
+infoLabel.Text = "正在初始化监控系统..."
+infoLabel.Parent = mainFrame
+
+-- 控制按钮组
+local buttonContainer = Instance.new("Frame")
+buttonContainer.Size = UDim2.new(0.9, 0, 0.2, 0)
+buttonContainer.Position = UDim2.new(0.05, 0, 0.82, 0)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.Parent = mainFrame
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0.45, 0, 1, 0)
+closeButton.Position = UDim2.new(0.55, 0, 0, 0)
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+closeButton.BorderColor3 = Color3.fromRGB(255, 0, 0)  -- 红色边框
+closeButton.Text = "关闭系统"
+closeButton.Parent = buttonContainer
+
+local reportButton = Instance.new("TextButton")
+reportButton.Size = UDim2.new(0.45, 0, 1, 0)
+reportButton.Position = UDim2.new(0, 0, 0, 0)
+reportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+reportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+reportButton.BorderColor3 = Color3.fromRGB(255, 0, 0)  -- 红色边框
+reportButton.Text = "发送报告"
+reportButton.Parent = buttonContainer
+
+-- Discord消息系统
+local function sendWebhook(content, embed)
+    task.spawn(function()
+        pcall(function()
+            request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = game:GetService("HttpService"):JSONEncode({
+                    content = content,
+                    embeds = embed and {embed} or nil
+                })
+            })
+        end)
+    end)
+end
+
+-- 生成报告数据
+local function generateReport()
+    local current = currencyValue
+    local elapsed = os.time() - startTime
+    local totalEarned = current - initialGold
+    local rateMin = elapsed > 0 and (totalEarned / elapsed) * 60 or 0
+    local rateHour = rateMin * 60
+    
+    return {
+        title = "📊 金币监控报告",
+        color = 0x00FF00,
+        fields = {
+            {name = "玩家名称", value = player.Name},
+            {name = "当前金额", value = formatNumber(current)},
+            {name = "分钟收益", value = formatNumber(rateMin).."/分"},
+            {name = "小时收益", value = formatNumber(rateHour).."/时"},
+            {name = "运行时长", value = string.format("%d小时%d分", math.floor(elapsed/3600), math.floor((elapsed%3600)/60))},
+            {name = "总收益", value = formatNumber(totalEarned)}
+        }
+    }
+end
+
+-- 实时数据更新
+task.spawn(function()
+    local lastUpdate = 0
+    
+    while running do
+        local current = currencyValue
+        local elapsed = os.time() - startTime
+        local totalEarned = current - initialGold
+        
+        -- 更新界面
+        infoLabel.Text = string.format([[当前金币：%s
+分钟收益：%s/分
+小时收益：%s/时
+运行时长：%d小时%d分
+总收益：%s]],
+            formatNumber(current),
+            formatNumber((totalEarned / math.max(elapsed, 1)) * 60),
+            formatNumber((totalEarned / math.max(elapsed, 1)) * 3600),
+            math.floor(elapsed/3600),
+            math.floor((elapsed%3600)/60),
+            formatNumber(totalEarned)
+        )
+        
+        -- 3分钟自动报告
+        if os.time() - lastUpdate >= 180 then
+            sendWebhook(nil, generateReport())
+            lastUpdate = os.time()
+        end
+        
+        task.wait(0.5)
+    end
+end)
+
+-- 按钮功能
+reportButton.MouseButton1Click:Connect(function()
+    sendWebhook(nil, generateReport())
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+    running = false
+    screenGui:Destroy()
+    
+    -- 最终报告
+    local elapsed = os.time() - startTime
+    sendWebhook("🔴 监控系统已关闭", {
+        color = 0xFF0000,
+        fields = {
+            {name = "最终金额", value = formatNumber(currencyValue)},
+            {name = "总运行时间", value = string.format("%d小时%d分", math.floor(elapsed/3600), math.floor((elapsed%3600)/60))},
+            {name = "总收益", value = formatNumber(currencyValue - initialGold)}
+        }
+    })
+end)
+
+-- 窗口拖拽系统
+local dragging = false
+local dragStart, startPos
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local newX = math.clamp(startPos.X.Offset + delta.X, 0, workspace.CurrentCamera.ViewportSize.X - mainFrame.AbsoluteSize.X)
+        local newY = math.clamp(startPos.Y.Offset + delta.Y, 0, workspace.CurrentCamera.ViewportSize.Y - mainFrame.AbsoluteSize.Y)
+        
+        mainFrame.Position = UDim2.new(
+            0, newX,
+            0, newY
+        )
+    end
+end)
+
+-- 初始化通知
+sendWebhook(nil, {
+    title = "🟢 监控系统启动",
+    color = 0x00FF00,
+    fields = {
+        {name = "玩家名称", value = player.Name},
+        {name = "初始金额", value = formatNumber(initialGold)}
+    }
+})
+
+-- 初始化完成提示
+infoLabel.Text = string.format("监控系统已就绪！\n初始金额：%s", formatNumber(initialGold))
