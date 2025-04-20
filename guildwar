@@ -13,10 +13,10 @@ end
 -- 检查是否在目标XZ位置附近（允许5单位的误差，忽略Y高度）
 local function IsAtTargetXZPosition()
     local currentPos = game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position
-    local targetPos = Vector3.new(-201.054626, 500, 499)
+    local targetX, targetZ = -201.054626, 499
     
-    return (math.abs(currentPos.X - targetPos.X) <= 5) and
-           (math.abs(currentPos.Z - targetPos.Z) <= 5)
+    return (math.abs(currentPos.X - targetX) <= 5) and
+           (math.abs(currentPos.Z - targetZ) <= 5)
 end
 
 -- 使用技能
@@ -28,27 +28,33 @@ local function UseSkill()
     game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\230\138\128\232\131\189"):FindFirstChild("\228\189\191\231\148\168\230\138\128\232\131\189"):FireServer(unpack(args))
 end
 
--- 执行传送操作
-local function ExecuteTeleportOperation()
-    -- 记录初始位置
+-- 传送到目标点（-201,500,499）
+local function TeleportToMainSpot()
+    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = 
+        CFrame.new(Vector3.new(-201.054626, 500, 499))
+    wait(0.5) -- 短暂等待确保传送完成
+end
+
+-- 执行完整操作（传送到水晶→技能→第二位置→返回）
+local function ExecuteFullOperation()
     local initialPosition = game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position
     
-    -- 第一次传送
-    local targetPositioninit = Vector3.new(-201.054626, 500, 499)
-    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(targetPositioninit)
+    -- 第一次传送（水晶点）
+    TeleportToMainSpot()
     wait(2)
     
     -- 使用技能
     UseSkill()
     wait(0.8)
     
-    -- 第二次传送
-    local targetPosition = Vector3.new(-506.054626, 19.4736, -513.346)
-    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(targetPosition)
+    -- 第二次传送（第二位置）
+    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = 
+        CFrame.new(Vector3.new(-506.054626, 19.4736, -513.346))
     wait(0.3)
     
-    -- 传送回初始点
-    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(initialPosition)
+    -- 返回初始点
+    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = 
+        CFrame.new(initialPosition)
 end
 
 -- 主循环
@@ -60,21 +66,17 @@ while true do
     local crystalExists = CheckCrystalExists()
     
     if crystalExists and executionCount < maxExecutions then
-        ExecuteTeleportOperation()
+        ExecuteFullOperation()
         executionCount = executionCount + 1
         
         if executionCount >= maxExecutions then
-            -- 检查是否在目标XZ位置附近，如果不在则传送过去
-            if not IsAtTargetXZPosition() then
-                game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = 
-                    CFrame.new(Vector3.new(-201.054626, 500, 499))
-                wait(2)
-            end
-            
-            -- 开始每10.5秒使用一次技能
+            -- 2次尝试后，持续检查位置并强制传送回主点（如果XZ不匹配）
             while true do
+                if not IsAtTargetXZPosition() then
+                    TeleportToMainSpot()
+                end
                 UseSkill()
-                wait(10.5)
+                wait(10.5) -- 每10.5秒使用一次技能
             end
         else
             wait(interval) -- 等待20秒再执行下一次
