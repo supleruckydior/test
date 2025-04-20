@@ -1,12 +1,31 @@
 if not game:IsLoaded() then
-	game.Loaded:Wait()
+    game.Loaded:Wait()
 end
 wait(2)
+
 -- 检查水晶是否存在
 local function CheckCrystalExists()
     return pcall(function()
         return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"] ~= nil
     end)
+end
+
+-- 检查是否在目标XZ位置附近（允许5单位的误差，忽略Y高度）
+local function IsAtTargetXZPosition()
+    local currentPos = game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position
+    local targetPos = Vector3.new(-201.054626, 500, 499)
+    
+    return (math.abs(currentPos.X - targetPos.X) <= 5) and
+           (math.abs(currentPos.Z - targetPos.Z) <= 5)
+end
+
+-- 使用技能
+local function UseSkill()
+    local args = {
+        [1] = 1,
+        [2] = game:GetService("Players").LocalPlayer.Character,
+    }
+    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\230\138\128\232\131\189"):FindFirstChild("\228\189\191\231\148\168\230\138\128\232\131\189"):FireServer(unpack(args))
 end
 
 -- 执行传送操作
@@ -20,11 +39,7 @@ local function ExecuteTeleportOperation()
     wait(2)
     
     -- 使用技能
-    local args = {
-        [1] = 1,
-        [2] = game:GetService("Players").LocalPlayer.Character,
-    }
-    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\230\138\128\232\131\189"):FindFirstChild("\228\189\191\231\148\168\230\138\128\232\131\189"):FireServer(unpack(args))
+    UseSkill()
     wait(0.8)
     
     -- 第二次传送
@@ -49,7 +64,18 @@ while true do
         executionCount = executionCount + 1
         
         if executionCount >= maxExecutions then
-            break -- 达到执行次数后退出循环
+            -- 检查是否在目标XZ位置附近，如果不在则传送过去
+            if not IsAtTargetXZPosition() then
+                game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = 
+                    CFrame.new(Vector3.new(-201.054626, 500, 499))
+                wait(2)
+            end
+            
+            -- 开始每10.5秒使用一次技能
+            while true do
+                UseSkill()
+                wait(10.5)
+            end
         else
             wait(interval) -- 等待20秒再执行下一次
         end
@@ -57,5 +83,3 @@ while true do
         wait(1) -- 水晶不存在时每秒检查一次
     end
 end
-
-print("已完成2次操作，脚本停止")
