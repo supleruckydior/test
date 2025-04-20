@@ -15,7 +15,7 @@ local function ExecuteTeleportOperation()
     local initialPosition = game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position
     
     -- 第一次传送
-    local targetPositioninit = Vector3.new(-201.054626, 500, 499)
+    local targetPositioninit = Vector3.new(201.054626, 500, 499)
     game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(targetPositioninit)
     wait(2)
     
