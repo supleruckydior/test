@@ -182,7 +182,7 @@ function dailyspin()
  for i = 1, 6 do
         spin:FireServer()
     end
-for i = 1,100 do
+for i = 100, 1, -1 do 
 game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\233\130\174\228\187\182"):WaitForChild("\233\162\134\229\143\150\233\130\174\228\187\182"):FireServer(i)
 end
         task.wait(300)
