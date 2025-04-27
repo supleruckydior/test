@@ -37,50 +37,42 @@ local function ExecuteTeleportOperation()
     game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(initialPosition)
 end
 
--- 检查GUI可见性
+-- 检查GUI可见性 (优化版)
 local function CheckGUIVisibility()
-    return pcall(function()
+    local success, result = pcall(function()
         return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
     end)
+    return success and result
 end
 
 -- 主循环
 while true do
-    -- 快速检查GUI可见性（几乎无延迟）
-    local guiVisible = CheckGUIVisibility()
-    if guiVisible then
-        game:Shutdown()
-        return
-    end
+    -- 首先检查水晶是否存在
+    local crystalSuccess, crystalExists = CheckCrystalExists()
     
-    local crystalExists = CheckCrystalExists()
-    
-    if crystalExists then
+    if crystalSuccess and crystalExists then
+        -- 水晶存在时才检查GUI可见性
+        if CheckGUIVisibility() then
+            print("检测到GUI可见 - 关闭游戏")
+            game:Shutdown()
+            return
+        end
+        
+        -- 执行传送操作
         ExecuteTeleportOperation()
         
-        -- 10秒等待周期（但持续检查GUI）
+        -- 10秒冷却周期（持续检查GUI）
         local startTime = tick()
         while tick() - startTime < 10 do
-            -- 每秒检查4次GUI可见性
-            for i = 1, 40 do
-                guiVisible = CheckGUIVisibility()
-                if guiVisible then
-                    game:Shutdown()
-                    return
-                end
-                wait(0.25) -- 每0.25秒检查一次
-            end
-        end
-    else
-        -- 水晶不存在时短暂等待（但仍持续检查GUI）
-        local startTime = tick()
-        while tick() - startTime < 1 do
-            guiVisible = CheckGUIVisibility()
-            if guiVisible then
+            if CheckGUIVisibility() then
+                print("冷却期间检测到GUI可见 - 关闭游戏")
                 game:Shutdown()
                 return
             end
-            wait(0.1)
+            wait(0.25) -- 每0.25秒检查一次
         end
+    else
+        -- 水晶不存在时只简单等待1秒
+        wait(1)
     end
 end
