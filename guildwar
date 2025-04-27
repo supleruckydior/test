@@ -1,7 +1,8 @@
 if not game:IsLoaded() then
-	game.Loaded:Wait()
+    game.Loaded:Wait()
 end
 wait(2)
+
 -- 检查水晶是否存在
 local function CheckCrystalExists()
     return pcall(function()
@@ -36,26 +37,50 @@ local function ExecuteTeleportOperation()
     game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(initialPosition)
 end
 
--- 主循环
-local executionCount = 0
-local maxExecutions = 2
-local interval = 10 -- 20秒间隔
-
-while true do
-    local crystalExists = CheckCrystalExists()
-    
-    if crystalExists and executionCount < maxExecutions then
-        ExecuteTeleportOperation()
-        executionCount = executionCount + 1
-        
-        if executionCount >= maxExecutions then
-            break -- 达到执行次数后退出循环
-        else
-            wait(interval) -- 等待20秒再执行下一次
-        end
-    else
-        wait(1) -- 水晶不存在时每秒检查一次
-    end
+-- 检查GUI可见性
+local function CheckGUIVisibility()
+    return pcall(function()
+        return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
+    end)
 end
 
-print("已完成2次操作，脚本停止")
+-- 主循环
+while true do
+    -- 快速检查GUI可见性（几乎无延迟）
+    local guiVisible = CheckGUIVisibility()
+    if guiVisible then
+        game:Shutdown()
+        return
+    end
+    
+    local crystalExists = CheckCrystalExists()
+    
+    if crystalExists then
+        ExecuteTeleportOperation()
+        
+        -- 10秒等待周期（但持续检查GUI）
+        local startTime = tick()
+        while tick() - startTime < 10 do
+            -- 每秒检查4次GUI可见性
+            for i = 1, 40 do
+                guiVisible = CheckGUIVisibility()
+                if guiVisible then
+                    game:Shutdown()
+                    return
+                end
+                wait(0.25) -- 每0.25秒检查一次
+            end
+        end
+    else
+        -- 水晶不存在时短暂等待（但仍持续检查GUI）
+        local startTime = tick()
+        while tick() - startTime < 1 do
+            guiVisible = CheckGUIVisibility()
+            if guiVisible then
+                game:Shutdown()
+                return
+            end
+            wait(0.1)
+        end
+    end
+end
