@@ -1045,7 +1045,6 @@ local function main()
         for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() and not hasEnteredBattle then
                 local success, ready = pcall(checkBossArea, areaId)
-                wait(5)
                 if success and ready then
                     print("["..areaId.."] 可进入战斗")
                     local args = {"ArenaStartSoloArenaChannel", areaId}
