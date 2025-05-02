@@ -240,7 +240,7 @@ titleCorner.CornerRadius = UDim.new(0, 8)
 titleCorner.Parent = titleBar
 
 local title = Instance.new("TextLabel")
-title.Text = "BOSS监控系统 v3.5.3"
+title.Text = "BOSS监控系统 v3.5.2"
 title.Size = UDim2.new(0.7, 0, 1, 0)
 title.Position = UDim2.new(0.15, 0, 0, 0)
 title.BackgroundTransparency = 1
@@ -867,7 +867,7 @@ end
 local function checkLingShouCondition()
     local waitFrame = safeGet({
         "Players", player.Name, 
-        "PlayerGui", "Gui", 
+        "PlayerGui", "MainGui", 
         "ScreenGui", "ArenaStatusView", 
         "WaitClearFrame"
     })
@@ -893,7 +893,7 @@ local function checkLingShouSystem(areaId)
     end
 
     -- Verify we're in a valid arena state
-    local arenaStatus = PathTool.FindForPath(player.PlayerGui, "Gui.ScreenGui.ArenaStatusView")
+    local arenaStatus = PathTool.FindForPath(player.PlayerGui, "MainGui.ScreenGui.ArenaStatusView")
     if not arenaStatus or not arenaStatus:IsA("Frame") then
         warn("Not in arena - cannot capture")
         return false
@@ -1042,24 +1042,19 @@ local function main()
             end
         end
         
-         for areaId, enabled in pairs(areaConfig) do
+        for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() and not hasEnteredBattle then
                 local success, ready = pcall(checkBossArea, areaId)
                 if success and ready then
                     print("["..areaId.."] 可进入战斗")
-                    
-                    -- Add 5-second wait before joining battle
-                    print("等待5秒后再进入战斗...")
                     local waitStart = os.time()
                     while os.time() - waitStart < 5 and running do
                         wait(0.1)
                     end
-                    if not running then break end
-                    
                     local args = {"ArenaStartSoloArenaChannel", areaId}
                     local invokeSuccess, err = pcall(function()
                         game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
-                    end
+                    end)
                     
                     if invokeSuccess then
                         print("战斗请求已发送")
