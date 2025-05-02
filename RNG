@@ -1,7 +1,7 @@
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
-wait(10)
+
 
 local player = game:GetService("Players").LocalPlayer
 local SoundService = game:GetService("SoundService")
@@ -876,71 +876,107 @@ local function checkLingShouCondition()
     return waitFrame and waitFrame:IsA("Frame") and waitFrame.Visible
 end
 
--- 灵兽系统检测（修复版）
+local PathTool = require(game:GetService("ReplicatedStorage").CommonLibrary.Tool.PathTool)
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataPullFunc = ReplicatedStorage:WaitForChild("CommonLibrary"):WaitForChild("Tool"):WaitForChild("RemoteManager"):WaitForChild("Funcs"):WaitForChild("DataPullFunc")
+
+-- Wait for player data to load
+local player = Players.LocalPlayer
+while not PathTool.ClientPlayerManager.GetGamePlayer() do
+    task.wait(1)
+end
+local gamePlayer = PathTool.ClientPlayerManager.GetGamePlayer()
+
 local function checkLingShouSystem(areaId)
     if not lingShouAreaConfig[areaId] then
-        print("当前区域未启用灵兽抓取，执行退出")
-        return leaveArena() -- Don't reset hasEnteredBattle here
+        print("Area not enabled for LingShou capture")
+        return leaveArena()
     end
 
-    print("检测到灵兽触发条件")
-    cleanupMovement()
+    -- Verify we're in a valid arena state
+    local arenaStatus = PathTool.FindForPath(player.PlayerGui, "MainGui.ScreenGui.ArenaStatusView")
+    if not arenaStatus or not arenaStatus:IsA("Frame") then
+        warn("Not in arena - cannot capture")
+        return false
+    end
     
+    -- Check for WaitClearFrame (capture available)
+    local waitFrame = PathTool.FindForPath(arenaStatus, "WaitClearFrame")
+    if not (waitFrame and waitFrame:IsA("Frame") and waitFrame.Visible) then
+        warn("Capture not available yet")
+        return false
+    end
+    
+    -- Get all monsters in the arena
     local monsters = workspace.Monsters:GetChildren()
     if #monsters == 0 then
-        warn("没有找到怪物")
-        hasEnteredBattle = false  -- Also reset if no monsters found
+        warn("No monsters found")
         return false
     end
     
-    local monsterIds = {}
+    -- Process each monster
     for _, monster in ipairs(monsters) do
-        local monsterName = monster.Name
-        local number = string.match(monsterName, "%d+")
-        
-        if number then
-            number = tonumber(number)
-            table.insert(monsterIds, number)
-            print("找到怪物ID:", number)
-        else
-            warn("无法从怪物名称中提取数字:", monsterName)
-        end
-    end
-    
-    if #monsterIds == 0 then
-        warn("没有有效的怪物ID")
-        return false
-    end
-    
-    for _, monsterId in ipairs(monsterIds) do
-        for i = 1, 3 do
-            local args = {
-                "LingShouSystemRollChannel",
-                monsterId,
-                1
-            }
+        local monsterId = tonumber(string.match(monster.Name, "%d+"))
+        if monsterId then
+            print("Attempting capture on monster:", monsterId)
             
-            print(string.format("正在对怪物ID %d 执行第%d次灵兽调用...", monsterId, i))
-            local success, err = pcall(function()
-                game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
+            -- Trigger dead effect first
+            local deadEffectSuccess = pcall(function()
+                DataPullFunc:InvokeServer("MonsterDeadEffectChannel", monsterId, "Tp_Transparency")
             end)
             
-            if success then
-                print(string.format("怪物ID %d 第%d次灵兽调用成功", monsterId, i))
-            else
-                warn(string.format("怪物ID %d 第%d次灵兽调用失败:", monsterId, i), err)
+            if not deadEffectSuccess then
+                warn("Failed to trigger dead effect")
             end
             
-            if i < 3 then
-                wait(0.1)
+            -- Perform capture attempts (standard 3 rolls)
+            for i = 1, 3 do
+                local success, result = pcall(function()
+                    return DataPullFunc:InvokeServer(
+                        "LingShouSystemRollChannel",
+                        monsterId,
+                        1  -- Single roll
+                    )
+                end)
+                
+                if success then
+                    print(string.format("Capture attempt %d successful", i))
+                else
+                    warn(string.format("Capture attempt %d failed:", i), result)
+                end
+                
+                task.wait(0.1)
             end
+            
+            -- Force cleanup if needed
+            pcall(function()
+                for _, part in ipairs(monster:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Transparency = 1
+                        part.CanCollide = false
+                    end
+                end
+                monster:Destroy()
+            end)
         end
     end
     
-    -- 灵兽捕捉完成后确保清理运动效果
-    cleanupMovement()
-    return true -- Don't reset hasEnteredBattle here either
+    -- Leave arena after capture
 end
+
+-- Add this monitoring system to handle persistent bodies
+task.spawn(function()
+    while true do
+        for _, monster in ipairs(workspace.Monsters:GetChildren()) do
+            if monster:GetAttribute("DeathTime") and (os.time() - monster:GetAttribute("DeathTime") > 30) then
+                warn("Force cleaning persistent monster body")
+                monster:Destroy()
+            end
+        end
+        task.wait(5)
+    end
+end)
 
 -- 重新连接服务器
 local RECONNECT_INTERVAL = 1800 -- 30分钟(秒)
