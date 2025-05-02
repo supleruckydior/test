@@ -1045,9 +1045,9 @@ local function main()
         for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() and not hasEnteredBattle then
                 local success, ready = pcall(checkBossArea, areaId)
+                wait(5)
                 if success and ready then
                     print("["..areaId.."] 可进入战斗")
-                    wait(5)
                     local args = {"ArenaStartSoloArenaChannel", areaId}
                     local invokeSuccess, err = pcall(function()
                         game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
