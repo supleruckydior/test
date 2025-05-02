@@ -867,7 +867,7 @@ end
 local function checkLingShouCondition()
     local waitFrame = safeGet({
         "Players", player.Name, 
-        "PlayerGui", "MainGui", 
+        "PlayerGui", "Gui", 
         "ScreenGui", "ArenaStatusView", 
         "WaitClearFrame"
     })
@@ -893,7 +893,7 @@ local function checkLingShouSystem(areaId)
     end
 
     -- Verify we're in a valid arena state
-    local arenaStatus = PathTool.FindForPath(player.PlayerGui, "MainGui.ScreenGui.ArenaStatusView")
+    local arenaStatus = PathTool.FindForPath(player.PlayerGui, "Gui.ScreenGui.ArenaStatusView")
     if not arenaStatus or not arenaStatus:IsA("Frame") then
         warn("Not in arena - cannot capture")
         return false
@@ -1047,7 +1047,7 @@ local function main()
                 local success, ready = pcall(checkBossArea, areaId)
                 if success and ready then
                     print("["..areaId.."] 可进入战斗")
-                    
+                    wait(5)
                     local args = {"ArenaStartSoloArenaChannel", areaId}
                     local invokeSuccess, err = pcall(function()
                         game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
