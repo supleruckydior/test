@@ -1047,10 +1047,6 @@ local function main()
                 local success, ready = pcall(checkBossArea, areaId)
                 if success and ready then
                     print("["..areaId.."] 可进入战斗")
-local waitStart = os.time()
-                    while os.time() - waitStart < 5 and running do
-                        wait(0.1)
-                    end
                     local args = {"ArenaStartSoloArenaChannel", areaId}
                     local invokeSuccess, err = pcall(function()
                         game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
