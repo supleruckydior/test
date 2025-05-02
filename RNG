@@ -1042,15 +1042,24 @@ local function main()
             end
         end
         
-        for areaId, enabled in pairs(areaConfig) do
+         for areaId, enabled in pairs(areaConfig) do
             if enabled and not isInBattle() and not hasEnteredBattle then
                 local success, ready = pcall(checkBossArea, areaId)
                 if success and ready then
                     print("["..areaId.."] 可进入战斗")
+                    
+                    -- Add 5-second wait before joining battle
+                    print("等待5秒后再进入战斗...")
+                    local waitStart = os.time()
+                    while os.time() - waitStart < 5 and running do
+                        wait(0.1)
+                    end
+                    if not running then break end
+                    
                     local args = {"ArenaStartSoloArenaChannel", areaId}
                     local invokeSuccess, err = pcall(function()
                         game:GetService("ReplicatedStorage").CommonLibrary.Tool.RemoteManager.Funcs.DataPullFunc:InvokeServer(unpack(args))
-                    end)
+                    end
                     
                     if invokeSuccess then
                         print("战斗请求已发送")
