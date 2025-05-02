@@ -240,7 +240,7 @@ titleCorner.CornerRadius = UDim.new(0, 8)
 titleCorner.Parent = titleBar
 
 local title = Instance.new("TextLabel")
-title.Text = "BOSS监控系统 v3.5.2"
+title.Text = "BOSS监控系统 v3.5.3"
 title.Size = UDim2.new(0.7, 0, 1, 0)
 title.Position = UDim2.new(0.15, 0, 0, 0)
 title.BackgroundTransparency = 1
