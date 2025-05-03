@@ -5,28 +5,6 @@ local player = game:GetService("Players").LocalPlayer
 local SoundService = game:GetService("SoundService")
 local RunService = game:GetService("RunService")
 
--- [1] Mute all existing sounds (including those not parented to SoundService)
-for _, sound in pairs(SoundService:GetDescendants()) do
-    if sound:IsA("Sound") then
-        pcall(function()
-            sound.Volume = 0
-            sound.Playing = false
-        end)
-    end
-end
--- [4] Continuous sound killer (catches any new sounds)
-RunService.Heartbeat:Connect(function()
-    for _, sound in pairs(SoundService:GetDescendants()) do
-        if sound:IsA("Sound") then
-            pcall(function()
-                sound.Volume = 0
-                sound.Playing = false
-            end)
-        end
-    end
-end)
-
-print("🔇 ALL SOUNDS PERMANENTLY MUTED!")
 -- ========== JSON设置保存功能 ==========
 local HttpService = game:GetService("HttpService")
 local settingsFileName = "BossMonitorSettings.json"
@@ -710,7 +688,6 @@ local function cleanupMovement()
     -- 等待直到浮空效果清除或超时
     while os.time() - startTime < maxWaitTime do
         if isFloatingCleared() then
-            print("浮空效果已成功清除")
             return true
         end
         wait(0.1)
@@ -728,7 +705,6 @@ local function leaveArena()
     
     repeat
         attempts = attempts + 1
-        print(string.format("尝试离开竞技场 (第%d次)...", attempts))
         
         -- 先尝试清理运动效果
         cleanupSuccess = cleanupMovement()
@@ -741,7 +717,6 @@ local function leaveArena()
             end)
             
             if success then
-                print("成功发送离开竞技场请求")
                 return true
             else
                 warn("离开竞技场请求失败:", err)
@@ -917,7 +892,6 @@ local function checkLingShouSystem(areaId)
     for _, monster in ipairs(monsters) do
         local monsterId = tonumber(string.match(monster.Name, "%d+"))
         if monsterId then
-            print("Attempting capture on monster:", monsterId)
             
             -- Trigger dead effect first
             local deadEffectSuccess = pcall(function()
@@ -939,9 +913,7 @@ local function checkLingShouSystem(areaId)
                 end)
                 
                 if success then
-                    print(string.format("Capture attempt %d successful", i))
                 else
-                    warn(string.format("Capture attempt %d failed:", i), result)
                 end
                 
                 task.wait(0.1)
@@ -1046,7 +1018,6 @@ local function main()
             if enabled and not isInBattle() and not hasEnteredBattle then
                 local success, ready = pcall(checkBossArea, areaId)
                 if success and ready then
-                    print("["..areaId.."] 可进入战斗")
                     local waitStart = os.time()
                     while os.time() - waitStart < 5 and running do
                         wait(0.1)
@@ -1057,7 +1028,6 @@ local function main()
                     end)
                     
                     if invokeSuccess then
-                        print("战斗请求已发送")
                         hasEnteredBattle = true
                         
                         local startTime = os.time()
@@ -1066,7 +1036,6 @@ local function main()
                         
                         while running and (os.time() - startTime < 15) do
                             if isInBattle() and not hasTriggered then
-                                print("进入战斗，启动浮空系统")
                                 floatSuccess = floatAbovePosition()
                                 
                                 if floatSuccess then
