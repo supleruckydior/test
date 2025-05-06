@@ -17,7 +17,7 @@ local ConfirmTrade = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182"
 
 -- 配置参数
 local SETTINGS = {
-    RequestInterval = 7,   -- 请求间隔（秒）
+    RequestInterval = 11,   -- 请求间隔（秒）
     ConfirmDelay = 2,      -- 确认延迟（秒）
     MaxRetries = 3         -- 最大重试次数
 }
