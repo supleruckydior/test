@@ -1,3 +1,39 @@
+-- 在代码开头部分添加玩家白名单
+local allowedTradePlayers = {
+    "superbroly",
+    "supluckydior6",
+    "6Wuzun9",
+    "supluckydior",
+    "airenlea",
+    "pochen01",
+    "pochen02",
+    "xiaobai1314567",
+    "xiaobai13456",
+    "supluckydior4",
+    "xiaobai134567",
+    "xiaobai1345678",
+    "xiaobai13456789",
+    "superluckyfarms15",
+    "superluckyfarms7",
+    "supluckfarm1",
+    "supluckfarm19",
+    "supluckfarm27",
+    "supluckfarm8",
+    "supluckfarm9",
+    "supluckyfarm18",
+    "supluckyfarm3",
+    "supluckyfarm36",
+    "supluckyfarm69",
+    "supluckyvault",
+    "xiaobai1314567777",
+    "xiaobai13145678888",
+    "xiaobai134566",
+    "xiaobai1345677",
+    "xiaobai134567888888",
+    "superluckfarm38",
+    "superluckfarm47"
+    -- 可以在这里添加更多允许交易的玩家名字
+}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -22,6 +58,12 @@ local addTradeItemEvent = ReplicatedStorage
     ["\228\186\164\230\152\147"]  -- 交易
     ["\230\150\176\229\162\158\228\186\164\230\152\147\231\137\169\229\147\129"] -- 新增交易物品
 
+local requestTradeEvent = ReplicatedStorage
+    ["\228\186\139\228\187\182"]  -- 药水
+    ["\229\133\172\231\148\168"]  -- 功能
+    ["\228\186\164\230\152\147"]  -- 交易
+    :WaitForChild("\231\148\179\232\175\183\228\186\164\230\152\147") -- 请求交易
+
 local confirmTradeEvent = ReplicatedStorage
     ["\228\186\139\228\187\182"]  -- 药水
     ["\229\133\172\231\148\168"]  -- 功能
@@ -37,6 +79,7 @@ end)
 
 -- 系统控制变量
 local running = true
+local tradeMode = "both" -- "elixir", "armor", "both"
 
 -- 创建监控界面
 local screenGui = Instance.new("ScreenGui")
@@ -45,45 +88,60 @@ if syn then syn.protect_gui(screenGui) end
 screenGui.Parent = PlayerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 320, 0, 120)
-mainFrame.Position = UDim2.new(0, 10, 1, -130)  -- 左下角定位
-mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)    -- 黑底
-mainFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)     -- 红边
+mainFrame.Size = UDim2.new(0, 320, 0, 150)
+mainFrame.Position = UDim2.new(0, 10, 1, -160)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)
 mainFrame.BorderSizePixel = 2
 mainFrame.Parent = screenGui
 
--- 信息显示
+local titleBar = Instance.new("TextLabel")
+titleBar.Size = UDim2.new(1, 0, 0, 20)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.Text = "自动交易系统 (丹药+护甲)"
+titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
 local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(0.9, 0, 0.7, 0)
-infoLabel.Position = UDim2.new(0.05, 0, 0.1, 0)
-infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)   -- 白字
+infoLabel.Size = UDim2.new(0.9, 0, 0.5, 0)
+infoLabel.Position = UDim2.new(0.05, 0, 0.1, 20)
+infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 infoLabel.BackgroundTransparency = 1
 infoLabel.Font = Enum.Font.SourceSansBold
-infoLabel.TextSize = 20
-infoLabel.TextXAlignment = Enum.TextXAlignment.Center  -- 水平居中
-infoLabel.TextYAlignment = Enum.TextYAlignment.Center  -- 垂直居中
+infoLabel.TextSize = 18
+infoLabel.TextXAlignment = Enum.TextXAlignment.Center
+infoLabel.TextYAlignment = Enum.TextYAlignment.Center
 
--- 添加红色文字描边
 local textStroke = Instance.new("UIStroke")
-textStroke.Color = Color3.fromRGB(255, 0, 0)  -- 红色描边
+textStroke.Color = Color3.fromRGB(255, 0, 0)
 textStroke.Thickness = 0.1
 textStroke.Parent = infoLabel
-infoLabel.Text = "自动交易启动..."
+infoLabel.Text = "自动交易启动中...\n模式: 丹药+护甲"
 infoLabel.Parent = mainFrame
 
--- 控制按钮组
 local buttonContainer = Instance.new("Frame")
-buttonContainer.Size = UDim2.new(0.9, 0, 0.2, 0)
-buttonContainer.Position = UDim2.new(0.05, 0, 0.82, 0)
+buttonContainer.Size = UDim2.new(0.9, 0, 0.25, 0)
+buttonContainer.Position = UDim2.new(0.05, 0, 0.7, 0)
 buttonContainer.BackgroundTransparency = 1
 buttonContainer.Parent = mainFrame
 
+local modeButton = Instance.new("TextButton")
+modeButton.Size = UDim2.new(0.45, 0, 0.8, 0)
+modeButton.Position = UDim2.new(0, 0, 0, 0)
+modeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+modeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+modeButton.BorderColor3 = Color3.fromRGB(0, 255, 0)
+modeButton.Text = "切换模式"
+modeButton.Parent = buttonContainer
+
 local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0.45, 0, 1, 0)
+closeButton.Size = UDim2.new(0.45, 0, 0.8, 0)
 closeButton.Position = UDim2.new(0.55, 0, 0, 0)
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-closeButton.BorderColor3 = Color3.fromRGB(255, 0, 0)  -- 红色边框
+closeButton.BorderColor3 = Color3.fromRGB(255, 0, 0)
 closeButton.Text = "关闭系统"
 closeButton.Parent = buttonContainer
 
@@ -91,7 +149,7 @@ closeButton.Parent = buttonContainer
 local dragging = false
 local dragStart, startPos
 
-mainFrame.InputBegan:Connect(function(input)
+titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
@@ -99,67 +157,247 @@ mainFrame.InputBegan:Connect(function(input)
     end
 end)
 
+titleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
         local delta = input.Position - dragStart
-        local newX = math.clamp(startPos.X.Offset + delta.X, 0, workspace.CurrentCamera.ViewportSize.X - mainFrame.AbsoluteSize.X)
-        local newY = math.clamp(startPos.Y.Offset + delta.Y, 0, workspace.CurrentCamera.ViewportSize.Y - mainFrame.AbsoluteSize.Y)
-        
         mainFrame.Position = UDim2.new(
-            0, newX,
-            0, newY
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
         )
     end
 end)
 
--- 按钮功能
+-- 模式切换功能
+modeButton.MouseButton1Click:Connect(function()
+    if tradeMode == "both" then
+        tradeMode = "elixir"
+        modeButton.BorderColor3 = Color3.fromRGB(0, 0, 255)
+    elseif tradeMode == "elixir" then
+        tradeMode = "armor"
+        modeButton.BorderColor3 = Color3.fromRGB(255, 255, 0)
+    else
+        tradeMode = "both"
+        modeButton.BorderColor3 = Color3.fromRGB(0, 255, 0)
+    end
+    infoLabel.Text = "自动交易运行中...\n模式: " .. 
+        (tradeMode == "both" and "丹药+护甲" or 
+         tradeMode == "elixir" and "仅丹药" or 
+         "仅护甲")
+end)
+
+-- 关闭功能
 closeButton.MouseButton1Click:Connect(function()
     running = false
     screenGui:Destroy()
 end)
 
--- 交易监听逻辑
-coroutine.wrap(function()
-    while running do
-        if TimeIndicator.Visible then
-            -- 触发交易请求
-            game:GetService("ReplicatedStorage")
-                :WaitForChild("\228\186\139\228\187\182")
-                :WaitForChild("\229\133\172\231\148\168")
-                :WaitForChild("\228\186\164\230\152\147")
-                :WaitForChild("\231\148\179\232\175\183\228\186\164\230\152\147")
-                :FireServer()
+-- 护甲背包数据搜索函数
+local armorBackpackData = nil
+local function findArmorBackpackData()
+    local BACKPACK_KEYS = {
+        "\232\131\140\229\140\133",
+        string.char(0xe8,0x83,0x8c,0xe5,0x8c,0x85),
+        "背包"
+    }
 
-            -- 第一阶段等待
-            wait(0.5)
+    local function isValidBackpack(tbl)
+        if type(tbl) ~= "table" then return false end
+        for _, item in pairs(tbl) do
+            if type(item) == "table" and item["等级"] and item["类型"] then
+                return true
+            end
+        end
+        return false
+    end
 
-            -- 执行交易操作
-            if elixirData["背包"] then
-                for slot, item in pairs(elixirData["背包"]) do
-                    local itemIndex = item["索引"] or item.Index or item.id
-                    if itemIndex then
-                        addTradeItemEvent:FireServer("丹药", itemIndex, 999999)
-                        print("已发送交易请求:", itemIndex)
+    local function deepFind(t, depth)
+        if depth > 3 then return nil end
+        if type(t) ~= "table" then return nil end
+
+        for _, key in ipairs(BACKPACK_KEYS) do
+            if rawget(t, key) and isValidBackpack(t[key]) then
+                return t[key]
+            end
+        end
+
+        for k,v in pairs(t) do
+            if type(v) == "table" then
+                local found = deepFind(v, depth+1)
+                if found then return found end
+            end
+        end
+
+        return nil
+    end
+
+    local searchMethods = {
+        function()
+            if not getgc then return nil end
+            for _, obj in pairs(getgc(true)) do
+                local found = deepFind(obj, 0)
+                if found then return found end
+            end
+        end,
+        
+        function()
+            local function scan(parent)
+                for _, child in ipairs(parent:GetChildren()) do
+                    if child:IsA("ModuleScript") then
+                        local success, mod = pcall(require, child)
+                        if success then
+                            local found = deepFind(mod, 0)
+                            if found then return found end
+                        end
+                    end
+                    local found = scan(child)
+                    if found then return found end
+                end
+            end
+            return scan(game)
+        end,
+        
+        function()
+            if not getnilinstances then return nil end
+            for _, inst in ipairs(getnilinstances()) do
+                if inst:IsA("ModuleScript") then
+                    local success, mod = pcall(require, inst)
+                    if success then
+                        local found = deepFind(mod, 0)
+                        if found then return found end
                     end
                 end
             end
+        end
+    }
 
-            -- 第二阶段等待
-            wait(0.5)
+    for _, method in ipairs(searchMethods) do
+        local result = method()
+        if result then return result end
+    end
 
-            -- 确认交易
+    return nil
+end
+
+
+-- 护甲交易函数
+local function tradeArmor(index)
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer("\232\163\133\229\164\135", index, 999999)
+    end)
+    
+    if success then
+        print("成功交易护甲:", index)
+    else
+        warn("护甲交易失败:", index, "错误:", err)
+    end
+end
+
+-- 丹药交易函数
+local function tradeElixir(index)
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer("\228\184\185\232\141\175", index, 999999)
+    end)
+    
+    if success then
+        print("成功交易丹药:", index)
+    else
+        warn("丹药交易失败:", index, "错误:", err)
+    end
+end
+
+-- 主交易循环
+coroutine.wrap(function()
+    while running do
+        if TimeIndicator.Visible then
+            -- 获取交易邀请信息
+            local tradeInviteText = ""
             pcall(function()
-                confirmTradeEvent:FireServer(true)
+                tradeInviteText = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\229\159\186\231\161\128"]["\229\128\146\232\174\161\230\151\182\230\161\134"]["\232\131\140\230\153\175"]["\229\134\133\229\174\185"].Text
             end)
+            
+            -- 提取玩家名字
+            local invitingPlayer = tradeInviteText:match("(.+) has invited you to trade")
+            
+            -- 检查玩家是否在白名单中
+            local isAllowed = false
+            if invitingPlayer then
+                for _, allowedPlayer in ipairs(allowedTradePlayers) do
+                    if invitingPlayer:lower() == allowedPlayer:lower() then
+                        isAllowed = true
+                        break
+                    end
+                end
+            end
+            
+            -- 只有白名单玩家才触发交易
+            if isAllowed then
+                -- 触发交易请求
+                pcall(function()
+                    requestTradeEvent:FireServer()
+                end)
+                
+                wait(0.5)
+                
+                -- 根据模式执行交易
+                if tradeMode == "elixir" or tradeMode == "both" then
+                    -- 交易丹药
+                    if elixirData and elixirData["背包"] then
+                        for slot, item in pairs(elixirData["背包"]) do
+                            if type(item) == "table" then
+                                local itemIndex = item["索引"] or item.Index or item.id
+                                if itemIndex then
+                                    tradeElixir(itemIndex)
+                                end
+                            end
+                        end
+                    else
+                        warn("丹药数据未加载或背包为空")
+                    end
+                end
+                
+                if tradeMode == "armor" or tradeMode == "both" then
+                    -- 交易护甲（仅带翅膀ID的）
+                    local backpackData = findArmorBackpackData()
+                    if backpackData then
+                        for _, item in pairs(backpackData) do
+                            -- 新增的翅膀ID检查条件
+                            if item["翅膀ID"] or (type(item.wingId) == "number" and item.wingId > 0) then
+                                local itemIndex = item["索引"] or item.Index or item.id
+                                if itemIndex then
+                                    tradeArmor(itemIndex)
+                                    print("已交易带翅膀护甲:", itemIndex)
+                                end
+                            end
+                        end
+                    else
+                        warn("未找到护甲背包数据")
+                    end
+                end
+                
+                wait(0.5)
+                
+                -- 确认交易
+                pcall(function()
+                    confirmTradeEvent:FireServer(true)
+                end)
 
-            -- 添加额外间隔防止频繁操作
-            wait(0.5)
+                wait(1) -- 交易冷却
+            else
+                if invitingPlayer then
+                    print("收到交易邀请，但玩家不在白名单中:", invitingPlayer)
+                end
+                wait(0.5)
+            end
         else
-            -- 当不可见时降低检测频率
             wait(0.5)
         end
     end
 end)()
 
--- 初始化完成提示
-infoLabel.Text = "自动交易已启动！"
+infoLabel.Text = "自动交易已启动！\n模式: 丹药+护甲"
