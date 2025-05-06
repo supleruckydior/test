@@ -98,7 +98,7 @@ mainFrame.Parent = screenGui
 local titleBar = Instance.new("TextLabel")
 titleBar.Size = UDim2.new(1, 0, 0, 20)
 titleBar.Position = UDim2.new(0, 0, 0, 0)
-titleBar.Text = "自动交易系统 (丹药+护甲)"
+titleBar.Text = "自动交易系统 (丹药+翅膀)"
 titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 titleBar.BorderSizePixel = 0
@@ -118,7 +118,7 @@ local textStroke = Instance.new("UIStroke")
 textStroke.Color = Color3.fromRGB(255, 0, 0)
 textStroke.Thickness = 0.1
 textStroke.Parent = infoLabel
-infoLabel.Text = "自动交易启动中...\n模式: 丹药+护甲"
+infoLabel.Text = "自动交易启动中...\n模式: 丹药+翅膀"
 infoLabel.Parent = mainFrame
 
 local buttonContainer = Instance.new("Frame")
@@ -186,9 +186,9 @@ modeButton.MouseButton1Click:Connect(function()
         modeButton.BorderColor3 = Color3.fromRGB(0, 255, 0)
     end
     infoLabel.Text = "自动交易运行中...\n模式: " .. 
-        (tradeMode == "both" and "丹药+护甲" or 
+        (tradeMode == "both" and "丹药+翅膀" or 
          tradeMode == "elixir" and "仅丹药" or 
-         "仅护甲")
+         "仅翅膀")
 end)
 
 -- 关闭功能
@@ -197,7 +197,7 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- 护甲背包数据搜索函数
+-- 翅膀背包数据搜索函数
 local armorBackpackData = nil
 local function findArmorBackpackData()
     local BACKPACK_KEYS = {
@@ -285,16 +285,16 @@ local function findArmorBackpackData()
 end
 
 
--- 护甲交易函数
+-- 翅膀交易函数
 local function tradeArmor(index)
     local success, err = pcall(function()
         addTradeItemEvent:FireServer("\232\163\133\229\164\135", index, 999999)
     end)
     
     if success then
-        print("成功交易护甲:", index)
+        print("成功交易翅膀:", index)
     else
-        warn("护甲交易失败:", index, "错误:", err)
+        warn("翅膀交易失败:", index, "错误:", err)
     end
 end
 
@@ -362,7 +362,7 @@ coroutine.wrap(function()
                 end
                 
                 if tradeMode == "armor" or tradeMode == "both" then
-                    -- 交易护甲（仅带翅膀ID的）
+                    -- 交易翅膀（仅带翅膀ID的）
                     local backpackData = findArmorBackpackData()
                     if backpackData then
                         for _, item in pairs(backpackData) do
@@ -371,12 +371,12 @@ coroutine.wrap(function()
                                 local itemIndex = item["索引"] or item.Index or item.id
                                 if itemIndex then
                                     tradeArmor(itemIndex)
-                                    print("已交易带翅膀护甲:", itemIndex)
+                                    print("已交易翅膀:", itemIndex)
                                 end
                             end
                         end
                     else
-                        warn("未找到护甲背包数据")
+                        warn("未找到翅膀背包数据")
                     end
                 end
                 
@@ -400,4 +400,4 @@ coroutine.wrap(function()
     end
 end)()
 
-infoLabel.Text = "自动交易已启动！\n模式: 丹药+护甲"
+infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀"
