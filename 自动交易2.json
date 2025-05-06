@@ -342,7 +342,6 @@ coroutine.wrap(function()
                     requestTradeEvent:FireServer()
                 end)
                 
-                wait(1)
                 
                 -- 根据模式执行交易
                 if tradeMode == "elixir" or tradeMode == "both" then
