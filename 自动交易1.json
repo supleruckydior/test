@@ -1,6 +1,7 @@
--- 完整手动控制交易脚本 v2.0
+-- 完整手动控制交易脚本 v2.2 (带拖动和关闭按钮)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
 -- 保留原始转义路径
@@ -17,8 +18,8 @@ local ConfirmTrade = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182"
 -- 配置参数
 local SETTINGS = {
     RequestInterval = 7,   -- 请求间隔（秒）
-    ConfirmDelay = 2,        -- 确认延迟（秒）
-    MaxRetries = 3           -- 最大重试次数
+    ConfirmDelay = 2,      -- 确认延迟（秒）
+    MaxRetries = 3         -- 最大重试次数
 }
 
 -- 状态控制
@@ -126,17 +127,45 @@ local function createControlPanel()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = player:WaitForChild("PlayerGui")
 
+    -- 主框架（增加高度以适应内容）
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 240, 0, 120)
-    frame.Position = UDim2.new(0.5, -120, 0, 20)
+    frame.Size = UDim2.new(0, 240, 0, 140)  -- 高度增加到140
+    frame.Position = UDim2.new(1, -250, 1, -150) -- 右下角位置
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BorderSizePixel = 0
     frame.Parent = screenGui
 
+    -- 标题栏（用于拖动）
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 25)  -- 高度增加到25
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    titleBar.BorderSizePixel = 0
+    titleBar.Active = true
+    titleBar.Parent = frame
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(0.8, 0, 1, 0)
+    titleLabel.Position = UDim2.new(0.05, 0, 0, 0)
+    titleLabel.Text = "自动交易控制面板"
+    titleLabel.TextColor3 = Color3.new(1,1,1)
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Parent = titleBar
+
+    -- 关闭按钮
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0.15, 0, 0.8, 0)
+    closeButton.Position = UDim2.new(0.85, 0, 0.1, 0)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.new(1,1,1)
+    closeButton.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+    closeButton.Parent = titleBar
+
     -- 控制按钮
     local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0.9, 0, 0.4, 0)
-    toggleBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
+    toggleBtn.Size = UDim2.new(0.9, 0, 0.35, 0)
+    toggleBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
     toggleBtn.Text = "▶ 启动自动交易"
     toggleBtn.TextColor3 = Color3.new(1,1,1)
     toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
@@ -144,8 +173,8 @@ local function createControlPanel()
 
     -- 状态显示
     local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(0.9, 0, 0.3, 0)
-    statusLabel.Position = UDim2.new(0.05, 0, 0.5, 0)
+    statusLabel.Size = UDim2.new(0.9, 0, 0.25, 0)
+    statusLabel.Position = UDim2.new(0.05, 0, 0.65, 0)
     statusLabel.Text = "状态：未启动"
     statusLabel.TextColor3 = Color3.new(0.9,0.9,0.9)
     statusLabel.BackgroundTransparency = 1
@@ -154,13 +183,56 @@ local function createControlPanel()
     -- 玩家计数
     local countLabel = Instance.new("TextLabel")
     countLabel.Size = UDim2.new(0.9, 0, 0.2, 0)
-    countLabel.Position = UDim2.new(0.05, 0, 0.8, 0)
+    countLabel.Position = UDim2.new(0.05, 0, 0.85, 0)
     countLabel.Text = "可交易玩家：0"
     countLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
     countLabel.BackgroundTransparency = 1
     countLabel.Parent = frame
 
-    -- 按钮点击事件
+    -- 拖动功能
+    local dragging = false
+    local dragStart, startPos
+
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+
+    titleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    -- 关闭按钮事件
+    closeButton.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+        debugLog("控制面板已关闭")
+        
+        -- 如果正在交易则停止
+        if isTrading then
+            isTrading = false
+            if currentCoroutine then
+                coroutine.close(currentCoroutine)
+                debugLog("交易已停止")
+            end
+        end
+    end)
+
+    -- 控制按钮事件
     toggleBtn.MouseButton1Click:Connect(function()
         isTrading = not isTrading
         toggleBtn.Text = isTrading and "⏹ 停止交易" or "▶ 启动交易"
