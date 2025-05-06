@@ -18,7 +18,7 @@ local ConfirmTrade = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182"
 -- 配置参数
 local SETTINGS = {
     RequestInterval = 8,   -- 请求间隔（秒）
-    ConfirmDelay = 0.1,      -- 确认延迟（秒）
+    ConfirmDelay = 2,      -- 确认延迟（秒）
     MaxRetries = 3         -- 最大重试次数
 }
 
@@ -75,13 +75,26 @@ local function safeTrade(target)
         end
 
         -- 确认交易
-        local success2, err2 = pcall(function()
-            task.wait(SETTINGS.ConfirmDelay)
-            ConfirmTrade:FireServer(true)
-            debugLog("确认发送成功")
-            table.insert(tradedPlayers, target.UserId)
-            return true
-        end)
+-- 确认交易
+local success2, err2 = pcall(function()
+    -- 等待交易界面可见
+    local maxWaitTime = 5  -- 最大等待时间(秒)
+    local startTime = os.time()
+    local tradeUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]
+    
+    while not tradeUI.Visible and (os.time() - startTime) < maxWaitTime do
+        task.wait(0.1)
+    end
+    
+    if not tradeUI.Visible then
+        error("交易界面未在"..maxWaitTime.."秒内显示")
+    end
+    
+    ConfirmTrade:FireServer(true)
+    debugLog("确认发送成功")
+    table.insert(tradedPlayers, target.UserId)
+    return true
+end)
 
         if success2 then return true end
         debugLog("确认失败: "..err2)
