@@ -1,39 +1,4 @@
--- 在代码开头部分添加玩家白名单
-local allowedTradePlayers = {
-    "superbroly",
-    "supluckydior6",
-    "6Wuzun9",
-    "supluckydior",
-    "airenlea",
-    "pochen01",
-    "pochen02",
-    "xiaobai1314567",
-    "xiaobai13456",
-    "supluckydior4",
-    "xiaobai134567",
-    "xiaobai1345678",
-    "xiaobai13456789",
-    "superluckyfarms15",
-    "superluckyfarms7",
-    "supluckfarm1",
-    "supluckfarm19",
-    "supluckfarm27",
-    "supluckfarm8",
-    "supluckfarm9",
-    "supluckyfarm18",
-    "supluckyfarm3",
-    "supluckyfarm36",
-    "supluckyfarm69",
-    "supluckyvault",
-    "xiaobai1314567777",
-    "xiaobai13145678888",
-    "xiaobai134566",
-    "xiaobai1345677",
-    "xiaobai134567888888",
-    "superluckfarm38",
-    "superluckfarm47"
-    -- 可以在这里添加更多允许交易的玩家名字
-}
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
