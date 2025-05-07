@@ -20,8 +20,6 @@ function mainmissionchack()
     end
 end
 
--- 启动函数
-mainmissionchack()
 -- ========================================================================== --
 -- 每日任務
 function everydaymission()
