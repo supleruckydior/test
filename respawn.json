@@ -9,16 +9,12 @@ local gamepassgiftnnamelist = playerGui.GUI:WaitForChild("二级界面"):WaitFor
 -- ================================================================== --
 -- 主線任務
 function mainmissionchack()
-    while true do
-        local mainmission = playerGui.GUI:WaitForChild("主界面"):WaitForChild("主城"):WaitForChild("主线任务"):WaitForChild("按钮"):WaitForChild("提示").Visible 
-        if mainmission == true then
-            print("任務完成，可領取")
-            game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\228\184\187\231\186\191\228\187\187\229\138\161"):FindFirstChild("\233\162\134\229\143\150\229\165\150\229\138\177"):FireServer()
-        end
-        wait(1) -- 添加延迟，避免过于频繁的检查
+    mainmission = playerGui.GUI:WaitForChild("主界面"):WaitForChild("主城"):WaitForChild("主线任务"):WaitForChild("按钮"):WaitForChild("提示").Visible 
+    if mainmission == true then
+        print("任務完成，可領取")
+        game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\228\184\187\231\186\191\228\187\187\229\138\161"):FindFirstChild("\233\162\134\229\143\150\229\165\150\229\138\177"):FireServer()
     end
 end
-
 -- ========================================================================== --
 -- 每日任務
 function everydaymission()
