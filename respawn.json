@@ -172,19 +172,23 @@ function everydaygem()
 end
 
 function dailyspin()
+    spawn(function()
         local spin = game:GetService("ReplicatedStorage")
             :WaitForChild("\228\186\139\228\187\182")
             :WaitForChild("\229\133\172\231\148\168")
             :WaitForChild("\232\189\172\231\155\152")
             :WaitForChild("\230\138\189\229\165\150")
 
- for i = 1, 6 do
-        spin:FireServer()
-    end
-for i = 100, 1, -1 do 
-game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\233\130\174\228\187\182"):WaitForChild("\233\162\134\229\143\150\233\130\174\228\187\182"):FireServer(i)
-end
+        for i = 1, 6 do
+            spin:FireServer()
+        end
+        
+        for i = 100, 1, -1 do 
+            game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\233\130\174\228\187\182"):WaitForChild("\233\162\134\229\143\150\233\130\174\228\187\182"):FireServer(i)
+        end
+        
         task.wait(300)
+    end)
 end
 
 --[[
