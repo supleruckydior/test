@@ -161,90 +161,7 @@ end)
 
 -- 翅膀背包数据搜索函数
 local armorBackpackData = nil
-local function findArmorBackpackData()
-    local BACKPACK_KEYS = {
-        "\232\131\140\229\140\133",
-        string.char(0xe8,0x83,0x8c,0xe5,0x8c,0x85),
-        "背包"
-    }
 
-    local function isValidBackpack(tbl)
-        if type(tbl) ~= "table" then return false end
-        for _, item in pairs(tbl) do
-            if type(item) == "table" and item["等级"] and item["类型"] then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function deepFind(t, depth)
-        if depth > 3 then return nil end
-        if type(t) ~= "table" then return nil end
-
-        for _, key in ipairs(BACKPACK_KEYS) do
-            if rawget(t, key) and isValidBackpack(t[key]) then
-                return t[key]
-            end
-        end
-
-        for k,v in pairs(t) do
-            if type(v) == "table" then
-                local found = deepFind(v, depth+1)
-                if found then return found end
-            end
-        end
-
-        return nil
-    end
-
-    local searchMethods = {
-        function()
-            if not getgc then return nil end
-            for _, obj in pairs(getgc(true)) do
-                local found = deepFind(obj, 0)
-                if found then return found end
-            end
-        end,
-        
-        function()
-            local function scan(parent)
-                for _, child in ipairs(parent:GetChildren()) do
-                    if child:IsA("ModuleScript") then
-                        local success, mod = pcall(require, child)
-                        if success then
-                            local found = deepFind(mod, 0)
-                            if found then return found end
-                        end
-                    end
-                    local found = scan(child)
-                    if found then return found end
-                end
-            end
-            return scan(game)
-        end,
-        
-        function()
-            if not getnilinstances then return nil end
-            for _, inst in ipairs(getnilinstances()) do
-                if inst:IsA("ModuleScript") then
-                    local success, mod = pcall(require, inst)
-                    if success then
-                        local found = deepFind(mod, 0)
-                        if found then return found end
-                    end
-                end
-            end
-        end
-    }
-
-    for _, method in ipairs(searchMethods) do
-        local result = method()
-        if result then return result end
-    end
-
-    return nil
-end
 
 -- 翅膀交易函数
 local function tradeArmor(index)
@@ -340,7 +257,7 @@ coroutine.wrap(function()
                 
                 if tradeMode == "armor" or tradeMode == "both" then
                     -- 交易翅膀（仅带翅膀ID的）
-                    local backpackData = findArmorBackpackData()
+                    local backpackData = {}
                     if backpackData then
                         for _, item in pairs(backpackData) do
                             -- 新增的翅膀ID检查条件
@@ -380,7 +297,7 @@ coroutine.wrap(function()
     end
 end)()
 
-infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.3"
+infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.4"
 wait(0.6)
 local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
     :FindFirstChild("\229\133\172\231\148\168")
