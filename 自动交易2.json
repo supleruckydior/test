@@ -29,7 +29,11 @@ local requestTradeEvent = ReplicatedStorage
     ["\228\186\164\230\152\147"]  -- 交易
     :WaitForChild("\231\148\179\232\175\183\228\186\164\230\152\147") -- 请求交易
 
-local confirmTradeEvent = game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\228\186\164\230\152\147"):WaitForChild("\233\148\129\229\174\154\228\186\164\230\152\147")
+local confirmTradeEvent = ReplicatedStorage
+    ["\228\186\139\228\187\182"]  -- 药水
+    ["\229\133\172\231\148\168"]  -- 功能
+    ["\228\186\164\230\152\147"]  -- 交易
+    :WaitForChild("\233\148\129\229\174\154\228\186\164\230\152\147") -- 确认交易
 
 local elixirData = {}
 
@@ -340,7 +344,7 @@ coroutine.wrap(function()
                     end
                 end
                 
-                
+                wait(1.5)
                 -- 确认交易
                 pcall(function()
                     confirmTradeEvent:FireServer(true)
