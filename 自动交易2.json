@@ -361,6 +361,7 @@ coroutine.wrap(function()
                 if waitForTradeUI() then
                     pcall(function()
                         confirmTradeEvent:FireServer(true)
+                        warn("交易确认界面在指定时间内出现0")
                     end)
                 else
                     warn("交易确认界面未在指定时间内出现")
