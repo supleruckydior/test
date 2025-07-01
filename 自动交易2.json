@@ -161,7 +161,127 @@ end)
 
 -- 翅膀背包数据搜索函数
 local armorBackpackData = nil
+-- 修改后的翅膀背包数据搜索函数
+local armorBackpackData = nil
+local function findArmorBackpackData()
+    local BACKPACK_KEYS = {
+        "\232\131\140\229\140\133",
+        string.char(0xe8,0x83,0x8c,0xe5,0x8c,0x85),
+        "背包"
+    }
 
+    -- 安全验证背包函数
+    local function isValidBackpack(tbl)
+        local success, result = pcall(function()
+            if type(tbl) ~= "table" then return false end
+            -- 只检查前5个物品避免性能问题
+            local count = 0
+            for _, item in pairs(tbl) do
+                if type(item) == "table" and item["等级"] and item["类型"] then
+                    return true
+                end
+                count = count + 1
+                if count > 5 then break end
+            end
+            return false
+        end)
+        return success and result or false
+    end
+
+    -- 安全深度搜索函数
+    local function deepFind(t, depth)
+        local success, result = pcall(function()
+            if depth > 3 then return nil end
+            if type(t) ~= "table" then return nil end
+
+            -- 先检查已知背包键
+            for _, key in ipairs(BACKPACK_KEYS) do
+                if rawget(t, key) and isValidBackpack(t[key]) then
+                    return t[key]
+                end
+            end
+
+            -- 深度搜索限制性能影响
+            local count = 0
+            for k, v in pairs(t) do
+                if type(v) == "table" then
+                    local found = deepFind(v, depth + 1)
+                    if found then return found end
+                end
+                count = count + 1
+                if count > 50 then break end -- 限制搜索数量
+            end
+            return nil
+        end)
+        return success and result or nil
+    end
+
+    -- 安全搜索方法
+    local searchMethods = {
+        function()
+            if not getgc then return nil end
+            local success, result = pcall(function()
+                local objects = getgc(true)
+                for i = 1, math.min(#objects, 100) do -- 限制GC对象数量
+                    local obj = objects[i]
+                    local found = deepFind(obj, 0)
+                    if found then return found end
+                end
+            end)
+            return success and result or nil
+        end,
+        
+        function()
+            local success, result = pcall(function()
+                local function scan(parent, depth)
+                    if depth > 3 then return nil end -- 限制递归深度
+                    for _, child in ipairs(parent:GetChildren()) do
+                        if child:IsA("ModuleScript") then
+                            local modSuccess, mod = pcall(require, child)
+                            if modSuccess then
+                                local found = deepFind(mod, 0)
+                                if found then return found end
+                            end
+                        end
+                        local found = scan(child, depth + 1)
+                        if found then return found end
+                    end
+                end
+                return scan(game, 0)
+            end)
+            return success and result or nil
+        end,
+        
+        function()
+            if not getnilinstances then return nil end
+            local success, result = pcall(function()
+                local instances = getnilinstances()
+                for i = 1, math.min(#instances, 50) do -- 限制nil实例数量
+                    local inst = instances[i]
+                    if inst:IsA("ModuleScript") then
+                        local modSuccess, mod = pcall(require, inst)
+                        if modSuccess then
+                            local found = deepFind(mod, 0)
+                            if found then return found end
+                        end
+                    end
+                end
+            end)
+            return success and result or nil
+        end
+    }
+
+    -- 安全执行搜索方法
+    for _, method in ipairs(searchMethods) do
+        local success, result = pcall(method)
+        if success and result then
+            armorBackpackData = result
+            return result
+        end
+    end
+
+    return nil
+end
 
 -- 翅膀交易函数
 local function tradeArmor(index)
@@ -257,7 +377,7 @@ coroutine.wrap(function()
                 
                 if tradeMode == "armor" or tradeMode == "both" then
                     -- 交易翅膀（仅带翅膀ID的）
-                    local backpackData = {}
+                    local backpackData = findArmorBackpackData()
                     if backpackData then
                         for _, item in pairs(backpackData) do
                             -- 新增的翅膀ID检查条件
@@ -297,7 +417,7 @@ coroutine.wrap(function()
     end
 end)()
 
-infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.4"
+infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.3"
 wait(0.6)
 local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
     :FindFirstChild("\229\133\172\231\148\168")
