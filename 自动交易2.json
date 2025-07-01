@@ -1,9 +1,10 @@
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local UserInputService = game:GetService("UserInputService")
+
+
 
 -- 等待界面加载完成
 local GUI = PlayerGui:WaitForChild("GUI")
@@ -245,7 +246,6 @@ local function findArmorBackpackData()
     return nil
 end
 
-
 -- 翅膀交易函数
 local function tradeArmor(index)
     local success, err = pcall(function()
@@ -270,6 +270,24 @@ local function tradeElixir(index)
     else
         warn("丹药交易失败:", index, "错误:", err)
     end
+end
+
+-- 等待交易界面可见
+local function waitForTradeUI()
+    local startTime = tick()
+    local maxWaitTime = 10 -- 最大等待时间5秒
+    
+    while tick() - startTime < maxWaitTime and running do
+        local success, tradeUI = pcall(function()
+            return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]["\228\186\164\230\152\147\231\149\140\233\157\162"]
+        end)
+        
+        if success and tradeUI and tradeUI.Visible then
+            return true
+        end
+        wait(0.1)
+    end
+    return false
 end
 
 -- 主交易循环
@@ -302,7 +320,6 @@ coroutine.wrap(function()
                 pcall(function()
                     requestTradeEvent:FireServer()
                 end)
-                
                 
                 -- 根据模式执行交易
                 if tradeMode == "elixir" or tradeMode == "both" then
@@ -340,11 +357,14 @@ coroutine.wrap(function()
                     end
                 end
                 
-                wait(3)
-                -- 确认交易
-                pcall(function()
-                    confirmTradeEvent:FireServer(true)
-                end)
+                -- 等待交易界面可见后确认交易
+                if waitForTradeUI() then
+                    pcall(function()
+                        confirmTradeEvent:FireServer(true)
+                    end)
+                else
+                    warn("交易确认界面未在指定时间内出现")
+                end
 
                 wait(1) -- 交易冷却
             else
@@ -359,10 +379,10 @@ coroutine.wrap(function()
     end
 end)()
 
-infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.1"
+infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.3"
 wait(0.6)
-            local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
-                :FindFirstChild("\229\133\172\231\148\168")
-                :FindFirstChild("\231\130\188\228\184\185")
-                :FindFirstChild("\229\136\182\228\189\156")
-                elixirEvent:FireServer()
+local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+    :FindFirstChild("\229\133\172\231\148\168")
+    :FindFirstChild("\231\130\188\228\184\185")
+    :FindFirstChild("\229\136\182\228\189\156")
+elixirEvent:FireServer()
