@@ -1,22 +1,4 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local UserInputService = game:GetService("UserInputService")
 
-
-
--- 等待界面加载完成
-local GUI = PlayerGui:WaitForChild("GUI")
-local BaseUI = GUI:WaitForChild("\229\159\186\231\161\128")
-local TimeIndicator = BaseUI:WaitForChild("\229\128\146\232\174\161\230\151\182\230\161\134")
-
--- 获取事件对象
-local elixirSyncEvent = ReplicatedStorage
-    ["\228\186\139\228\187\182"]          -- 药水
-    ["\229\174\162\230\136\183\231\171\175"] -- 同步模块
-    ["\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175"] -- 同步控制器
-    ["\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150"] -- 数据更新事件
 
 local addTradeItemEvent = ReplicatedStorage
     ["\228\186\139\228\187\182"]  -- 药水
