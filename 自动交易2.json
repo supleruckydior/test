@@ -237,10 +237,12 @@ coroutine.wrap(function()
                 pcall(function()
                     requestTradeEvent:FireServer()
                 end)
+wait(2)
                 local core = tonumber(game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]["\228\186\164\230\152\147\231\149\140\233\157\162"]["\230\136\145\231\154\132\232\131\140\229\140\133"]["\232\180\167\229\184\129"]["\231\190\189\230\160\184"]["\229\128\188"].Text)
                     
 
 game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\228\186\164\230\152\147"):WaitForChild("\228\186\164\230\152\147\231\190\189\230\160\184"):FireServer(core)
+wait(1)
                 -- 根据模式执行交易
                 if tradeMode == "elixir" or tradeMode == "both" then
                     -- 交易丹药
