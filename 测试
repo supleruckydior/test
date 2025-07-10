@@ -1,0 +1,103 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+-- 获取数据同步事件
+local dataSyncEvent = ReplicatedStorage
+    ["\228\186\139\228\187\182"]          -- 药水
+    ["\229\174\162\230\136\183\231\171\175"] -- 同步模块
+    ["\229\174\162\230\136\183\231\171\175\233\152\181\230\179\149"] -- 符石同步控制器
+    ["\233\152\181\230\179\149\230\149\176\230\141\174\229\143\152\229\140\150"] -- 数据更新事件
+
+-- 监听数据更新
+dataSyncEvent.Event:Connect(function(data)
+    -- 解析数据
+    local runesData = data["背包"]
+    
+    -- 用于记录需要出售的索引和相关信息
+    local runesToSell = {}
+    
+    -- 遍历每个符石
+    for _, rune in ipairs(runesData) do
+        local index = rune["索引"]
+        local runeType = tonumber(rune["类型"]) or 0  -- 确保是数字类型
+        local attributes = rune["属性"]
+        
+        -- 统计属性数量
+        local goldCount = 0
+        local critCount = 0
+        local expCount = 0
+        
+        for _, attribute in ipairs(attributes) do
+            local name = attribute["名称"]
+            if name == "金币额外获取" then
+                goldCount = goldCount + 1
+            elseif name == "暴击概率" then
+                critCount = critCount + 1
+            elseif name == "经验额外获取" then
+                expCount = expCount + 1
+            end
+        end
+        
+        -- 1. 所有符石，三项都不达标的出售
+        if goldCount < 3 and expCount < 3 and critCount < 3 then
+            table.insert(runesToSell, {
+                index = index,
+                type = runeType,
+                gold = goldCount,
+                exp = expCount,
+                crit = critCount,
+                reason = "三项不达标"
+            })
+        end
+        
+        -- 2. 类型2/3/5且暴击≥3且其他两项不达标的出售
+        if (runeType == 2 or runeType == 3 or runeType == 5) and 
+           critCount >= 3 and goldCount < 3 and expCount < 3 then
+            
+            local exists = false
+            for _, r in ipairs(runesToSell) do
+                if r.index == index then exists = true; break end
+            end
+            
+            if not exists then
+                table.insert(runesToSell, {
+                    index = index,
+                    type = runeType,
+                    gold = goldCount,
+                    exp = expCount,
+                    crit = critCount,
+                    reason = "类型"..runeType.."暴击过多"
+                })
+            end
+        end
+    end
+    
+    -- 执行出售操作
+    for _, rune in ipairs(runesToSell) do
+        local args = {[1] = {[rune.index] = true}}
+        
+        game:GetService("ReplicatedStorage")
+            :FindFirstChild("\228\186\139\228\187\182")
+            :FindFirstChild("\229\133\172\231\148\168")
+            :FindFirstChild("\233\152\181\230\179\149")
+            :FindFirstChild("\229\135\186\229\148\174")
+            :FireServer(unpack(args))
+        
+    end
+    
+    print("出售完成，共处理 "..#runesToSell.." 个符石")
+end)
+
+-- 手动触发数据同步
+local function triggerSync()
+    local openEvent = ReplicatedStorage
+        ["\228\186\139\228\187\182"]
+        ["\229\174\162\230\136\183\231\171\175"]
+        ["\229\174\162\230\136\183\231\171\175UI"]
+        ["\230\137\147\229\188\128\233\152\181\230\179\149\231\130\137"]
+    
+
+
+-- 初始化
+triggerSync()
+print("符石自动出售脚本已加载 - 最终版")
