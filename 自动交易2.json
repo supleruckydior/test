@@ -281,7 +281,7 @@ local core = tonumber(game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228
                     
 
 game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\228\186\164\230\152\147"):WaitForChild("\228\186\164\230\152\147\231\190\189\230\160\184"):FireServer(core)
-
+wait(0.5)
                         confirmTradeEvent:FireServer(true)
                         warn("交易确认界面在指定时间内出现0")
                     end)
@@ -302,7 +302,7 @@ game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):Wa
     end
 end)()
 
-infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.6"
+infoLabel.Text = "自动交易已启动！\n模式: 丹药+翅膀 V1.6.1"
 wait(0.6)
 local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
     :FindFirstChild("\229\133\172\231\148\168")
