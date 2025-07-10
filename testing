@@ -84,20 +84,5 @@ dataSyncEvent.Event:Connect(function(data)
             :FireServer(unpack(args))
         
     end
-    
-    print("出售完成，共处理 "..#runesToSell.." 个符石")
+
 end)
-
--- 手动触发数据同步
-local function triggerSync()
-    local openEvent = ReplicatedStorage
-        ["\228\186\139\228\187\182"]
-        ["\229\174\162\230\136\183\231\171\175"]
-        ["\229\174\162\230\136\183\231\171\175UI"]
-        ["\230\137\147\229\188\128\233\152\181\230\179\149\231\130\137"]
-    
-
-
--- 初始化
-triggerSync()
-print("符石自动出售脚本已加载 - 最终版")
