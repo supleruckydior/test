@@ -277,6 +277,11 @@ coroutine.wrap(function()
                 -- 等待交易界面可见后确认交易
                 if waitForTradeUI() then
                     pcall(function()
+local args = {
+	50
+}
+game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\228\186\164\230\152\147"):WaitForChild("\228\186\164\230\152\147\231\190\189\230\160\184"):FireServer(unpack(args))
+
                         confirmTradeEvent:FireServer(true)
                         warn("交易确认界面在指定时间内出现0")
                     end)
