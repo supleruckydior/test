@@ -29,10 +29,10 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- 主框架 - 修正位置问题
+-- 主框架 - 根据您的要求调整
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 320, 0, 380)  -- 手机适配尺寸
-mainFrame.Position = UDim2.new(0.5, -160, 0.4, -190)  -- 修正位置：Y轴从0.5改为0.4，使其更靠下
+mainFrame.Size = UDim2.new(0.5, 0, 0, 380) -- 宽度50%，高度380像素
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0) -- 居中
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 mainFrame.BorderSizePixel = 0
@@ -56,11 +56,11 @@ foldButton.Parent = titleBar
 foldButton.Name = "FoldButton"
 
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师 v1.3"
+title.Text = "丹药交易大师 v1.0"
 title.Size = UDim2.new(1, -80, 1, 0)  -- 调整位置
 title.Position = UDim2.new(0, 40, 0, 0)  -- 为折叠按钮腾空间
 title.Font = Enum.Font.SourceSansBold
-title.TextSize = 18  -- 手机适配减小字体
+title.TextSize = 18
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundTransparency = 1
 title.Parent = titleBar
@@ -71,7 +71,7 @@ closeButton.Text = "X"
 closeButton.Size = UDim2.new(0, 40, 1, 0)
 closeButton.Position = UDim2.new(1, -40, 0, 0)
 closeButton.Font = Enum.Font.SourceSansBold
-closeButton.TextSize = 18  -- 手机适配减小字体
+closeButton.TextSize = 18
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeButton.Parent = titleBar
@@ -79,10 +79,10 @@ closeButton.Parent = titleBar
 -- 总点数显示
 local totalPointsLabel = Instance.new("TextLabel")
 totalPointsLabel.Text = "全部丹药总点数: 计算中..."
-totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 25)  -- 手机适配减小高度
-totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 40)  -- 手机适配调整位置
+totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 25)
+totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 40)
 totalPointsLabel.Font = Enum.Font.SourceSansSemibold
-totalPointsLabel.TextSize = 16  -- 手机适配减小字体
+totalPointsLabel.TextSize = 16
 totalPointsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 totalPointsLabel.BackgroundTransparency = 1
 totalPointsLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -93,17 +93,17 @@ local inputFrames = {}
 local pointsLabels = {}
 for i = 1, 5 do
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.9, 0, 0, 50)  -- 手机适配减小高度
-    frame.Position = UDim2.new(0.05, 0, 0, 65 + (i-1)*55)  -- 手机适配调整位置和间距
+    frame.Size = UDim2.new(0.9, 0, 0, 50)
+    frame.Position = UDim2.new(0.05, 0, 0, 65 + (i-1)*55)
     frame.BackgroundTransparency = 1
     frame.Parent = mainFrame
     
     local typeLabel = Instance.new("TextLabel")
     typeLabel.Text = elixirTypes[i].."丹药:"
-    typeLabel.Size = UDim2.new(0.3, 0, 0, 20)  -- 手机适配减小高度
+    typeLabel.Size = UDim2.new(0.3, 0, 0, 20)
     typeLabel.Position = UDim2.new(0, 0, 0, 0)
     typeLabel.Font = Enum.Font.SourceSansSemibold
-    typeLabel.TextSize = 14  -- 手机适配减小字体
+    typeLabel.TextSize = 14
     typeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
     typeLabel.TextXAlignment = Enum.TextXAlignment.Left
     typeLabel.BackgroundTransparency = 1
@@ -112,25 +112,25 @@ for i = 1, 5 do
     local pointsLabel = Instance.new("TextLabel")
     pointsLabel.Name = "Points_"..i
     pointsLabel.Text = "总点数: 0"
-    pointsLabel.Size = UDim2.new(0.7, 0, 0, 20)  -- 手机适配减小高度
+    pointsLabel.Size = UDim2.new(0.7, 0, 0, 20)
     pointsLabel.Position = UDim2.new(0.3, 0, 0, 0)
     pointsLabel.Font = Enum.Font.SourceSans
-    pointsLabel.TextSize = 12  -- 手机适配减小字体
+    pointsLabel.TextSize = 12
     pointsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     pointsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    pointsLabel.BackgroundTransparency = 1
+    pointsLabel.BackgroundTransparency = 极极
     pointsLabel.Parent = frame
     pointsLabels[i] = pointsLabel
     
     local textBox = Instance.new("TextBox")
     textBox.Name = "Input_"..i
-    textBox.Size = UDim2.new(1, 0, 0, 25)  -- 手机适配减小高度
-    textBox.Position = UDim2.new(0, 0, 0, 20)  -- 手机适配调整位置
+    textBox.Size = UDim2.new(1, 0, 0, 25)
+    textBox.Position = UDim2.new(0, 0, 0, 20)
     textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     textBox.TextColor3 = Color3.new(1, 1, 1) 
     textBox.PlaceholderText = "输入"..elixirTypes[i].."丹药需求点数"
-    textBox.Text = ""
-    textBox.TextSize = 14  -- 手机适配减小字体
+    text极极
+    textBox.TextSize = 14
     textBox.Parent = frame
     
     inputFrames[i] = textBox
@@ -138,9 +138,9 @@ for i = 1, 5 do
     local exampleLabel = Instance.new("TextLabel")
     exampleLabel.Text = "示例: 输入1000自动计算最优组合"
     exampleLabel.Size = UDim2.new(1, 0, 0, 15)
-    exampleLabel.Position = UDim2.new(0, 0, 0, 45)  -- 手机适配调整位置
+    exampleLabel.Position = UDim2.new(0, 0, 0, 45)
     exampleLabel.Font = Enum.Font.SourceSans
-    exampleLabel.TextSize = 11  -- 手机适配减小字体
+    exampleLabel.TextSize = 11
     exampleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
     exampleLabel.TextXAlignment = Enum.TextXAlignment.Left
     exampleLabel.BackgroundTransparency = 1
@@ -149,18 +149,18 @@ end
 
 -- 按钮区域
 local buttonFrame = Instance.new("Frame")
-buttonFrame.Size = UDim2.new(0.9, 0, 0, 60)  -- 手机适配减小高度
-buttonFrame.Position = UDim2.new(0.05, 0, 0, 65 + 5*55)  -- 手机适配调整位置
+buttonFrame.Size = UDim2.new(0.9, 0, 0, 60)
+buttonFrame.Position = UDim2.new(0.05, 0, 0, 65 + 5*55)
 buttonFrame.BackgroundTransparency = 1
 buttonFrame.Parent = mainFrame
 
 -- 刷新按钮
 local refreshButton = Instance.new("TextButton")
 refreshButton.Text = "刷新丹药数据"
-refreshButton.Size = UDim2.new(0.45, 0, 0, 30)  -- 手机适配减小高度
+refreshButton.Size = UDim2.new(0.45, 0, 0, 30)
 refreshButton.Position = UDim2.new(0, 0, 0, 0)
 refreshButton.Font = Enum.Font.SourceSansBold
-refreshButton.TextSize = 14  -- 手机适配减小字体
+refreshButton.TextSize = 14
 refreshButton.TextColor3 = Color3.new(1, 1, 1) 
 refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
 refreshButton.Parent = buttonFrame
@@ -168,10 +168,10 @@ refreshButton.Parent = buttonFrame
 -- 交易按钮
 local tradeButton = Instance.new("TextButton")
 tradeButton.Text = "放入交易丹药"
-tradeButton.Size = UDim2.new(0.45, 0, 0, 30)  -- 手机适配减小高度
+tradeButton.Size = UDim2.new(0.45, 0, 0, 30)
 tradeButton.Position = UDim2.new(0.55, 0, 0, 0)
 tradeButton.Font = Enum.Font.SourceSansBold
-tradeButton.TextSize = 14  -- 手机适配减小字体
+tradeButton.TextSize = 14
 tradeButton.TextColor3 = Color3.new(1, 1, 1) 
 tradeButton.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
 tradeButton.Parent = buttonFrame
@@ -179,15 +179,14 @@ tradeButton.Parent = buttonFrame
 -- 状态显示
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Text = "系统就绪，等待操作..."
-statusLabel.Size = UDim2.new(0.9, 0, 0, 35)  -- 手机适配减小高度
-statusLabel.Position = UDim2.new(0.05, 0, 0, 65 + 5*55 + 65)  -- 手机适配调整位置
+statusLabel.Size = UDim2.new(0.9, 0, 0, 35)
+statusLabel.Position = UDim2.new(0.05, 0, 0, 65 + 5*55 + 65)
 statusLabel.Font = Enum.Font.SourceSans
-statusLabel.TextSize = 12  -- 手机适配减小字体
+statusLabel.TextSize = 12
 statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 statusLabel.TextWrapped = true
 statusLabel.BackgroundTransparency = 1
 statusLabel.Parent = mainFrame
-
 
 -- 获取远程事件
 local elixirSyncEvent = ReplicatedStorage
