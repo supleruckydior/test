@@ -230,7 +230,7 @@ if isMobile then
     contentFrame.Parent.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
 end
 
-
+-- [以下是原有的远程事件获取、数据处理和功能逻辑，保持不变]
 -- 获取远程事件
 local elixirSyncEvent = ReplicatedStorage
     ["\228\186\139\228\187\182"]          -- 药水
@@ -493,7 +493,7 @@ local function toggleCollapse()
     if isCollapsed then
         toggleButton.Text = "+"
         contentFrame.Visible = false
-        mainFrame.Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, 40)
+        mainFrame.Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, titleBarHeight)
     else
         toggleButton.Text = "_"
         contentFrame.Visible = true
@@ -513,7 +513,7 @@ local dragging = false
 local dragStart, startPos
 
 titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or (isMobile and input.UserInputType == Enum.UserInputType.Touch) then
         dragging = true
         dragStart = input.Position
         startPos = mainFrame.Position
@@ -526,7 +526,7 @@ titleBar.InputBegan:Connect(function(input)
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
         mainFrame.Position = UDim2.new(
             startPos.X.Scale, startPos.X.Offset + delta.X,
