@@ -29,160 +29,133 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- 主框架 - 调整为更紧凑的初始尺寸
+-- 主框架
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 350, 0, 60) -- 初始高度较小
-mainFrame.Position = UDim2.new(0.5, -175, 0.5, -30)
+mainFrame.Size = UDim2.new(0, 450, 0, 520)
+mainFrame.Position = UDim2.new(0.5, -225, 0.5, -260)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 mainFrame.BorderSizePixel = 0
-mainFrame.ClipsDescendants = true -- 确保内容不会溢出
 mainFrame.Parent = screenGui
 
 -- 标题栏（可拖动和折叠）
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 50)
+titleBar.Size = UDim2.new(1, 0, 0, 40)
 titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 titleBar.Parent = mainFrame
 
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师1.0 ▼"
-title.Size = UDim2.new(1, -90, 1, 0)
+title.Text = "丹药交易大师 v1.1"
+title.Size = UDim2.new(1, -80, 1, 0) -- 为按钮留出空间
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = 20
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundTransparency = 1
 title.Parent = titleBar
 
--- 折叠/展开按钮
+-- 折叠按钮
 local toggleButton = Instance.new("TextButton")
-toggleButton.Text = "☰"
-toggleButton.Size = UDim2.new(0, 50, 1, 0)
-toggleButton.Position = UDim2.new(0, 0, 0, 0)
+toggleButton.Text = "_"
+toggleButton.Size = UDim2.new(0, 40, 1, 0)
+toggleButton.Position = UDim2.new(1, -80, 0, 0)
 toggleButton.Font = Enum.Font.SourceSansBold
 toggleButton.TextSize = 20
 toggleButton.TextColor3 = Color3.new(1, 1, 1)
-toggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
 toggleButton.Parent = titleBar
 
 -- 关闭按钮
 local closeButton = Instance.new("TextButton")
-closeButton.Text = "×"
+closeButton.Text = "X"
 closeButton.Size = UDim2.new(0, 40, 1, 0)
 closeButton.Position = UDim2.new(1, -40, 0, 0)
 closeButton.Font = Enum.Font.SourceSansBold
-closeButton.TextSize = 24
+closeButton.TextSize = 20
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeButton.Parent = titleBar
 
--- 内容区域（可折叠）
+-- 内容框架（可折叠部分）
 local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, 0, 0, 500) -- 内容高度
-contentFrame.Position = UDim2.new(0, 0, 0, 50)
+contentFrame.Size = UDim2.new(1, 0, 1, -40) -- 减去标题栏高度
+contentFrame.Position = UDim2.new(0, 0, 0, 40)
 contentFrame.BackgroundTransparency = 1
-contentFrame.Visible = false -- 初始隐藏
 contentFrame.Parent = mainFrame
 
 -- 总点数显示
 local totalPointsLabel = Instance.new("TextLabel")
 totalPointsLabel.Text = "全部丹药总点数: 计算中..."
 totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 30)
-totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 10)
+totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 5) -- 调整位置
 totalPointsLabel.Font = Enum.Font.SourceSansSemibold
-totalPointsLabel.TextSize = 16
+totalPointsLabel.TextSize = 18
 totalPointsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 totalPointsLabel.BackgroundTransparency = 1
 totalPointsLabel.TextXAlignment = Enum.TextXAlignment.Left
 totalPointsLabel.Parent = contentFrame
 
--- 创建可折叠的丹药类型区域
-local categoryFrames = {}
-local categoryButtons = {}
-local categoryContents = {}
-
+-- 创建5个输入框和点数显示
+local inputFrames = {}
+local pointsLabels = {}
 for i = 1, 5 do
-    -- 类别按钮
-    local button = Instance.new("TextButton")
-    button.Text = elixirTypes[i].."丹药 ▼"
-    button.Size = UDim2.new(0.9, 0, 0, 40)
-    button.Position = UDim2.new(0.05, 0, 0, 50 + (i-1)*120)
-    button.Font = Enum.Font.SourceSansBold
-    button.TextSize = 18
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    button.Parent = contentFrame
-    categoryButtons[i] = button
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0.9, 0, 0, 70)
+    frame.Position = UDim2.new(0.05, 0, 0, 40 + (i-1)*75) -- 调整位置
+    frame.BackgroundTransparency = 1
+    frame.Parent = contentFrame
     
-    -- 类别内容区域
-    local categoryFrame = Instance.new("Frame")
-    categoryFrame.Size = UDim2.new(0.9, 0, 0, 80)
-    categoryFrame.Position = UDim2.new(0.05, 0, 0, 90 + (i-1)*120)
-    categoryFrame.BackgroundTransparency = 1
-    categoryFrame.Visible = false -- 初始隐藏
-    categoryFrame.Parent = contentFrame
-    categoryContents[i] = categoryFrame
+    local typeLabel = Instance.new("TextLabel")
+    typeLabel.Text = elixirTypes[i].."丹药:"
+    typeLabel.Size = UDim2.new(0.3, 0, 0, 25)
+    typeLabel.Position = UDim2.new(0, 0, 0, 0)
+    typeLabel.Font = Enum.Font.SourceSansSemibold
+    typeLabel.TextSize = 16
+    typeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    typeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    typeLabel.BackgroundTransparency = 1
+    typeLabel.Parent = frame
     
-    -- 点数显示
     local pointsLabel = Instance.new("TextLabel")
     pointsLabel.Name = "Points_"..i
     pointsLabel.Text = "总点数: 0"
-    pointsLabel.Size = UDim2.new(1, 0, 0, 25)
+    pointsLabel.Size = UDim2.new(0.7, 0, 0, 25)
+    pointsLabel.Position = UDim2.new(0.3, 0, 0, 0)
     pointsLabel.Font = Enum.Font.SourceSans
-    pointsLabel.TextSize = 16
+    pointsLabel.TextSize = 14
     pointsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     pointsLabel.TextXAlignment = Enum.TextXAlignment.Left
     pointsLabel.BackgroundTransparency = 1
-    pointsLabel.Parent = categoryFrame
-    categoryFrames[i] = pointsLabel
+    pointsLabel.Parent = frame
+    pointsLabels[i] = pointsLabel
     
-    -- 输入框
     local textBox = Instance.new("TextBox")
     textBox.Name = "Input_"..i
-    textBox.Size = UDim2.new(1, 0, 0, 35)
+    textBox.Size = UDim2.new(1, 0, 0, 30)
     textBox.Position = UDim2.new(0, 0, 0, 30)
     textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     textBox.TextColor3 = Color3.new(1, 1, 1) 
     textBox.PlaceholderText = "输入"..elixirTypes[i].."丹药需求点数"
     textBox.Text = ""
-    textBox.Parent = categoryFrame
+    textBox.Parent = frame
     
-    -- 示例标签
+    inputFrames[i] = textBox
+    
     local exampleLabel = Instance.new("TextLabel")
     exampleLabel.Text = "示例: 输入1000自动计算最优组合"
     exampleLabel.Size = UDim2.new(1, 0, 0, 15)
-    exampleLabel.Position = UDim2.new(0, 0, 0, 65)
+    exampleLabel.Position = UDim2.new(0, 0, 0, 60)
     exampleLabel.Font = Enum.Font.SourceSans
     exampleLabel.TextSize = 12
     exampleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
     exampleLabel.TextXAlignment = Enum.TextXAlignment.Left
     exampleLabel.BackgroundTransparency = 1
-    exampleLabel.Parent = categoryFrame
-    
-    -- 点击事件
-    button.MouseButton1Click:Connect(function()
-        categoryFrame.Visible = not categoryFrame.Visible
-        button.Text = elixirTypes[i].."丹药 "..(categoryFrame.Visible and "▲" or "▼")
-        
-        -- 调整主框架大小
-        local newHeight = 50 -- 标题栏高度
-        for j = 1, 5 do
-            if categoryContents[j].Visible then
-                newHeight = newHeight + 120 -- 展开的类别高度
-            else
-                newHeight = newHeight + 40 -- 折叠的按钮高度
-            end
-        end
-        newHeight = newHeight + 80 -- 底部按钮区域
-        
-        mainFrame.Size = UDim2.new(0, 350, 0, math.min(newHeight, 800)) -- 限制最大高度
-    end)
+    exampleLabel.Parent = frame
 end
 
 -- 按钮区域
 local buttonFrame = Instance.new("Frame")
 buttonFrame.Size = UDim2.new(0.9, 0, 0, 80)
-buttonFrame.Position = UDim2.new(0.05, 0, 0, 50 + 5*120)
+buttonFrame.Position = UDim2.new(0.05, 0, 0, 40 + 5*75) -- 调整位置
 buttonFrame.BackgroundTransparency = 1
 buttonFrame.Parent = contentFrame
 
@@ -211,8 +184,8 @@ tradeButton.Parent = buttonFrame
 -- 状态显示
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Text = "系统就绪，等待操作..."
-statusLabel.Size = UDim2.new(0.9, 0, 0, 60)
-statusLabel.Position = UDim2.new(0.05, 0, 0, 50 + 5*120 + 90)
+statusLabel.Size = UDim2.new(0.9, 0, 0, 40)
+statusLabel.Position = UDim2.new(0.05, 0, 0, 40 + 5*75 + 90) -- 调整位置
 statusLabel.Font = Enum.Font.SourceSans
 statusLabel.TextSize = 14
 statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -247,41 +220,12 @@ elixirSyncEvent.Event:Connect(function(data)
     elixirData = data
 end)
 
--- 调试用：打印丹药数据
-local function debugPrintElixirData()
-    if not elixirData then
-        print("没有获取到丹药数据")
-        return
-    end
-    
-    local backpack = elixirData["\232\131\140\229\140\133"] or {}
-    
-    -- 打印前10个物品作为示例
-    for i = 1, math.min(10, #backpack) do
-        local item = backpack[i]
-        if item and type(item) == "table" then
-            -- 获取字段
-            local itemType = item["\231\177\187\229\158\139"] or "未知"
-            local quality = item["品质"] or "未知"
-            local count = item["\230\149\176\233\135\143"] or "未知"
-            local index = item["索引"] or "无索引"
-            
-            print(string.format("物品%d: 类型=%s, 品质=%s, 数量=%s, 索引=%s", 
-                i, itemType, quality, count, index))
-        else
-            print("物品"..i..": 无效的数据格式")
-        end
-    end
-end
-
 -- 计算丹药点数
 local function calculateElixirPoints()
     if not elixirData then
         warn("无法获取丹药数据")
         return {}, 0
     end
-    
-    debugPrintElixirData()
     
     local backpack = elixirData["\232\131\140\229\140\133"] or {}
     if #backpack == 0 then
@@ -316,7 +260,6 @@ end
 
 -- 智能计算丹药组合算法
 local function calculateElixirs(targetPoints, availableElixirs)
-    -- Sort by points (highest first)
     table.sort(availableElixirs, function(a, b) return a.points > b.points end)
     
     local usedElixirs = {}
@@ -344,13 +287,10 @@ local function calculateElixirs(targetPoints, availableElixirs)
     
     -- Phase 2: Add ONE optimal elixir if needed
     if remainingPoints > 0 then
-        -- Find best single elixir to cover remaining points
         local bestElixir = nil
         local bestPoints = math.huge
         
-        -- Check all elixir types from highest to lowest
         for _, elixir in ipairs(availableElixirs) do
-            -- Check if we have any left
             local used = 0
             for _, u in ipairs(usedElixirs) do
                 if u.index == elixir.index then used = u.count end
@@ -361,13 +301,11 @@ local function calculateElixirs(targetPoints, availableElixirs)
                 if elixir.points < bestPoints then
                     bestPoints = elixir.points
                     bestElixir = elixir
-                    -- Found perfect match, break early
                     if bestPoints == remainingPoints then break end
                 end
             end
         end
         
-        -- Add the single best elixir
         if bestElixir then
             table.insert(usedElixirs, {
                 type = bestElixir.type,
@@ -380,12 +318,9 @@ local function calculateElixirs(targetPoints, availableElixirs)
         end
     end
     
-    -- Calculate final total
     local totalPoints = targetPoints - remainingPoints
     
-    -- Verify we didn't add unnecessary elixirs
     if totalPoints > targetPoints then
-        -- Find and remove any redundant small elixirs
         for i = #usedElixirs, 1, -1 do
             if totalPoints - usedElixirs[i].points >= targetPoints then
                 totalPoints = totalPoints - usedElixirs[i].points
@@ -394,18 +329,7 @@ local function calculateElixirs(targetPoints, availableElixirs)
         end
     end
     
-    -- Final debug output
-    print("\nOptimized Calculation:")
-    local runningTotal = 0
-    for i, u in ipairs(usedElixirs) do
-        runningTotal = runningTotal + (u.count * u.points)
-        print(string.format("%d. %dx Quality %d (%d pts) = %d pts (Subtotal: %d)",
-            i, u.count, u.quality, u.points, u.count * u.points, runningTotal))
-    end
-    print(string.format("Final Total: %d pts (Requested: %d, Difference: %d)",
-        runningTotal, targetPoints, runningTotal - targetPoints))
-    
-    return usedElixirs, runningTotal
+    return usedElixirs, totalPoints
 end
 
 -- 执行交易操作
@@ -434,7 +358,6 @@ tradeButton.MouseButton1Click:Connect(function()
     
     for _, item in ipairs(backpack) do
         if item and type(item) == "table" then
-            -- 安全获取字段
             local count = tonumber(item["\230\149\176\233\135\143"]) or 0
             local elixirType = tonumber(item["\231\177\187\229\158\139"]) or 0
             local quality = tonumber(item["品质"]) or 0
@@ -481,7 +404,6 @@ tradeButton.MouseButton1Click:Connect(function()
         resultText = resultText .. string.format("%s丹药: 需求%d点 → 实际%d点\n", 
             elixirTypes[result.type], result.target, result.achieved)
         
-        -- 添加交易物品
         for _, elixir in ipairs(result.elixirs) do
             addTradeItemEvent:FireServer("丹药", elixir.index, elixir.count)
             resultText = resultText .. string.format(" - 放入 %d个 %s丹药(品质%d, %d点/个)\n",
@@ -502,7 +424,6 @@ end)
 refreshButton.MouseButton1Click:Connect(function()
     statusLabel.Text = "正在刷新数据..."
     task.wait(0.1)
-    
     
     -- 等待数据更新
     local startTime = os.time()
@@ -525,34 +446,30 @@ refreshButton.MouseButton1Click:Connect(function()
     statusLabel.Text = "数据更新完成 "..os.date("%H:%M:%S")
 end)
 
+-- 折叠/展开功能
+local isCollapsed = false
+local originalSize = mainFrame.Size
+
+local function toggleCollapse()
+    isCollapsed = not isCollapsed
+    if isCollapsed then
+        toggleButton.Text = "+"
+        contentFrame.Visible = false
+        mainFrame.Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, 40)
+    else
+        toggleButton.Text = "_"
+        contentFrame.Visible = true
+        mainFrame.Size = originalSize
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleCollapse)
+
 -- 关闭按钮功能
 closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
-local isExpanded = false
-toggleButton.MouseButton1Click:Connect(function()
-    isExpanded = not isExpanded
-    contentFrame.Visible = isExpanded
-    title.Text = "丹药交易大师 "..(isExpanded and "▲" or "▼")
-    
-    if isExpanded then
-        -- 展开时计算合适的高度
-        local newHeight = 50 -- 标题栏高度
-        for i = 1, 5 do
-            if categoryContents[i].Visible then
-                newHeight = newHeight + 120 -- 展开的类别高度
-            else
-                newHeight = newHeight + 40 -- 折叠的按钮高度
-            end
-        end
-        newHeight = newHeight + 140 -- 底部区域
-        
-        mainFrame.Size = UDim2.new(0, 350, 0, math.min(newHeight, 800)) -- 限制最大高度
-    else
-        -- 折叠时只显示标题栏
-        mainFrame.Size = UDim2.new(0, 350, 0, 50)
-    end
-end)
+
 -- 窗口拖动功能
 local dragging = false
 local dragStart, startPos
@@ -582,9 +499,3 @@ end)
 
 -- 初始刷新
 refreshButton.MouseButton1Click:Wait()
-wait(0.3)
-            local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
-                :FindFirstChild("\229\133\172\231\148\168")
-                :FindFirstChild("\231\130\188\228\184\185")
-                :FindFirstChild("\229\136\182\228\189\156")
-                elixirEvent:FireServer()
