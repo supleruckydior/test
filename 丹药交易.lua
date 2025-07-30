@@ -1,26 +1,10 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local User极Service = game:GetService("UserInputService")
+local UserInputService = game:GetService("UserInputService")
 
 -- 确保玩家已加载
 local player = Players.LocalPlayer
 repeat task.wait() until player:IsDescendantOf(game)
-
--- 丹药类型映射
-local elixirTypes = {
-    [1] = "攻击",
-    [2] = "爆伤", 
-    [3] = "法宝",
-    [4] = "血量",
-    [5] = "技能"
-}
-
--- 品质点数映射
-local qualityPoints = {
-    [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5,
-    [6] = 6, [7] = 8, [8] = 10, [9] = 14, [10] = 20,
-    [11] = 28
-}
 
 -- 创建UI界面
 local screenGui = Instance.new("ScreenGui")
@@ -29,38 +13,38 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- 主框架 - 根据您的要求调整
+-- 折叠按钮
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 100, 0, 40)
+toggleButton.Position = UDim2.new(0, 20, 0.5, -20)
+toggleButton.Text = "展开丹药工具"
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 16
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+toggleButton.Parent = screenGui
+
+-- 主框架
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0.5, 0, 0, 380) -- 宽度50%，高度380像素
-mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0) -- 居中
+mainFrame.Size = UDim2.new(0, 300, 0, 400)
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
 mainFrame.Parent = screenGui
 
--- 标题栏（可拖动）
+-- 标题栏
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.BackgroundColor3极Color3.fromRGB(50, 50, 70)
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 titleBar.Parent = mainFrame
 
--- 折叠按钮
-local foldButton = Instance.new("TextButton")
-foldButton.Text = "▼"
-foldButton.Size = UDim2.new(0, 40, 1, 0)
-foldButton.Font = Enum.Font.SourceSansBold
-foldButton.TextSize = 16
-foldButton.TextColor3 = Color3.new(1, 1, 1)
-foldButton.BackgroundColor3 = Color3.fromRGB(70, 70, 100)
-foldButton.Parent = titleBar
-foldButton.Name = "FoldButton"
-
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师 v1.0"
-title.Size = UDim2.new(1, -80, 1, 0)  -- 调整位置
-title.Position = UDim2.new(0, 40, 0, 0)  -- 为折叠按钮腾空间
+title.Text = "丹药交易工具"
+title.Size = UDim2.new(1, -40, 1, 0)
 title.Font = Enum.Font.SourceSansBold
-title.TextSize = 18
+title.TextSize = 16
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundTransparency = 1
 title.Parent = titleBar
@@ -68,144 +52,73 @@ title.Parent = titleBar
 -- 关闭按钮
 local closeButton = Instance.new("TextButton")
 closeButton.Text = "X"
-closeButton.Size = UDim2.new(0, 40, 1, 0)
-closeButton.Position = UDim2.new(1, -40, 0, 0)
+closeButton.Size = UDim2.new(0, 30, 1, 0)
+closeButton.Position = UDim2.new(1, -30, 0, 0)
 closeButton.Font = Enum.Font.SourceSansBold
-closeButton.TextSize = 18
+closeButton.TextSize = 16
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeButton.Parent = titleBar
 
--- 总点数显示
-local totalPointsLabel = Instance.new("TextLabel")
-totalPointsLabel.Text = "全部丹药总点数: 计算中..."
-totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 25)
-totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 40)
-totalPointsLabel.Font = Enum.Font.SourceSansSemibold
-totalPointsLabel.TextSize = 16
-totalPointsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-totalPointsLabel.BackgroundTransparency = 1
-totalPointsLabel.TextXAlignment = Enum.TextXAlignment.Left
-totalPointsLabel.Parent = mainFrame
-
--- 创建5个输入框和点数显示
-local inputFrames = {}
-local pointsLabels = {}
-for i = 1, 5 do
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.9, 0, 0, 50)
-    frame.Position = UDim2.new(0.05, 0, 0, 65 + (i-1)*55)
-    frame.BackgroundTransparency = 1
-    frame.Parent = mainFrame
-    
-    local typeLabel = Instance.new("TextLabel")
-    typeLabel.Text = elixirTypes[i].."丹药:"
-    typeLabel.Size = UDim2.new(0.3, 0, 0, 20)
-    typeLabel.Position = UDim2.new(0, 0, 0, 0)
-    typeLabel.Font = Enum.Font.SourceSansSemibold
-    typeLabel.TextSize = 14
-    typeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
-    typeLabel.TextXAlignment = Enum.TextXAlignment.Left
-    typeLabel.BackgroundTransparency = 1
-    typeLabel.Parent = frame
-    
-    local pointsLabel = Instance.new("TextLabel")
-    pointsLabel.Name = "Points_"..i
-    pointsLabel.Text = "总点数: 0"
-    pointsLabel.Size = UDim2.new(0.7, 0, 0, 20)
-    pointsLabel.Position = UDim2.new(0.3, 0, 0, 0)
-    pointsLabel.Font = Enum.Font.SourceSans
-    pointsLabel.TextSize = 12
-    pointsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    pointsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    pointsLabel.BackgroundTransparency = 1  -- 修复此处，之前是乱码
-    pointsLabel.Parent = frame
-    pointsLabels[i] = pointsLabel
-    
-    local textBox = Instance.new("TextBox")
-    textBox.Name = "Input_"..i
-    textBox.Size = UDim2.new(1, 0, 0, 25)
-    textBox.Position = UDim2.new(0, 0, 0, 20)
-    textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    textBox.TextColor3 = Color3.new(1, 1, 1) 
-    textBox.PlaceholderText = "输入"..elixirTypes[i].."丹药需求点数"
-    textBox.Text = ""
-    textBox.TextSize = 14
-    textBox.Parent = frame
-    
-    inputFrames[i] = textBox
-    
-    local exampleLabel = Instance.new("TextLabel")
-    exampleLabel.Text = "示例: 输入1000自动计算最优组合"
-    exampleLabel.Size = UDim2.new(1, 0, 0, 15)
-    exampleLabel.Position = UDim2.new(0, 0, 0, 45)
-    exampleLabel.Font = Enum.Font.SourceSans
-    exampleLabel.TextSize = 11
-    exampleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-    exampleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    exampleLabel.BackgroundTransparency = 1
-    exampleLabel.Parent = frame
-end
-
--- 按钮区域
-local buttonFrame = Instance.new("Frame")
-buttonFrame.Size = UDim2.new(0.9, 0, 0, 60)
-buttonFrame.Position = UDim2.new(0.05, 0, 0, 65 + 5*55)
-buttonFrame.BackgroundTransparency = 1
-buttonFrame.Parent = mainFrame
-
 -- 刷新按钮
 local refreshButton = Instance.new("TextButton")
-refreshButton.Text = "刷新丹药数据"
-refreshButton.Size = UDim2.new(0.45, 0, 0, 30)
-refreshButton.Position = UDim2.new(0, 0, 0, 0)
+refreshButton.Text = "刷新数据"
+refreshButton.Size = UDim2.new(0.9, 0, 0, 30)
+refreshButton.Position = UDim2.new(0.05, 0, 0, 40)
 refreshButton.Font = Enum.Font.SourceSansBold
 refreshButton.TextSize = 14
-refreshButton.TextColor3 = Color3.new(1, 1, 1) 
+refreshButton.TextColor3 = Color3.new(1, 1, 1)
 refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
-refreshButton.Parent = buttonFrame
+refreshButton.Parent = mainFrame
 
 -- 交易按钮
 local tradeButton = Instance.new("TextButton")
-tradeButton.Text = "放入交易丹药"
-tradeButton.Size = UDim2.new(0.45, 0, 0, 30)
-tradeButton.Position = UDim2.new(0.55, 0, 0, 0)
+tradeButton.Text = "放入丹药"
+tradeButton.Size = UDim2.new(0.9, 0, 0, 30)
+tradeButton.Position = UDim2.new(0.05, 0, 0, 80)
 tradeButton.Font = Enum.Font.SourceSansBold
 tradeButton.TextSize = 14
-tradeButton.TextColor3 = Color3.new(1, 1, 1) 
+tradeButton.TextColor3 = Color3.new(1, 1, 1)
 tradeButton.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
-tradeButton.Parent = buttonFrame
+tradeButton.Parent = mainFrame
+
+-- 点数输入框
+local inputBox = Instance.new("TextBox")
+inputBox.Size = UDim2.new(0.9, 0, 0, 30)
+inputBox.Position = UDim2.new(0.05, 0, 0, 120)
+inputBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+inputBox.TextColor3 = Color3.new(1, 1, 1)
+inputBox.PlaceholderText = "输入需求点数"
+inputBox.Text = ""
+inputBox.Parent = mainFrame
 
 -- 状态显示
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Text = "系统就绪，等待操作..."
-statusLabel.Size = UDim2.new(0.9, 0, 0, 35)
-statusLabel.Position = UDim2.new(0.05, 0, 0, 65 + 5*55 + 65)
+statusLabel.Text = "点击刷新获取数据"
+statusLabel.Size = UDim2.new(0.9, 0, 0, 200)
+statusLabel.Position = UDim2.new(0.05, 0, 0, 160)
 statusLabel.Font = Enum.Font.SourceSans
-statusLabel.TextSize = 12
+statusLabel.TextSize = 14
 statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 statusLabel.TextWrapped = true
 statusLabel.BackgroundTransparency = 1
 statusLabel.Parent = mainFrame
 
--- 获取远程事件
-local elixirSyncEvent = ReplicatedStorage
-    ["\228\186\139\228\187\182"]          -- 药水
-    ["\229\174\162\230\136\183\231\171\175"] -- 同步模块
-    ["\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175"] -- 同步控制器
-    ["\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150"] -- 数据更新事件
+-- 折叠/展开功能
+local isExpanded = false
+toggleButton.MouseButton1Click:Connect(function()
+    isExpanded = not isExpanded
+    mainFrame.Visible = isExpanded
+    toggleButton.Text = isExpanded and "收起工具" or "展开丹药工具"
+end)
 
-local addTradeItemEvent = ReplicatedStorage
-    ["\228\186\139\228\187\182"]  -- 药水
-    ["\229\133\172\231\148\168"]  -- 功能
-    ["\228\186\164\230\152\147"]  -- 交易
-    ["\230\150\176\229\162\158\228\186\164\230\152\147\231\137\169\229\147\129"] -- 新增交易物品
+-- 关闭按钮功能
+closeButton.MouseButton1Click:Connect(function()
+    isExpanded = false
+    mainFrame.Visible = false
+    toggleButton.Text = "展开丹药工具"
+end)
 
-local confirmTradeEvent = ReplicatedStorage
-    ["\228\186\139\228\187\182"]  -- 药水
-    ["\229\133\172\231\148\168"]  -- 功能
-    ["\228\186\164\230\152\147"]  -- 交易
-    :WaitForChild("\233\148\129\229\174\154\228\186\164\230\152\147") -- 确认交易
 
 -- 丹药数据存储
 local elixirData = {}
@@ -251,7 +164,7 @@ local function calculateElixirPoints()
     
     debugPrintElixirData()
     
-    local backpack = elixirData["\232\131\极\229\140\133"] or {}
+    local backpack = elixirData["\232\131\140\229\140\133"] or {}
     if #backpack == 0 then
         warn("背包中没有物品")
         return {}, 0
@@ -336,7 +249,7 @@ local function calculateElixirs(targetPoints, availableElixirs)
         end
         
         -- Add the single best elixir
-        if best极ir then
+        if bestElixir then
             table.insert(usedElixirs, {
                 type = bestElixir.type,
                 quality = bestElixir.quality,
@@ -471,6 +384,7 @@ refreshButton.MouseButton1Click:Connect(function()
     statusLabel.Text = "正在刷新数据..."
     task.wait(0.1)
     
+    
     -- 等待数据更新
     local startTime = os.time()
     while not elixirData or not elixirData["\232\131\140\229\140\133"] do
@@ -492,10 +406,7 @@ refreshButton.MouseButton1Click:Connect(function()
     statusLabel.Text = "数据更新完成 "..os.date("%H:%M:%S")
 end)
 
--- 关闭按钮功能
-closeButton.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-end)
+
 
 -- 窗口拖动功能
 local dragging = false
@@ -524,42 +435,12 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- 折叠功能实现
-local isFolded = false
-local originalSize = mainFrame.Size
-local foldedSize = UDim2.new(0.5, 0, 0, 40)  -- 折叠后只剩标题栏高度，宽度保持不变
-
-foldButton.MouseButton1Click:Connect(function()
-    isFolded = not isFolded
-    
-    if isFolded then
-        -- 折叠UI（只显示标题栏）
-        mainFrame.Size = foldedSize
-        foldButton.Text = "▲"
-        
-        -- 隐藏所有内容
-        for _, child in ipairs(mainFrame:GetChildren()) do
-            if child ~= titleBar then
-                child.Visible = false
-            end
-        end
-    else
-        -- 展开UI
-        mainFrame.Size = originalSize
-        foldButton.Text = "▼"
-        
-        -- 显示所有内容
-        for _, child in ipairs(mainFrame:GetChildren()) do
-            child.Visible = true
-        end
-    end
-end)
-
 -- 初始刷新
 refreshButton.MouseButton1Click:Wait()
 wait(0.3)
-local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
-    :FindFirstChild("\229\133\172\231\148\168")
-    :FindFirstChild("\231\130\188\228\184\185")
-    :FindFirstChild("\229\136\182\228\189\156")
-    elixirEvent:FireServer()
+            local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+                :FindFirstChild("\229\133\172\231\148\168")
+                :FindFirstChild("\231\130\188\228\184\185")
+                :FindFirstChild("\229\136\182\228\189\156")
+                elixirEvent:FireServer()
+
