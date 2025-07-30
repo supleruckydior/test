@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 -- 确保玩家已加载
 local player = Players.LocalPlayer
@@ -29,26 +30,35 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
+-- 检测是否为手机设备
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+
+-- 根据设备类型设置UI尺寸
+local baseWidth = isMobile and 0.95 or 450
+local baseHeight = isMobile and 0.7 or 520
+local isPercentageSize = isMobile
+
 -- 主框架
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 450, 0, 520)
-mainFrame.Position = UDim2.new(0.5, -225, 0.5, -260)
+mainFrame.Size = isMobile and UDim2.new(baseWidth, 0, baseHeight, 0) or UDim2.new(0, baseWidth, 0, baseHeight)
+mainFrame.Position = isMobile and UDim2.new(0.5, 0, 0.5, 0) or UDim2.new(0.5, -baseWidth/2, 0.5, -baseHeight/2)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
 -- 标题栏（可拖动和折叠）
+local titleBarHeight = isMobile and 50 or 40
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.Size = UDim2.new(1, 0, 0, titleBarHeight)
 titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 titleBar.Parent = mainFrame
 
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师 v1.1"
-title.Size = UDim2.new(1, -80, 1, 0) -- 为按钮留出空间
+title.Text = "丹药交易大师"..(isMobile and "" or " v1.0")
+title.Size = UDim2.new(1, -90, 1, 0) -- 为按钮留出空间
 title.Font = Enum.Font.SourceSansBold
-title.TextSize = 20
+title.TextSize = isMobile and 22 or 20
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundTransparency = 1
 title.Parent = titleBar
@@ -57,9 +67,9 @@ title.Parent = titleBar
 local toggleButton = Instance.new("TextButton")
 toggleButton.Text = "_"
 toggleButton.Size = UDim2.new(0, 40, 1, 0)
-toggleButton.Position = UDim2.new(1, -80, 0, 0)
+toggleButton.Position = UDim2.new(1, -90, 0, 0)
 toggleButton.Font = Enum.Font.SourceSansBold
-toggleButton.TextSize = 20
+toggleButton.TextSize = isMobile and 22 or 20
 toggleButton.TextColor3 = Color3.new(1, 1, 1)
 toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
 toggleButton.Parent = titleBar
@@ -70,25 +80,43 @@ closeButton.Text = "X"
 closeButton.Size = UDim2.new(0, 40, 1, 0)
 closeButton.Position = UDim2.new(1, -40, 0, 0)
 closeButton.Font = Enum.Font.SourceSansBold
-closeButton.TextSize = 20
+closeButton.TextSize = isMobile and 22 or 20
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeButton.Parent = titleBar
 
 -- 内容框架（可折叠部分）
 local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, 0, 1, -40) -- 减去标题栏高度
-contentFrame.Position = UDim2.new(0, 0, 0, 40)
+contentFrame.Size = UDim2.new(1, 0, 1, -titleBarHeight)
+contentFrame.Position = UDim2.new(0, 0, 0, titleBarHeight)
 contentFrame.BackgroundTransparency = 1
 contentFrame.Parent = mainFrame
+
+-- 如果是手机设备，添加滚动功能
+if isMobile then
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 800) -- 根据内容自动调整
+    scrollFrame.ScrollBarThickness = 8
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.Parent = contentFrame
+    
+    -- 创建容器存放所有内容
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 800) -- 高度会在后面调整
+    container.BackgroundTransparency = 1
+    container.Parent = scrollFrame
+    
+    contentFrame = container -- 将内容放入滚动框内
+end
 
 -- 总点数显示
 local totalPointsLabel = Instance.new("TextLabel")
 totalPointsLabel.Text = "全部丹药总点数: 计算中..."
-totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 30)
-totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 5) -- 调整位置
+totalPointsLabel.Size = UDim2.new(0.95, 0, 0, isMobile and 40 or 30)
+totalPointsLabel.Position = UDim2.new(0.025, 0, 0, 5)
 totalPointsLabel.Font = Enum.Font.SourceSansSemibold
-totalPointsLabel.TextSize = 18
+totalPointsLabel.TextSize = isMobile and 18 or 16
 totalPointsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 totalPointsLabel.BackgroundTransparency = 1
 totalPointsLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -99,17 +127,16 @@ local inputFrames = {}
 local pointsLabels = {}
 for i = 1, 5 do
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.9, 0, 0, 70)
-    frame.Position = UDim2.new(0.05, 0, 0, 40 + (i-1)*75) -- 调整位置
+    frame.Size = UDim2.new(0.95, 0, 0, isMobile and 90 or 70)
+    frame.Position = UDim2.new(0.025, 0, 0, 50 + (i-1)*(isMobile and 95 or 75))
     frame.BackgroundTransparency = 1
     frame.Parent = contentFrame
     
     local typeLabel = Instance.new("TextLabel")
     typeLabel.Text = elixirTypes[i].."丹药:"
-    typeLabel.Size = UDim2.new(0.3, 0, 0, 25)
-    typeLabel.Position = UDim2.new(0, 0, 0, 0)
+    typeLabel.Size = UDim2.new(1, 0, 0, isMobile and 30 or 25)
     typeLabel.Font = Enum.Font.SourceSansSemibold
-    typeLabel.TextSize = 16
+    typeLabel.TextSize = isMobile and 18 or 16
     typeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
     typeLabel.TextXAlignment = Enum.TextXAlignment.Left
     typeLabel.BackgroundTransparency = 1
@@ -118,10 +145,10 @@ for i = 1, 5 do
     local pointsLabel = Instance.new("TextLabel")
     pointsLabel.Name = "Points_"..i
     pointsLabel.Text = "总点数: 0"
-    pointsLabel.Size = UDim2.new(0.7, 0, 0, 25)
-    pointsLabel.Position = UDim2.new(0.3, 0, 0, 0)
+    pointsLabel.Size = UDim2.new(1, 0, 0, isMobile and 25 or 20)
+    pointsLabel.Position = UDim2.new(0, 0, 0, isMobile and 30 or 25)
     pointsLabel.Font = Enum.Font.SourceSans
-    pointsLabel.TextSize = 14
+    pointsLabel.TextSize = isMobile and 16 or 14
     pointsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     pointsLabel.TextXAlignment = Enum.TextXAlignment.Left
     pointsLabel.BackgroundTransparency = 1
@@ -130,68 +157,79 @@ for i = 1, 5 do
     
     local textBox = Instance.new("TextBox")
     textBox.Name = "Input_"..i
-    textBox.Size = UDim2.new(1, 0, 0, 30)
-    textBox.Position = UDim2.new(0, 0, 0, 30)
+    textBox.Size = UDim2.new(1, 0, 0, isMobile and 40 or 30)
+    textBox.Position = UDim2.new(0, 0, 0, isMobile and 55 or 45)
     textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     textBox.TextColor3 = Color3.new(1, 1, 1) 
     textBox.PlaceholderText = "输入"..elixirTypes[i].."丹药需求点数"
     textBox.Text = ""
+    textBox.FontSize = isMobile and Enum.FontSize.Size18 or Enum.FontSize.Size14
     textBox.Parent = frame
     
     inputFrames[i] = textBox
     
-    local exampleLabel = Instance.new("TextLabel")
-    exampleLabel.Text = "示例: 输入1000自动计算最优组合"
-    exampleLabel.Size = UDim2.new(1, 0, 0, 15)
-    exampleLabel.Position = UDim2.new(0, 0, 0, 60)
-    exampleLabel.Font = Enum.Font.SourceSans
-    exampleLabel.TextSize = 12
-    exampleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-    exampleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    exampleLabel.BackgroundTransparency = 1
-    exampleLabel.Parent = frame
+    -- 手机设备上移除示例文本以节省空间
+    if not isMobile then
+        local exampleLabel = Instance.new("TextLabel")
+        exampleLabel.Text = "示例: 输入1000自动计算最优组合"
+        exampleLabel.Size = UDim2.new(1, 0, 0, 15)
+        exampleLabel.Position = UDim2.new(0, 0, 0, isMobile and 95 or 75)
+        exampleLabel.Font = Enum.Font.SourceSans
+        exampleLabel.TextSize = 12
+        exampleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        exampleLabel.TextXAlignment = Enum.TextXAlignment.Left
+        exampleLabel.BackgroundTransparency = 1
+        exampleLabel.Parent = frame
+    end
 end
 
 -- 按钮区域
 local buttonFrame = Instance.new("Frame")
-buttonFrame.Size = UDim2.new(0.9, 0, 0, 80)
-buttonFrame.Position = UDim2.new(0.05, 0, 0, 40 + 5*75) -- 调整位置
+buttonFrame.Size = UDim2.new(0.95, 0, 0, isMobile and 60 or 80)
+buttonFrame.Position = UDim2.new(0.025, 0, 0, 50 + 5*(isMobile and 95 or 75))
 buttonFrame.BackgroundTransparency = 1
 buttonFrame.Parent = contentFrame
 
+-- 创建适应手机的按钮
+local function createButton(text, posX, color)
+    local button = Instance.new("TextButton")
+    button.Text = text
+    button.Size = UDim2.new(0.48, 0, 1, 0)
+    button.Position = UDim2.new(posX, 0, 0, 0)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = isMobile and 18 or 16
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.BackgroundColor3 = color
+    return button
+end
+
 -- 刷新按钮
-local refreshButton = Instance.new("TextButton")
-refreshButton.Text = "刷新丹药数据"
-refreshButton.Size = UDim2.new(0.45, 0, 0, 40)
-refreshButton.Position = UDim2.new(0, 0, 0, 0)
-refreshButton.Font = Enum.Font.SourceSansBold
-refreshButton.TextSize = 16
-refreshButton.TextColor3 = Color3.new(1, 1, 1) 
-refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+local refreshButton = createButton(isMobile and "刷新" or "刷新丹药数据", 0, Color3.fromRGB(80, 80, 120))
 refreshButton.Parent = buttonFrame
 
 -- 交易按钮
-local tradeButton = Instance.new("TextButton")
-tradeButton.Text = "放入交易丹药"
-tradeButton.Size = UDim2.new(0.45, 0, 0, 40)
-tradeButton.Position = UDim2.new(0.55, 0, 0, 0)
-tradeButton.Font = Enum.Font.SourceSansBold
-tradeButton.TextSize = 16
-tradeButton.TextColor3 = Color3.new(1, 1, 1) 
-tradeButton.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
+local tradeButton = createButton(isMobile and "交易" or "放入交易丹药", 0.52, Color3.fromRGB(80, 120, 80))
 tradeButton.Parent = buttonFrame
 
 -- 状态显示
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Text = "系统就绪，等待操作..."
-statusLabel.Size = UDim2.new(0.9, 0, 0, 40)
-statusLabel.Position = UDim2.new(0.05, 0, 0, 40 + 5*75 + 90) -- 调整位置
+statusLabel.Size = UDim2.new(0.95, 0, 0, isMobile and 100 or 40)
+statusLabel.Position = UDim2.new(0.025, 0, 0, 50 + 5*(isMobile and 95 or 75) + (isMobile and 70 or 90))
 statusLabel.Font = Enum.Font.SourceSans
-statusLabel.TextSize = 14
+statusLabel.TextSize = isMobile and 16 or 14
 statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 statusLabel.TextWrapped = true
 statusLabel.BackgroundTransparency = 1
 statusLabel.Parent = contentFrame
+
+-- 如果是手机设备，调整滚动框内容大小
+if isMobile then
+    local totalHeight = 50 + 5*95 + 70 + 100 + 20 -- 所有元素高度总和加边距
+    contentFrame.Size = UDim2.new(1, 0, 0, totalHeight)
+    contentFrame.Parent.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+end
+
 
 -- 获取远程事件
 local elixirSyncEvent = ReplicatedStorage
