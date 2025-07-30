@@ -29,10 +29,10 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- 主框架
+-- 主框架 - 修正位置问题
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 320, 0, 380)  -- 手机适配尺寸
-mainFrame.Position = UDim2.new(0.5, -160, 0.5, -190)  -- 手机适配位置
+mainFrame.Position = UDim2.new(0.5, -160, 0.4, -190)  -- 修正位置：Y轴从0.5改为0.4，使其更靠下
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 mainFrame.BorderSizePixel = 0
@@ -56,7 +56,7 @@ foldButton.Parent = titleBar
 foldButton.Name = "FoldButton"
 
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师 v1.2"
+title.Text = "丹药交易大师 v1.3"
 title.Size = UDim2.new(1, -80, 1, 0)  -- 调整位置
 title.Position = UDim2.new(0, 40, 0, 0)  -- 为折叠按钮腾空间
 title.Font = Enum.Font.SourceSansBold
@@ -187,6 +187,7 @@ statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 statusLabel.TextWrapped = true
 statusLabel.BackgroundTransparency = 1
 statusLabel.Parent = mainFrame
+
 
 -- 获取远程事件
 local elixirSyncEvent = ReplicatedStorage
