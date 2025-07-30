@@ -55,7 +55,7 @@ titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 titleBar.Parent = mainFrame
 
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师"..(isMobile and "" or " v1.0")
+title.Text = "丹药交易大师1.1"..(isMobile and "" or " v1.0")
 title.Size = UDim2.new(1, -90, 1, 0) -- 为按钮留出空间
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = isMobile and 22 or 20
