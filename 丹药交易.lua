@@ -29,142 +29,196 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- 主框架
--- 修改主框架尺寸和位置
+-- 主框架 - 调整为更紧凑的初始尺寸
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0.9, 0, 0, 600) -- 宽度占屏幕90%，高度固定
-mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0) -- 居中
+mainFrame.Size = UDim2.new(0, 350, 0, 60) -- 初始高度较小
+mainFrame.Position = UDim2.new(0.5, -175, 0.5, -30)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true -- 确保内容不会溢出
 mainFrame.Parent = screenGui
 
--- 修改标题栏高度
+-- 标题栏（可拖动和折叠）
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 50) -- 增大高度方便触摸
+titleBar.Size = UDim2.new(1, 0, 0, 50)
 titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 titleBar.Parent = mainFrame
 
--- 修改标题文本大小
 local title = Instance.new("TextLabel")
-title.Text = "丹药交易大师"
-title.Size = UDim2.new(1, -50, 1, 0)
+title.Text = "丹药交易大师1.0 ▼"
+title.Size = UDim2.new(1, -90, 1, 0)
 title.Font = Enum.Font.SourceSansBold
-title.TextSize = 22 -- 增大字号
+title.TextSize = 20
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundTransparency = 1
 title.Parent = titleBar
 
--- 修改关闭按钮大小
+-- 折叠/展开按钮
+local toggleButton = Instance.new("TextButton")
+toggleButton.Text = "☰"
+toggleButton.Size = UDim2.new(0, 50, 1, 0)
+toggleButton.Position = UDim2.new(0, 0, 0, 0)
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 20
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+toggleButton.Parent = titleBar
+
+-- 关闭按钮
 local closeButton = Instance.new("TextButton")
-closeButton.Text = "X"
-closeButton.Size = UDim2.new(0, 50, 1, 0) -- 增大按钮
-closeButton.Position = UDim2.new(1, -50, 0, 0)
+closeButton.Text = "×"
+closeButton.Size = UDim2.new(0, 40, 1, 0)
+closeButton.Position = UDim2.new(1, -40, 0, 0)
 closeButton.Font = Enum.Font.SourceSansBold
-closeButton.TextSize = 22 -- 增大字号
+closeButton.TextSize = 24
 closeButton.TextColor3 = Color3.new(1, 1, 1)
 closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeButton.Parent = titleBar
 
--- 修改总点数显示
+-- 内容区域（可折叠）
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, 0, 0, 500) -- 内容高度
+contentFrame.Position = UDim2.new(0, 0, 0, 50)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Visible = false -- 初始隐藏
+contentFrame.Parent = mainFrame
+
+-- 总点数显示
 local totalPointsLabel = Instance.new("TextLabel")
 totalPointsLabel.Text = "全部丹药总点数: 计算中..."
-totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 40) -- 增大高度
-totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 55) -- 调整位置
+totalPointsLabel.Size = UDim2.new(0.9, 0, 0, 30)
+totalPointsLabel.Position = UDim2.new(0.05, 0, 0, 10)
 totalPointsLabel.Font = Enum.Font.SourceSansSemibold
-totalPointsLabel.TextSize = 18
+totalPointsLabel.TextSize = 16
 totalPointsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 totalPointsLabel.BackgroundTransparency = 1
 totalPointsLabel.TextXAlignment = Enum.TextXAlignment.Left
-totalPointsLabel.Parent = mainFrame
+totalPointsLabel.Parent = contentFrame
 
--- 修改输入框布局
-local inputFrames = {}
-local pointsLabels = {}
+-- 创建可折叠的丹药类型区域
+local categoryFrames = {}
+local categoryButtons = {}
+local categoryContents = {}
+
 for i = 1, 5 do
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.9, 0, 0, 80) -- 增大高度
-    frame.Position = UDim2.new(0.05, 0, 0, 100 + (i-1)*85) -- 调整间距
-    frame.BackgroundTransparency = 1
-    frame.Parent = mainFrame
+    -- 类别按钮
+    local button = Instance.new("TextButton")
+    button.Text = elixirTypes[i].."丹药 ▼"
+    button.Size = UDim2.new(0.9, 0, 0, 40)
+    button.Position = UDim2.new(0.05, 0, 0, 50 + (i-1)*120)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = 18
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    button.Parent = contentFrame
+    categoryButtons[i] = button
     
-    local typeLabel = Instance.new("TextLabel")
-    typeLabel.Text = elixirTypes[i].."丹药:"
-    typeLabel.Size = UDim2.new(1, 0, 0, 25)
-    typeLabel.Font = Enum.Font.SourceSansSemibold
-    typeLabel.TextSize = 18 -- 增大字号
-    typeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
-    typeLabel.TextXAlignment = Enum.TextXAlignment.Left
-    typeLabel.BackgroundTransparency = 1
-    typeLabel.Parent = frame
+    -- 类别内容区域
+    local categoryFrame = Instance.new("Frame")
+    categoryFrame.Size = UDim2.new(0.9, 0, 0, 80)
+    categoryFrame.Position = UDim2.new(0.05, 0, 0, 90 + (i-1)*120)
+    categoryFrame.BackgroundTransparency = 1
+    categoryFrame.Visible = false -- 初始隐藏
+    categoryFrame.Parent = contentFrame
+    categoryContents[i] = categoryFrame
     
+    -- 点数显示
     local pointsLabel = Instance.new("TextLabel")
     pointsLabel.Name = "Points_"..i
     pointsLabel.Text = "总点数: 0"
-    pointsLabel.Size = UDim2.new(1, 0, 0, 20)
-    pointsLabel.Position = UDim2.new(0, 0, 0, 25)
+    pointsLabel.Size = UDim2.new(1, 0, 0, 25)
     pointsLabel.Font = Enum.Font.SourceSans
-    pointsLabel.TextSize = 16 -- 增大字号
+    pointsLabel.TextSize = 16
     pointsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    typeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    pointsLabel.TextXAlignment = Enum.TextXAlignment.Left
     pointsLabel.BackgroundTransparency = 1
-    pointsLabel.Parent = frame
-    pointsLabels[i] = pointsLabel
+    pointsLabel.Parent = categoryFrame
+    categoryFrames[i] = pointsLabel
     
+    -- 输入框
     local textBox = Instance.new("TextBox")
     textBox.Name = "Input_"..i
-    textBox.Size = UDim2.new(1, 0, 0, 35) -- 增大高度
-    textBox.Position = UDim2.new(0, 0, 0, 45)
+    textBox.Size = UDim2.new(1, 0, 0, 35)
+    textBox.Position = UDim2.new(0, 0, 0, 30)
     textBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     textBox.TextColor3 = Color3.new(1, 1, 1) 
     textBox.PlaceholderText = "输入"..elixirTypes[i].."丹药需求点数"
     textBox.Text = ""
-    textBox.FontSize = Enum.FontSize.Size18 -- 增大输入字号
-    textBox.Parent = frame
+    textBox.Parent = categoryFrame
     
-    inputFrames[i] = textBox
+    -- 示例标签
+    local exampleLabel = Instance.new("TextLabel")
+    exampleLabel.Text = "示例: 输入1000自动计算最优组合"
+    exampleLabel.Size = UDim2.new(1, 0, 0, 15)
+    exampleLabel.Position = UDim2.new(0, 0, 0, 65)
+    exampleLabel.Font = Enum.Font.SourceSans
+    exampleLabel.TextSize = 12
+    exampleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    exampleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    exampleLabel.BackgroundTransparency = 1
+    exampleLabel.Parent = categoryFrame
     
-    -- 移除示例标签以节省空间
+    -- 点击事件
+    button.MouseButton1Click:Connect(function()
+        categoryFrame.Visible = not categoryFrame.Visible
+        button.Text = elixirTypes[i].."丹药 "..(categoryFrame.Visible and "▲" or "▼")
+        
+        -- 调整主框架大小
+        local newHeight = 50 -- 标题栏高度
+        for j = 1, 5 do
+            if categoryContents[j].Visible then
+                newHeight = newHeight + 120 -- 展开的类别高度
+            else
+                newHeight = newHeight + 40 -- 折叠的按钮高度
+            end
+        end
+        newHeight = newHeight + 80 -- 底部按钮区域
+        
+        mainFrame.Size = UDim2.new(0, 350, 0, math.min(newHeight, 800)) -- 限制最大高度
+    end)
 end
 
--- 修改按钮区域
+-- 按钮区域
 local buttonFrame = Instance.new("Frame")
-buttonFrame.Size = UDim2.new(0.9, 0, 0, 100) -- 增大高度
-buttonFrame.Position = UDim2.new(0.05, 0, 0, 100 + 5*85) -- 调整位置
+buttonFrame.Size = UDim2.new(0.9, 0, 0, 80)
+buttonFrame.Position = UDim2.new(0.05, 0, 0, 50 + 5*120)
 buttonFrame.BackgroundTransparency = 1
-buttonFrame.Parent = mainFrame
+buttonFrame.Parent = contentFrame
 
--- 修改按钮样式
-local function createMobileButton(text, positionX)
-    local button = Instance.new("TextButton")
-    button.Text = text
-    button.Size = UDim2.new(0.45, 0, 0, 50) -- 增大按钮高度
-    button.Position = UDim2.new(positionX, 0, 0, 0)
-    button.Font = Enum.Font.SourceSansBold
-    button.TextSize = 18 -- 增大字号
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
-    return button
-end
-
-local refreshButton = createMobileButton("刷新数据", 0)
+-- 刷新按钮
+local refreshButton = Instance.new("TextButton")
+refreshButton.Text = "刷新丹药数据"
+refreshButton.Size = UDim2.new(0.45, 0, 0, 40)
+refreshButton.Position = UDim2.new(0, 0, 0, 0)
+refreshButton.Font = Enum.Font.SourceSansBold
+refreshButton.TextSize = 16
+refreshButton.TextColor3 = Color3.new(1, 1, 1) 
+refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
 refreshButton.Parent = buttonFrame
 
-local tradeButton = createMobileButton("交易", 0.55)
+-- 交易按钮
+local tradeButton = Instance.new("TextButton")
+tradeButton.Text = "放入交易丹药"
+tradeButton.Size = UDim2.new(0.45, 0, 0, 40)
+tradeButton.Position = UDim2.new(0.55, 0, 0, 0)
+tradeButton.Font = Enum.Font.SourceSansBold
+tradeButton.TextSize = 16
+tradeButton.TextColor3 = Color3.new(1, 1, 1) 
 tradeButton.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
 tradeButton.Parent = buttonFrame
 
--- 修改状态显示
+-- 状态显示
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Text = "系统就绪，等待操作..."
-statusLabel.Size = UDim2.new(0.9, 0, 0, 80) -- 增大高度以显示更多文本
-statusLabel.Position = UDim2.new(0.05, 0, 0, 100 + 5*85 + 110) -- 调整位置
+statusLabel.Size = UDim2.new(0.9, 0, 0, 60)
+statusLabel.Position = UDim2.new(0.05, 0, 0, 50 + 5*120 + 90)
 statusLabel.Font = Enum.Font.SourceSans
-statusLabel.TextSize = 16 -- 增大字号
+statusLabel.TextSize = 14
 statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 statusLabel.TextWrapped = true
 statusLabel.BackgroundTransparency = 1
-statusLabel.Parent = mainFrame
+statusLabel.Parent = contentFrame
 
 -- 获取远程事件
 local elixirSyncEvent = ReplicatedStorage
@@ -475,7 +529,30 @@ end)
 closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
-
+local isExpanded = false
+toggleButton.MouseButton1Click:Connect(function()
+    isExpanded = not isExpanded
+    contentFrame.Visible = isExpanded
+    title.Text = "丹药交易大师 "..(isExpanded and "▲" or "▼")
+    
+    if isExpanded then
+        -- 展开时计算合适的高度
+        local newHeight = 50 -- 标题栏高度
+        for i = 1, 5 do
+            if categoryContents[i].Visible then
+                newHeight = newHeight + 120 -- 展开的类别高度
+            else
+                newHeight = newHeight + 40 -- 折叠的按钮高度
+            end
+        end
+        newHeight = newHeight + 140 -- 底部区域
+        
+        mainFrame.Size = UDim2.new(0, 350, 0, math.min(newHeight, 800)) -- 限制最大高度
+    else
+        -- 折叠时只显示标题栏
+        mainFrame.Size = UDim2.new(0, 350, 0, 50)
+    end
+end)
 -- 窗口拖动功能
 local dragging = false
 local dragStart, startPos
