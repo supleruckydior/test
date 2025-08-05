@@ -174,6 +174,19 @@ allowedTradePlayers = {
     "MaritzaQqL5sm5",
     "Yeshua3pyq7",
     "AtalyatRPX9",
+    "crazyluckymad13",
+    "crazyluckymad2",
+    "crazyluckymad1",
+    "crazyluckymad3",
+    "crazyluckymad4",
+    "crazyluckymad5",
+    "crazyluckymad7",
+    "crazyluckymad8",
+    "crazyluckymad9",
+    "crazyluckymad10",
+    "crazyluckymad11",
+    "crazyluckymad12",
+    "crazyluckymad14",
     "SannehRwX33",
     "ZaniaQe75O",
     "Camdeni0TBqE",
@@ -1249,8 +1262,7 @@ local function selectDungeonWithMostKeys()
 	local dungeonName = bestDungeon;
 	local dungeonLevel = tostring(dungeonFunctions[dungeonKeys[dungeonName]]() or "0");
 	print("已選擇最多鑰匙的地下城：" .. dungeonName);
-	wait(0.5);
-	wait(savemodetime2);
+	wait(0.4);
 	DungeonTP();
 end
 local function CheckDungeonVictory()
@@ -1324,7 +1336,6 @@ local function AutostartDungeonf()
     wait(savemodetime2)
     teleporthome()
     wait(0.5)
-    wait(savemodetime)
     
     if Autofinishdungeon and currentKeys == 0 then
         print("自動切換到鑰匙最多的地下城")
