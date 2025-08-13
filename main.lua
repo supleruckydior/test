@@ -442,7 +442,7 @@ local herbCollectFinished = false  -- 初始为 false
 local farmReady = false  -- 初始为 false
 local function checkAllTasksFinished()
     if donationFinished and herbBuyFinished and herbCollectFinished and farmReady then
-        showTopRightNotice("收菜完成！", 4)
+        showTopRightNotice("收菜完成！", 999)
     end
 end
 local function setupFeaturesTab(features)
