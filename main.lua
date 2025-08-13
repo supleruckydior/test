@@ -401,6 +401,42 @@ local hasPrintedNoPlayer = false;
 local savemodetime = 3;
 local savemodetime2 = 0;
 local savemodebutton;
+local function deepWait(parent, path, eachTimeout)
+    local obj = parent
+    for _, name in ipairs(path) do
+        obj = obj and obj:WaitForChild(name, eachTimeout or 5)
+        if not obj then return nil end
+    end
+    return obj
+end
+
+-- 右上角提示（简单版）
+local function showTopRightNotice(text, lifetime)
+    local player = game:GetService("Players").LocalPlayer
+    local pg = player:WaitForChild("PlayerGui")
+    local gui = pg:FindFirstChild("FarmNoticeGui") or Instance.new("ScreenGui")
+    gui.Name = "FarmNoticeGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = pg
+
+    local label = gui:FindFirstChild("Notice") or Instance.new("TextLabel")
+    label.Name = "Notice"
+    label.AnchorPoint = Vector2.new(1,0)
+    label.Position = UDim2.new(1, -20, 0, 20)
+    label.Size = UDim2.new(0, 260, 0, 34)
+    label.BackgroundTransparency = 0.15
+    label.TextScaled = true
+    label.TextWrapped = true
+    label.Font = Enum.Font.SourceSansSemibold
+    label.Text = text
+    label.Parent = gui
+
+    task.delay(lifetime or 3, function()
+        if label then label:Destroy() end
+        if gui and #gui:GetChildren() == 0 then gui:Destroy() end
+    end)
+end
+
 local function setupFeaturesTab(features)
     features:AddLabel("作者：澤澤   介面：Elerium v2   版本：V4.0.3")
     features:AddLabel("AntiAFK：start")
@@ -788,22 +824,84 @@ local invest = features1:AddSwitch("自動執行投資", function(bool)
 	end
 end);
 invest:Set(true);
+local function openFarm5()
+    pcall(function()
+        game:GetService("ReplicatedStorage")
+            ["\228\186\139\228\187\182"]["\229\134\156\231\148\176"]["\229\134\156\231\148\176UI"]["\229\177\158\230\128\167\229\140\186\229\159\159"]
+            :FireServer(5)
+    end)
+    task.wait(0.5) -- 给UI一点时间打开
+end
+
+-- 读取你指定路径上的数字文本
+local function readFarm5Number()
+    local player = game:GetService("Players").LocalPlayer
+    local root = player:WaitForChild("PlayerGui"):WaitForChild("GUI")
+
+    local label = deepWait(root, {
+        "\228\186\140\231\186\167\231\149\140\233\157\162",
+        "\229\134\156\231\148\176",
+        "\232\131\140\230\153\175",
+        "\229\177\158\230\128\167\229\140\186\229\159\159",
+        "\230\148\182\233\155\134\230\140\137\233\146\174",
+        "\230\149\176\233\135\143\229\140\186",
+        "\230\149\176\233\135\143"
+    }, 5)
+
+    if not label or not label:IsA("TextLabel") then
+        return nil
+    end
+    -- 这里按你的描述就是“一个数字”，直接 tonumber
+    return tonumber(label.Text) or 0
+end
+
+-- 等待直到该数字 < 100；若 >=100 就每3秒再查一次
+local function waitFarm5Below100(maxMinutes)
+    local deadline = os.clock() + (maxMinutes or 10) * 60  -- 最多等10分钟（可改）
+    while os.clock() < deadline do
+        local n = readFarm5Number()
+        if n == nil then
+            warn("[农田5] 读取数字失败，3秒后重试")
+            task.wait(3)
+        elseif n < 100 then
+            farmReady = true
+            print("[农田5] 数值 < 100，标记 farmReady = true")
+            checkAllTasksFinished()
+            return true
+        else
+            -- 未小于100，3秒后再查
+            task.wait(3)
+        end
+    end
+    warn("[农田5] 等待超时（超过上限仍 >=100）")
+    return false
+end
 local AutoCollectherbs = features1:AddSwitch("自動採草藥", function(bool)
-	AutoCollectherbsbool = bool;
-	if AutoCollectherbsbool then
-		spawn(function()
-			while AutoCollectherbsbool do
-				for i = 1, 6 do
-					local args = {[1]=i,[2]=nil};
-					game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\229\134\156\231\148\176"]["\233\135\135\233\155\134"]:FireServer(unpack(args));
-					wait(0.1);
-				end
-				wait(60);
-			end
-		end);
-	end
-end);
-AutoCollectherbs:Set(true);
+    AutoCollectherbsbool = bool
+    if AutoCollectherbsbool then
+        spawn(function()
+            while AutoCollectherbsbool do
+                for i = 1, 6 do
+                    local args = {[1] = i, [2] = nil}
+                    game:GetService("ReplicatedStorage")
+                        ["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\229\134\156\231\148\176"]["\233\135\135\233\155\134"]
+                        :FireServer(unpack(args))
+                    wait(0.1)
+                end
+
+                -- 🌿 一轮收集完成
+                herbCollectFinished = true
+                print("[系统] 草药收集一轮完成，检查农田 5 状态…")
+                openFarm5()
+                waitFarm5Below100()
+
+                wait(60) -- 等下一轮
+            end
+        end)
+    end
+end)
+
+AutoCollectherbs:Set(true)
 features1:AddLabel(" - - 通行證解鎖");
 local Refining = features1:AddSwitch("解鎖自動煉製", function(bool)
 	local Refiningbool = bool;
@@ -2548,7 +2646,11 @@ local function CheckAndFire()
         end
     end
 end
-
+local function checkAllTasksFinished()
+    if donationFinished and herbBuyFinished and herbCollectFinished and farmReady then
+        showTopRightNotice("收菜完成！", 4)
+    end
+end
 -- Run once immediately
 CheckAndFire()
 -- Print results
