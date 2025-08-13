@@ -436,6 +436,10 @@ local function showTopRightNotice(text, lifetime)
         if gui and #gui:GetChildren() == 0 then gui:Destroy() end
     end)
 end
+local donationFinished = false  -- 初始为 false
+local herbBuyFinished = false  -- 初始为 false
+local herbCollectFinished = false  -- 初始为 false
+local farmReady = false  -- 初始为 false
 local function checkAllTasksFinished()
     if donationFinished and herbBuyFinished and herbCollectFinished and farmReady then
         showTopRightNotice("收菜完成！", 4)
@@ -1812,7 +1816,6 @@ local function executeDonation()
 end
 
 -- 创建带保护机制的捐献循环
-local donationFinished = false  -- 初始为 false
 
 -- 创建带保护机制的捐献循环
 local function donationLoop()
