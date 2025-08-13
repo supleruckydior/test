@@ -1710,6 +1710,9 @@ local function executeDonation()
 end
 
 -- 创建带保护机制的捐献循环
+local donationFinished = false  -- 初始为 false
+
+-- 创建带保护机制的捐献循环
 local function donationLoop()
     while donationController.enabled do
         local success, remaining = pcall(updateGuildDisplay)
@@ -1726,9 +1729,17 @@ local function donationLoop()
             donationController.enabled = false
         end
         
+        -- 如果捐献次数为 0，标记完成
+        if success and remaining == 0 then
+            donationController.enabled = false
+            donationFinished = true
+            print("[系统] 公会捐献已完成，准备购买草药")
+        end
+
         task.wait(donationController.interval)
     end
 end
+
 
 -- 初始化开关并设置自动启动
 local AutoDonateSwitch = features5:AddSwitch("自動捐献", function(isActive)
@@ -1804,93 +1815,81 @@ local function toggleGuildUI(state)
         game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"].Visible = state
     end)
 end
+local price = 400  -- 固定价格
 
 -- 购买逻辑主循环
+
 local function herbLoop()
     while herbController.enabled do
-        local boughtAny = false
-        local success, err = pcall(function()
-            local guilditemlist = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\149\134\229\186\151"]["\229\136\151\232\161\168"]
-            
-            -- 检查第一个物品栏
-            local firstItem = guilditemlist["\230\180\187\229\138\168\229\149\134\229\147\129\233\162\132\229\136\182\228\189\147"]
-            if firstItem["\230\140\137\233\146\174"]["\229\186\147\229\173\152"].Text == "1 Left" 
-            and firstItem["\230\140\137\233\146\174"]["\229\144\141\231\167\176"].Text == "Herb" then
-                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182")
-                    :WaitForChild("\229\133\172\231\148\168")
-                    :WaitForChild("\229\133\172\228\188\154")
-                    :WaitForChild("\229\133\145\230\141\162")
-                    :FireServer(1)
-                boughtAny = true
-            end
+        -- 等待捐献完成
+        if not donationFinished then
+            task.wait(1)
+            continue  -- 跳过本轮，直到捐献完成
+        end
 
-            -- 遍历其他物品栏
-            for i = 4, 18 do
-                if not herbController.enabled then break end
-                local item = guilditemlist:GetChildren()[i]
-                if item and item:FindFirstChild("\230\140\137\233\146\174") then
-                    local button = item["\230\140\137\233\146\174"]
-                    if button["\229\186\147\229\173\152"].Text == "1 Left" 
-                    and button["\229\144\141\231\167\176"].Text == "Herb" then
-                        game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182")
-                            :WaitForChild("\229\133\172\231\148\168")
-                            :WaitForChild("\229\133\172\228\188\154")
-                            :WaitForChild("\229\133\145\230\141\162")
-                            :FireServer(i - 2)
+        -- 第一次开始买草药时提示
+        if not herbController.started then
+            print("[系统] 开始自动购买草药")
+            herbController.started = true
+        end
+
+        local boughtAny = false
+        local money = getDiamond()
+        local guilditemlist = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+            ["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]
+            ["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\149\134\229\186\151"]["\229\136\151\232\161\168"]
+
+        local function tryBuy(slotIndex)
+            local item = guilditemlist:GetChildren()[slotIndex]
+            if item and item:FindFirstChild("\230\140\137\233\146\174") then
+                local button = item["\230\140\137\233\146\174"]
+                if button["\229\186\147\229\173\152"].Text == "1 Left"
+                and button["\229\144\141\231\167\176"].Text == "Herb" then
+                    if money >= price then
+                        game:GetService("ReplicatedStorage")
+                            ["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\229\133\172\228\188\154"]["\229\133\145\230\141\162"]
+                            :FireServer(slotIndex - 2)
+                        money = money - price
                         boughtAny = true
-                        break
+                        return true
+                    else
+                        warn("[草药购买] 货币不足，跳过槽位 "..slotIndex)
                     end
                 end
             end
-        end)
-
-        -- 错误处理
-        if not success then
-            herbController.currentAttempts = herbController.currentAttempts + 1
-            warn("[运行错误] 第"..herbController.currentAttempts.."次失败:", err)
-            if herbController.currentAttempts >= herbController.maxAttempts then
-                herbController.enabled = false
-                warn("[自动停止] 连续失败超过最大次数")
-            end
-        else
-            herbController.currentAttempts = 0
+            return false
         end
 
-        -- 商店刷新逻辑
-        if not boughtAny then
+        -- 遍历所有槽位
+        for i = 1, 18 do
+            if not herbController.enabled then break end
+            tryBuy(i)
+        end
+
+        -- 刷新逻辑封装
+        local function doRefresh()
             local refreshCost = getRefreshCost()
             local diamond = getDiamond()
             local guildCoin = getGuildCoin()
-            if refreshCost > 7000 and not herbController.highCostMode then
-                toggleGuildUI(false)
-                herbController.highCostMode = true
-		task.wait(300)
-                print("[系统] 进入高成本模式，停止刷新")
-            elseif refreshCost <= 7000 then
-                herbController.highCostMode = false
-            end
 
-            -- 执行刷新判断
-            if not herbController.highCostMode then
-                if refreshCost <= 7000 and diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
-                    pcall(function()
-                        -- 打开公会界面
-                        game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:Fire()
-                        task.wait(0.5)
-                        
-                        -- 执行刷新
-                        game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182")
-                            :FindFirstChild("\229\133\172\231\148\168")
-                            :FindFirstChild("\229\133\172\228\188\154")
-                            :FindFirstChild("\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151")
-                            :FireServer()
-                    end)
-                    task.wait(1.5)
-		else
-		toggleGuildUI(false)
-		task.wait(300)
-                end
+            if refreshCost <= 7000 and diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
+                pcall(function()
+                    game:GetService("ReplicatedStorage")
+                        ["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:Fire()
+                    task.wait(0.5)
+                    game:GetService("ReplicatedStorage")
+                        ["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\229\133\172\228\188\154"]["\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151"]:FireServer()
+                end)
+                task.wait(1.5)
+            else
+                print("[草药购买] 刷新条件不满足，暂停 30 秒")
+                task.wait(30)
             end
+        end
+
+        -- 刷新条件：还能买 OR 一次都没买到
+        if money >= price or not boughtAny then
+            doRefresh()
         end
 
         task.wait(herbController.interval)
