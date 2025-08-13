@@ -436,7 +436,11 @@ local function showTopRightNotice(text, lifetime)
         if gui and #gui:GetChildren() == 0 then gui:Destroy() end
     end)
 end
-
+local function checkAllTasksFinished()
+    if donationFinished and herbBuyFinished and herbCollectFinished and farmReady then
+        showTopRightNotice("收菜完成！", 4)
+    end
+end
 local function setupFeaturesTab(features)
     features:AddLabel("作者：澤澤   介面：Elerium v2   版本：V4.0.3")
     features:AddLabel("AntiAFK：start")
@@ -1831,7 +1835,9 @@ local function donationLoop()
         if success and remaining == 0 then
             donationController.enabled = false
             donationFinished = true
+			checkAllTasksFinished()
             print("[系统] 公会捐献已完成，准备购买草药")
+
         end
 
         task.wait(donationController.interval)
@@ -1963,35 +1969,45 @@ local function herbLoop()
             if not herbController.enabled then break end
             tryBuy(i)
         end
-
+local refreshCost = getRefreshCost()
+local diamond = getDiamond()
+local guildCoin = getGuildCoin()
         -- 刷新逻辑封装
-        local function doRefresh()
-            local refreshCost = getRefreshCost()
-            local diamond = getDiamond()
-            local guildCoin = getGuildCoin()
-
-            if refreshCost <= 7000 and diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
-                pcall(function()
-                    game:GetService("ReplicatedStorage")
-                        ["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:Fire()
-                    task.wait(0.5)
-                    game:GetService("ReplicatedStorage")
-                        ["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\229\133\172\228\188\154"]["\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151"]:FireServer()
-                end)
-                task.wait(1.5)
-            else
-                print("[草药购买] 刷新条件不满足，暂停 30 秒")
-                task.wait(30)
-            end
+if refreshCost > 7000 then
+    if not herbController.highCostMode then
+        print("[系统] 进入高成本模式，结束草药购买任务")
+        herbController.highCostMode = true
+        if not herbBuyFinished then
+            herbBuyFinished = true
+            checkAllTasksFinished()
         end
-
-        -- 刷新条件：还能买 OR 一次都没买到
-        if money >= price or not boughtAny then
-            doRefresh()
-        end
-
-        task.wait(herbController.interval)
+        herbController.enabled = false
     end
+    toggleGuildUI(false)
+    task.wait(300)
+    break
+else
+    herbController.highCostMode = false
+end
+
+-- 正常刷新
+if diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
+    pcall(function()
+        game:GetService("ReplicatedStorage")
+            ["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\230\137\147\229\188\128\229\133\172\228\188\154"]:Fire()
+        task.wait(0.5)
+        game:GetService("ReplicatedStorage")
+            ["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\229\133\172\228\188\154"]["\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151"]:FireServer()
+    end)
+    task.wait(1.5)
+else
+    print("[草药购买] 刷新条件不满足，结束购买任务")
+    if not herbBuyFinished then
+        herbBuyFinished = true
+        checkAllTasksFinished()
+    end
+    herbController.enabled = false -- 停止循环
+    task.wait(30)
 end
 
 -- 界面控件
@@ -2644,11 +2660,6 @@ local function CheckAndFire()
         else
             warn("RemoteEvent not found!")
         end
-    end
-end
-local function checkAllTasksFinished()
-    if donationFinished and herbBuyFinished and herbCollectFinished and farmReady then
-        showTopRightNotice("收菜完成！", 4)
     end
 end
 -- Run once immediately
