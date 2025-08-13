@@ -424,7 +424,9 @@ local function showTopRightNotice(text, lifetime)
     label.AnchorPoint = Vector2.new(1,0)
     label.Position = UDim2.new(1, -20, 0, 20)
     label.Size = UDim2.new(0, 260, 0, 34)
-    label.BackgroundTransparency = 0.15
+    label.BackgroundTransparency = 0.3 -- 不透明背景
+    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- 黑色背景
+    label.TextColor3 = Color3.fromRGB(255, 0, 0) -- 红色文字
     label.TextScaled = true
     label.TextWrapped = true
     label.Font = Enum.Font.SourceSansSemibold
