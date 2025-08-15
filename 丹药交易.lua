@@ -283,98 +283,110 @@ local function calculateElixirPoints()
 end
 
 -- 智能计算丹药组合算法
-local function calculateElixirs(targetPoints, availableElixirs)
-    -- Sort by points (highest first)
+function calculateElixirs(targetPoints, availableElixirs, adjustRange)
+    adjustRange = adjustRange or 50 -- 允许的微调范围
+
+    -- 按点数从大到小排序
     table.sort(availableElixirs, function(a, b) return a.points > b.points end)
-    
-    local usedElixirs = {}
-    local remainingPoints = targetPoints
-    
-    -- Phase 1: Use exact multiples
-    for _, elixir in ipairs(availableElixirs) do
-        if remainingPoints <= 0 then break end
-        
-        local maxPossible = math.floor(remainingPoints / elixir.points)
-        if maxPossible > 0 then
-            local take = math.min(maxPossible, elixir.count)
-            if take > 0 then
-                table.insert(usedElixirs, {
-                    type = elixir.type,
-                    quality = elixir.quality,
-                    count = take,
-                    points = elixir.points,
-                    index = elixir.index
-                })
-                remainingPoints = remainingPoints - (take * elixir.points)
-            end
+
+    local used = {}
+    for i, elixir in ipairs(availableElixirs) do
+        used[i] = {type=elixir.type, quality=elixir.quality, count=0, points=elixir.points, index=elixir.index}
+    end
+
+    local currentPoints = 0
+
+    -- 阶段 1：贪心逼近
+    for i, elixir in ipairs(availableElixirs) do
+        while elixir.count > used[i].count 
+              and currentPoints + elixir.points <= targetPoints - adjustRange do
+            used[i].count = used[i].count + 1
+            currentPoints = currentPoints + elixir.points
         end
     end
-    
-    -- Phase 2: Add ONE optimal elixir if needed
-    if remainingPoints > 0 then
-        -- Find best single elixir to cover remaining points
-        local bestElixir = nil
-        local bestPoints = math.huge
-        
-        -- Check all elixir types from highest to lowest
-        for _, elixir in ipairs(availableElixirs) do
-            -- Check if we have any left
-            local used = 0
-            for _, u in ipairs(usedElixirs) do
-                if u.index == elixir.index then used = u.count end
+
+    local diff = targetPoints - currentPoints
+
+    -- 阶段 2：局部背包微调
+    if diff ~= 0 then
+        -- 生成可用于微调的丹药列表（剩余数量）
+        local smallElixirs = {}
+        for i, elixir in ipairs(availableElixirs) do
+            local remain = elixir.count - used[i].count
+            if remain > 0 then
+                table.insert(smallElixirs, {index=i, points=elixir.points, count=remain})
             end
-            local remaining = elixir.count - used
-            
-            if remaining > 0 and elixir.points >= remainingPoints then
-                if elixir.points < bestPoints then
-                    bestPoints = elixir.points
-                    bestElixir = elixir
-                    -- Found perfect match, break early
-                    if bestPoints == remainingPoints then break end
+        end
+
+        -- 背包搜索范围
+        local maxPoints = math.min(diff + adjustRange, adjustRange * 2)
+        local dp = {[0] = {}}
+
+        for _, e in ipairs(smallElixirs) do
+            local items = {}
+            local c = e.count
+            local k = 1
+            while c > 0 do
+                local take = math.min(k, c)
+                table.insert(items, {index=e.index, points=e.points, count=take})
+                c = c - take
+                k = k * 2
+            end
+
+            for _, item in ipairs(items) do
+                local currentDP = {}
+                for s, combo in pairs(dp) do
+                    local newS = s + item.points * item.count
+                    if newS <= maxPoints then
+                        local newCombo = {}
+                        for _, v in ipairs(combo) do
+                            table.insert(newCombo, v)
+                        end
+                        table.insert(newCombo, {index=item.index, count=item.count})
+                        if not dp[newS] then
+                            currentDP[newS] = newCombo
+                        end
+                    end
+                end
+                for s, combo in pairs(currentDP) do
+                    dp[s] = combo
                 end
             end
         end
-        
-        -- Add the single best elixir
-        if bestElixir then
-            table.insert(usedElixirs, {
-                type = bestElixir.type,
-                quality = bestElixir.quality,
-                count = 1,
-                points = bestElixir.points,
-                index = bestElixir.index
-            })
-            remainingPoints = remainingPoints - bestElixir.points
+
+        -- 找最接近 diff 的解
+        local best = nil
+        local bestDiff = math.huge
+        for s, combo in pairs(dp) do
+            local d = math.abs(diff - s)
+            if d < bestDiff then
+                bestDiff = d
+                best = combo
+            end
         end
-    end
-    
-    -- Calculate final total
-    local totalPoints = targetPoints - remainingPoints
-    
-    -- Verify we didn't add unnecessary elixirs
-    if totalPoints > targetPoints then
-        -- Find and remove any redundant small elixirs
-        for i = #usedElixirs, 1, -1 do
-            if totalPoints - usedElixirs[i].points >= targetPoints then
-                totalPoints = totalPoints - usedElixirs[i].points
-                table.remove(usedElixirs, i)
+
+        -- 应用微调
+        if best then
+            for _, v in ipairs(best) do
+                used[v.index].count = used[v.index].count + v.count
+                currentPoints = currentPoints + availableElixirs[v.index].points * v.count
             end
         end
     end
-    
-    -- Final debug output
-    print("\nOptimized Calculation:")
-    local runningTotal = 0
-    for i, u in ipairs(usedElixirs) do
-        runningTotal = runningTotal + (u.count * u.points)
-        print(string.format("%d. %dx Quality %d (%d pts) = %d pts (Subtotal: %d)",
-            i, u.count, u.quality, u.points, u.count * u.points, runningTotal))
+
+    print(string.format("[丹药优化] 目标: %d, 实际: %d, 误差: %+d", targetPoints, currentPoints, currentPoints - targetPoints))
+
+    -- 过滤掉 0 数量的
+    local finalCombo = {}
+    for _, v in ipairs(used) do
+        if v.count > 0 then
+            table.insert(finalCombo, v)
+        end
     end
-    print(string.format("Final Total: %d pts (Requested: %d, Difference: %d)",
-        runningTotal, targetPoints, runningTotal - targetPoints))
-    
-    return usedElixirs, runningTotal
+
+    return finalCombo, currentPoints
 end
+
 
 -- 执行交易操作
 tradeButton.MouseButton1Click:Connect(function()
