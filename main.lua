@@ -519,8 +519,8 @@ if currentGameId == TARGET_GAME_ID then
             end
             if playerInRange then
                 if timescheck == 0 then
-                    savemodetime2 = 2
-                    savemodetime = 5
+                    savemodetime2 = 0
+                    savemodetime = 0
                     timescheck = 1
                     hasPrintedNoPlayer = true
                 end
@@ -530,7 +530,7 @@ if currentGameId == TARGET_GAME_ID then
                 hasPrintedNoPlayer = false
             end
             if not playerInRange and not hasPrintedNoPlayer then
-                savemodetime = 3
+                savemodetime = 0
                 savemodetime2 = 0
                 hasPrintedNoPlayer = true
             end
@@ -549,7 +549,7 @@ if currentGameId == TARGET_GAME_ID then
                 '檢測已' .. ((isDetectionEnabled and '啟用') or '關閉')
             )
             if not isDetectionEnabled then
-                savemodetime = 3
+                savemodetime = 0
                 savemodetime2 = 0
             end
         end
