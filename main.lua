@@ -421,7 +421,8 @@ if currentGameId == TARGET_GAME_ID then
     local playerInRange = false
     local timescheck = 0
     local hasPrintedNoPlayer = false
-    local savemodetime = 3
+    local showone = false
+    local savemodetime = 0
     local savemodetime2 = 0
     local savemodebutton
     local function deepWait(parent, path, eachTimeout)
@@ -1291,7 +1292,6 @@ if currentGameId == TARGET_GAME_ID then
             return success and result == 'Victory'
         end
         function teleporthome()
-            wait(savemodetime2)
             player.Character:WaitForChild('HumanoidRootPart').CFrame =
                 CFrame.new(TPX, TPY, TPZ)
         end
