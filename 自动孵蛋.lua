@@ -14,31 +14,24 @@ end
 -- =========================
 -- RemoteEvents
 -- =========================
--- 用于 FireServer 刷新服务器数据
 local remoteFetchServer = getRemote({
     '\228\186\139\228\187\182',
     '\229\133\172\231\148\168',
     '\229\174\160\231\137\169\232\155\139',
-    '\230\148\182\232\151\143', -- 触发服务器刷新背包/孵化中
+    '\230\148\182\232\151\143',
 })
-
--- 用于 FireServer 开蛋
 local remoteHatch = getRemote({
     '\228\186\139\228\187\182',
     '\229\133\172\231\148\168',
     '\229\174\160\231\137\169\232\155\139',
     '\229\188\128\229\144\175',
 })
-
--- 用于 FireServer 放置蛋孵化
 local remotePlaceEgg = getRemote({
     '\228\186\139\228\187\182',
     '\229\133\172\231\148\168',
     '\229\174\160\231\137\169\232\155\139',
     '\229\173\181\229\140\150',
 })
-
--- 用于 Connect 收到服务器下发最新数据（背包和孵化中）
 local remoteReceiveData = getRemote({
     '\228\186\139\228\187\182',
     '\229\133\172\231\148\168',
@@ -73,19 +66,24 @@ local function printTable(t, indent, seen)
 end
 
 -- =========================
--- UI 创建
+-- UI 创建（手机适配、透明背景）
 -- =========================
 local ScreenGui = Instance.new('ScreenGui')
 ScreenGui.Name = 'AutoHatchUI'
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild('PlayerGui')
 
 local InfoLabel = Instance.new('TextLabel')
-InfoLabel.Size = UDim2.new(0, 300, 0, 100)
-InfoLabel.Position = UDim2.new(0, 10, 0, 10)
-InfoLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+InfoLabel.Size = UDim2.new(0.4, 0, 0.15, 0) -- 按比例适配
+InfoLabel.Position = UDim2.new(0.05, 0, 0.05, 0)
+InfoLabel.BackgroundTransparency = 0.5
+InfoLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 InfoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 InfoLabel.TextScaled = true
+InfoLabel.TextWrapped = true
 InfoLabel.Text = '加载中...'
+InfoLabel.BorderSizePixel = 0
 InfoLabel.Parent = ScreenGui
 
 local function updateUI()
@@ -132,12 +130,8 @@ printTable(latestData['孵化中'])
 -- =========================
 remoteReceiveData.OnClientEvent:Connect(function(data)
     if type(data) == 'table' then
-        latestData['背包'] = type(data['背包']) == 'table'
-                and data['背包']
-            or {}
-        latestData['孵化中'] = type(data['孵化中']) == 'table'
-                and data['孵化中']
-            or {}
+        latestData['背包'] = type(data['背包']) == 'table' and data['背包'] or {}
+        latestData['孵化中'] = type(data['孵化中']) == 'table' and data['孵化中'] or {}
 
         print('===== RemoteEvent 更新背包 =====')
         printTable(latestData['背包'])
@@ -183,10 +177,7 @@ spawn(function()
             if #backpack > 0 then
                 local randomEgg = backpack[math.random(1, #backpack)]
                 remoteFetchServer:FireServer(randomEgg['索引'])
-                print(
-                    '强制服务器刷新数据，蛋索引:',
-                    randomEgg['索引']
-                )
+                print('强制服务器刷新数据，蛋索引:', randomEgg['索引'])
             end
         end
     end
@@ -199,16 +190,12 @@ spawn(function()
     while true do
         wait(1)
         local incubating = latestData['孵化中']
-        local incubatingProgress = (incubating and incubating['孵化进度'])
-            or 0
+        local incubatingProgress = (incubating and incubating['孵化进度']) or 0
         local backpackCount = #latestData['背包']
         local hasIncubatingEgg = incubatingProgress > 0
 
         -- 背包+孵化中>2，孵化中没有蛋才随机孵化
-        if
-            backpackCount + (hasIncubatingEgg and 1 or 0) > 2
-            and not hasIncubatingEgg
-        then
+        if backpackCount + (hasIncubatingEgg and 1 or 0) > 2 and not hasIncubatingEgg then
             placeRandomEggIfNone()
         end
 
