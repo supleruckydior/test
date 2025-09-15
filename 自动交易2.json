@@ -83,6 +83,7 @@ local function getEggDataFromMemory()
 
                 if hasBackpack or hasIncubating then
                     latestTable = obj
+                    print('找到蛋数据表')
                     break
                 end
             end
@@ -95,6 +96,7 @@ local function getEggDataFromMemory()
             or rawget(latestTable, '背包')
         if type(backpack) == 'table' then
             eggData['背包'] = backpack
+            print('从内存获取背包蛋数量:', #backpack)
         end
 
         -- 尝试获取孵化中数据
@@ -104,10 +106,10 @@ local function getEggDataFromMemory()
         ) or rawget(latestTable, '孵化中')
         if type(incubating) == 'table' then
             eggData['孵化中'] = incubating
-
+            print('从内存获取孵化中数据')
         end
     else
-
+        print('未从内存找到蛋数据')
     end
 end
 
@@ -209,25 +211,28 @@ closeButton.Text = '关闭系统'
 closeButton.Parent = buttonContainer
 
 -- 窗口拖拽系统
+-- ==================================
+-- 通用拖拽系统（PC + 安卓触控）
+-- ==================================
 local dragging = false
-local dragStart, startPos
+local dragStart = Vector2.new()
+local startPos = UDim2.new()
 
-titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-    end
-end)
+-- 开始拖拽
+local function startDrag(input)
+    dragging = true
+    dragStart = input.Position
+    startPos = mainFrame.Position
+end
 
-titleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
+-- 停止拖拽
+local function stopDrag()
+    dragging = false
+end
 
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+-- 更新拖拽位置
+local function updateDrag(input)
+    if dragging then
         local delta = input.Position - dragStart
         mainFrame.Position = UDim2.new(
             startPos.X.Scale,
@@ -236,7 +241,38 @@ UserInputService.InputChanged:Connect(function(input)
             startPos.Y.Offset + delta.Y
         )
     end
+end
+
+-- 鼠标或触控开始拖拽
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
+        startDrag(input)
+        -- 监听触控结束
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                stopDrag()
+            end
+        end)
+    end
 end)
+
+-- 鼠标或触控结束拖拽
+titleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
+        stopDrag()
+    end
+end)
+
+-- 拖拽更新
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or
+       input.UserInputType == Enum.UserInputType.Touch then
+        updateDrag(input)
+    end
+end)
+
 
 -- 模式切换功能
 local modeColors = {
@@ -279,6 +315,7 @@ local function tradeElixir(index)
     end)
 
     if success then
+        print('成功交易丹药:', index)
     else
         warn('丹药交易失败:', index, '错误:', err)
     end
@@ -291,6 +328,7 @@ local function tradeArmor(index)
     end)
 
     if success then
+        print('成功交易翅膀:', index)
     else
         warn('翅膀交易失败:', index, '错误:', err)
     end
@@ -305,6 +343,7 @@ local function tradeEgg(index)
 
     
     if success then
+        print('成功交易蛋:', index)
     else
         warn("蛋交易失败，错误:", err)
     end
@@ -318,6 +357,7 @@ local function tradetree(index)
 
     
     if success then
+        print('成功交易tree:', index)
     else
         warn("tree交易失败，错误:", err)
     end
@@ -331,6 +371,7 @@ local function traderune(index)
 
     
     if success then
+        print('成功交易rune:', index)
     else
         warn("rune交易失败，错误:", err)
     end
@@ -469,7 +510,9 @@ coroutine.wrap(function()
 end)()
 
 
-infoLabel.Text = '自动交易已启动！\n模式: 丹药+tree+符文+蛋'
+infoLabel.Text = '自动交易已启动！\n模式: 2.0丹药+tree+蛋\n蛋数量: '
+    .. #eggData['背包']
+print('自动交易系统已启动 - 蛋数量:', #eggData['背包'])
 local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
     :FindFirstChild("\229\133\172\231\148\168")
     :FindFirstChild("\231\130\188\228\184\185")
