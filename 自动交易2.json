@@ -493,6 +493,7 @@ coroutine.wrap(function()
                 end
                 -- 确认交易
                 if waitForTradeUI() then
+                    wait(1)
                     pcall(function()
                         confirmTradeEvent:FireServer(true)
                         print('交易已确认')
