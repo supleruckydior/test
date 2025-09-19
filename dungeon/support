@@ -1,0 +1,381 @@
+--================= 配置 =================--
+local TARGET_GAME_ID_1 = 113080689665370
+local TARGET_GAME_ID_2 = 120876398824321
+
+if game.PlaceId ~= TARGET_GAME_ID_1 and game.PlaceId ~= TARGET_GAME_ID_2 then
+    print("⚠️ wrong game")
+    return
+end
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+--================= 服务引用 ===================
+local Players = game:GetService('Players')
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local ReplicatedFirst = game:GetService('ReplicatedFirst')
+local Workspace = game:GetService('Workspace')
+local UserInputService = game:GetService('UserInputService')
+local HttpService = game:GetService('HttpService')
+local TeleportService = game:GetService('TeleportService')
+local RunService = game:GetService('RunService')
+
+local player = Players.LocalPlayer
+local TNet = require(ReplicatedFirst.Component.TNet)
+
+--================= 设置保存 ===================
+local SettingsFile = 'DungeonSettings_' .. player.Name .. '.json'
+local Settings = {
+    AutoDungeonEnabled = false,
+    SelectedDungeon = '1-1',
+    HealthMonitorEnabled = true,
+    RoundTeleportEnabled = true,
+    AutoEndlessChoose = true,
+    RoundTeleportThreshold = 55
+}
+
+pcall(function()
+    if isfile and isfile(SettingsFile) then
+        Settings = HttpService:JSONDecode(readfile(SettingsFile))
+    end
+end)
+
+local function SaveSettings()
+    if writefile then
+        writefile(SettingsFile, HttpService:JSONEncode(Settings))
+    end
+end
+
+--================= endless配置 ===================
+local DungeonOptions = {
+    '1-1','1-2','1-3','2-1','2-2','2-3',
+    '3-1','3-2','3-3','4-1','4-2','4-3',
+    'endless-1','endless-16','endless-31','endless-46','endless-61'
+}
+local DungeonMap = {
+    ['1-1']={1300001,1},['1-2']={1300001,2},['1-3']={1300001,3},
+    ['2-1']={1300002,1},['2-2']={1300002,2},['2-3']={1300002,3},
+    ['3-1']={1300003,1},['3-2']={1300003,2},['3-3']={1300003,3},
+    ['4-1']={1300004,1},['4-2']={1300004,2},['4-3']={1300004,3},
+    ['endless-1']={3200001,1},['endless-16']={3200001,16},
+    ['endless-31']={3200001,31},['endless-46']={3200001,46},
+    ['endless-61']={3200001,61}
+}
+
+--================= UI 创建 ===================
+local ScreenGui = Instance.new('ScreenGui', game.CoreGui)
+ScreenGui.Name = 'AutoDungeonGUI'
+
+local Frame = Instance.new('Frame', ScreenGui)
+Frame.Size = UDim2.new(0, 320, 0, 340)
+Frame.Position = UDim2.new(0.35, 0, 0.35, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(35,35,35)
+Frame.Active = true
+Instance.new('UICorner', Frame).CornerRadius = UDim.new(0,10)
+
+-- 标题栏
+local TitleBar = Instance.new('Frame', Frame)
+TitleBar.Size = UDim2.new(1,0,0,40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(50,50,50)
+Instance.new('UICorner', TitleBar).CornerRadius = UDim.new(0,10)
+
+local Title = Instance.new('TextLabel', TitleBar)
+Title.Size = UDim2.new(1,-80,1,0)
+Title.Text = 'auto dungeon&auto pot'
+Title.TextColor3 = Color3.new(1,1,1)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Position = UDim2.new(0,10,0,0)
+
+-- 折叠按钮
+local CollapseBtn = Instance.new('TextButton', TitleBar)
+CollapseBtn.Size = UDim2.new(0,40,1,0)
+CollapseBtn.Position = UDim2.new(1,-80,0,0)
+CollapseBtn.Text = '▼'
+CollapseBtn.TextColor3 = Color3.fromRGB(0.3,1,0.3)
+CollapseBtn.BackgroundTransparency = 1
+CollapseBtn.Font = Enum.Font.GothamBold
+CollapseBtn.TextSize = 20
+
+-- 隐藏按钮
+local CloseBtn = Instance.new('TextButton', TitleBar)
+CloseBtn.Size = UDim2.new(0,40,1,0)
+CloseBtn.Position = UDim2.new(1,-40,0,0)
+CloseBtn.Text = '✖'
+CloseBtn.TextColor3 = Color3.fromRGB(1,0.3,0.3)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 20
+
+-- 存储所有内容控件
+local ContentControls = {}
+
+-- 创建内容控件并添加到列表
+local function CreateContentControl(instance)
+    table.insert(ContentControls, instance)
+    return instance
+end
+
+-- 创建切换按钮函数
+local function createToggleButton(yPos, text, key)
+    local btn = Instance.new('TextButton')
+    btn.Size = UDim2.new(0.5,0,0,30)
+    btn.Position = UDim2.new(0.05,0,0,yPos)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = Color3.fromRGB(80,80,120)
+    Instance.new('UICorner', btn).CornerRadius = UDim.new(0,6)
+    btn.Text = Settings[key] and '✅ ' .. text or '❌ ' .. text
+    btn.MouseButton1Click:Connect(function()
+        Settings[key] = not Settings[key]
+        btn.Text = Settings[key] and '✅ ' .. text or '❌ ' .. text
+        SaveSettings()
+    end)
+    return CreateContentControl(btn)
+end
+
+-- 创建所有控件
+local autoDungeonBtn = createToggleButton(50,'auto join','AutoDungeonEnabled')
+autoDungeonBtn.Parent = Frame
+
+local healthMonitorBtn = createToggleButton(90,'auto pot','HealthMonitorEnabled')
+healthMonitorBtn.Parent = Frame
+
+local roundTeleportBtn = createToggleButton(130,'endless teleport out','RoundTeleportEnabled')
+roundTeleportBtn.Parent = Frame
+
+local endlessChooseBtn = createToggleButton(170,'Endless random pick enchant','AutoEndlessChoose')
+endlessChooseBtn.Parent = Frame
+
+-- 回合传送阈值输入框
+local RoundInput = Instance.new('TextBox')
+RoundInput.Size = UDim2.new(0.35,0,0,30)
+RoundInput.Position = UDim2.new(0.6,0,0,130)
+RoundInput.Text = tostring(Settings.RoundTeleportThreshold)
+RoundInput.ClearTextOnFocus = false
+RoundInput.TextColor3 = Color3.new(1,1,1)
+RoundInput.BackgroundColor3 = Color3.fromRGB(50,50,50)
+Instance.new('UICorner', RoundInput).CornerRadius = UDim.new(0,6)
+RoundInput.FocusLost:Connect(function()
+    local num = tonumber(RoundInput.Text)
+    if num then
+        Settings.RoundTeleportThreshold = num
+        SaveSettings()
+    else
+        RoundInput.Text = tostring(Settings.RoundTeleportThreshold)
+    end
+end)
+CreateContentControl(RoundInput)
+RoundInput.Parent = Frame
+
+-- endless选择下拉
+local Dropdown = Instance.new('TextButton')
+Dropdown.Size = UDim2.new(0.9,0,0,30)
+Dropdown.Position = UDim2.new(0.05,0,0,210)
+Dropdown.TextColor3 = Color3.new(1,1,1)
+Dropdown.BackgroundColor3 = Color3.fromRGB(100,100,150)
+Instance.new('UICorner', Dropdown).CornerRadius = UDim.new(0,6)
+Dropdown.Text = 'endless: ' .. Settings.SelectedDungeon
+CreateContentControl(Dropdown)
+Dropdown.Parent = Frame
+
+local Scrolling = Instance.new('ScrollingFrame')
+Scrolling.Size = UDim2.new(0.9,0,0,100)
+Scrolling.Position = UDim2.new(0.05,0,0,250)
+Scrolling.BackgroundColor3 = Color3.fromRGB(40,40,40)
+Scrolling.Visible = false
+Scrolling.CanvasSize = UDim2.fromOffset(0, #DungeonOptions * 30)
+Scrolling.ScrollBarThickness = 6
+Instance.new('UICorner', Scrolling).CornerRadius = UDim.new(0,6)
+local UIList = Instance.new('UIListLayout',Scrolling)
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+CreateContentControl(Scrolling)
+Scrolling.Parent = Frame
+
+Dropdown.MouseButton1Click:Connect(function()
+    Scrolling.Visible = not Scrolling.Visible
+end)
+
+for _, name in ipairs(DungeonOptions) do
+    local Btn = Instance.new('TextButton',Scrolling)
+    Btn.Size = UDim2.new(1,-10,0,30)
+    Btn.Text = name
+    Btn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+    Btn.TextColor3 = Color3.new(1,1,1)
+    Instance.new('UICorner', Btn).CornerRadius = UDim.new(0,4)
+    Btn.MouseButton1Click:Connect(function()
+        Settings.SelectedDungeon = name
+        Dropdown.Text = 'endless: ' .. name
+        SaveSettings()
+        Scrolling.Visible = false
+    end)
+end
+
+-- 拖动功能 (兼容PC鼠标 + 手机触摸)
+local dragging, dragInput, dragStart, startPos
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- 折叠逻辑
+local collapsed = false
+local fullSize = UDim2.new(0, 320, 0, 340)
+local collapsedSize = UDim2.new(0, 320, 0, 40)
+
+local function SetContentVisibility(visible)
+    for _, control in ipairs(ContentControls) do
+        control.Visible = visible
+    end
+end
+
+CollapseBtn.MouseButton1Click:Connect(function()
+    collapsed = not collapsed
+    if collapsed then
+        Frame.Size = collapsedSize
+        CollapseBtn.Text = '▲'
+        SetContentVisibility(false)
+    else
+        Frame.Size = fullSize
+        CollapseBtn.Text = '▼'
+        SetContentVisibility(true)
+    end
+end)
+
+-- 隐藏逻辑
+local hidden = false
+CloseBtn.MouseButton1Click:Connect(function()
+    hidden = not hidden
+    Frame.Visible = not hidden
+end)
+
+--================= 大厅与endless逻辑 ===================
+local dungeonLock = false
+
+local function WaitForLobby()
+    repeat task.wait() until Workspace:FindFirstChild('Lobby')
+end
+
+local function FindIdleTable()
+    local lobbySection = Workspace.Lobby:FindFirstChild('\229\140\185\233\133\141\229\140\186')
+    if not lobbySection then return nil end
+    for i=4,#lobbySection:GetChildren() do
+        local tableObj = lobbySection:GetChildren()[i]
+        local match = tableObj:FindFirstChild('Match')
+        if match and match:FindFirstChild('BillboardGui') then
+            local idle = match.BillboardGui:FindFirstChild('Idle')
+            if idle and idle.Visible then return match end
+        end
+    end
+    return nil
+end
+
+local function EnterDungeon(dungeonId,difficulty)
+    if dungeonLock then return end
+    dungeonLock = true
+    WaitForLobby()
+    local match = FindIdleTable()
+    if match and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
+        player.Character.HumanoidRootPart.CFrame = CFrame.new(match.Position)
+        task.wait(1)
+        TNet.FireServer('Playerinput')
+        task.wait(0.1)
+        TNet.FireServer('Dungeon_Select',dungeonId,difficulty)
+        task.wait(0.1)
+        TNet.FireServer('Dungeon_StartParty')
+    end
+    dungeonLock = false
+end
+
+local function SetupInDungeon()
+    local healthPath = player:WaitForChild('PlayerGui'):WaitForChild('Main')
+        :WaitForChild('HomePage'):WaitForChild('Bottom')
+        :WaitForChild('Main'):WaitForChild('Health')
+        :WaitForChild('Num'):WaitForChild('Health')
+
+    local roundPath = player:WaitForChild('PlayerGui'):WaitForChild('Main')
+        :WaitForChild('HomePage'):WaitForChild('EndlessTop')
+        :WaitForChild('Top'):WaitForChild('RoundTitle')
+
+    local choosePath = player:WaitForChild('PlayerGui'):WaitForChild('Main')
+        :WaitForChild('Func'):WaitForChild('EndlessChoose')
+
+    local onCooldown=false
+    local chooseExecuted=false
+
+    local function checkHealth(text)
+        if not Settings.HealthMonitorEnabled then return end
+        local current,max=string.match(text,'(%d+)%/(%d+)')
+        if current and max then
+            current,max=tonumber(current),tonumber(max)
+            if max>0 and current/max<0.63 and not onCooldown then
+                onCooldown=true
+                TNet.FireServer('Potion_TryHealth')
+                task.delay(2,function() onCooldown=false end)
+            end
+        end
+    end
+
+    local function checkRound(text)
+        if not Settings.RoundTeleportEnabled then return end
+        local roundNum = tonumber(string.match(text,'%d+'))
+        if roundNum and roundNum >= Settings.RoundTeleportThreshold then
+            TeleportService:Teleport(121727847541143)
+        end
+    end
+
+    local function checkChoose()
+        if not Settings.AutoEndlessChoose then return end
+        if choosePath.Visible and not chooseExecuted then
+            chooseExecuted=true
+            task.wait(1)
+            TNet.FireServer('Endless_PlayerChoose',1)
+        elseif not choosePath.Visible then
+            chooseExecuted=false
+        end
+    end
+
+    healthPath:GetPropertyChangedSignal('Text'):Connect(function() checkHealth(healthPath.Text) end)
+    roundPath:GetPropertyChangedSignal('Text'):Connect(function() checkRound(roundPath.Text) end)
+    choosePath:GetPropertyChangedSignal('Visible'):Connect(checkChoose)
+
+    checkHealth(healthPath.Text)
+    checkRound(roundPath.Text)
+    checkChoose()
+end
+
+--================= 循环逻辑 ===================
+task.spawn(function()
+    while task.wait(5) do
+        if Settings.AutoDungeonEnabled and Workspace:FindFirstChild('Lobby') then
+            local dungeonId,difficulty=unpack(DungeonMap[Settings.SelectedDungeon])
+            EnterDungeon(dungeonId,difficulty)
+        end
+    end
+end)
+
+task.spawn(function()
+    repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
+    SetupInDungeon()
+end)
