@@ -3,7 +3,7 @@ local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local TNet = require(ReplicatedFirst.Component.TNet)
 local Config = require(ReplicatedStorage:WaitForChild('Config'))
 
-local EQUIP_ID = 13552 -- 装备ID
+local EQUIP_ID = 13370 -- 装备ID
 local MAX_ENCHANT_COUNT = 200 -- 最大附魔次数
 local CURRENT_COUNT = 0 -- 当前附魔次数
 
@@ -15,7 +15,7 @@ local TARGET_AFFIX_IDS = {
     --141060405,
     141060006,
     141060009,
-    141060008, -- 添加更多需要的词条ID
+    --141060008, -- 添加更多需要的词条ID
 }
 
 -- 配置：初始锁定的位置（比如锁定已有的好词条）
