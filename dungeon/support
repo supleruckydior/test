@@ -32,7 +32,8 @@ local Settings = {
     HealthMonitorEnabled = true,
     RoundTeleportEnabled = true,
     AutoEndlessChoose = true,
-    RoundTeleportThreshold = 55
+    RoundTeleportThreshold = 55,
+    AutoSkillEnabled = false, -- 技能循环保存
 }
 
 pcall(function()
@@ -134,23 +135,41 @@ local function createToggleButton(yPos, text, key)
     return CreateContentControl(btn)
 end
 
--- 创建所有控件
+-- 按钮排列
 local autoDungeonBtn = createToggleButton(50,'auto join','AutoDungeonEnabled')
 autoDungeonBtn.Parent = Frame
 
 local healthMonitorBtn = createToggleButton(90,'auto pot','HealthMonitorEnabled')
 healthMonitorBtn.Parent = Frame
 
-local roundTeleportBtn = createToggleButton(130,'endless teleport out','RoundTeleportEnabled')
+-- 技能释放按钮（血药下面）
+local autoSkillBtn = Instance.new('TextButton')
+autoSkillBtn.Size = UDim2.new(0.5,0,0,30)
+autoSkillBtn.Position = UDim2.new(0.05,0,0,130)
+autoSkillBtn.TextColor3 = Color3.new(1,1,1)
+autoSkillBtn.BackgroundColor3 = Color3.fromRGB(120,80,80)
+Instance.new('UICorner', autoSkillBtn).CornerRadius = UDim.new(0,6)
+autoSkillBtn.Text = Settings.AutoSkillEnabled and '✅ auto skill release' or '❌ auto skill release'
+autoSkillBtn.Parent = Frame
+CreateContentControl(autoSkillBtn)
+
+autoSkillBtn.MouseButton1Click:Connect(function()
+    Settings.AutoSkillEnabled = not Settings.AutoSkillEnabled
+    autoSkillBtn.Text = Settings.AutoSkillEnabled and '✅ auto skill release' or '❌ auto skill release'
+    SaveSettings()
+end)
+
+-- 其他按钮下移
+local roundTeleportBtn = createToggleButton(170,'endless teleport out','RoundTeleportEnabled')
 roundTeleportBtn.Parent = Frame
 
-local endlessChooseBtn = createToggleButton(170,'Endless random pick enchant','AutoEndlessChoose')
+local endlessChooseBtn = createToggleButton(210,'Endless random pick enchant','AutoEndlessChoose')
 endlessChooseBtn.Parent = Frame
 
 -- 回合传送阈值输入框
 local RoundInput = Instance.new('TextBox')
 RoundInput.Size = UDim2.new(0.35,0,0,30)
-RoundInput.Position = UDim2.new(0.6,0,0,130)
+RoundInput.Position = UDim2.new(0.6,0,0,170)
 RoundInput.Text = tostring(Settings.RoundTeleportThreshold)
 RoundInput.ClearTextOnFocus = false
 RoundInput.TextColor3 = Color3.new(1,1,1)
@@ -171,7 +190,7 @@ RoundInput.Parent = Frame
 -- endless选择下拉
 local Dropdown = Instance.new('TextButton')
 Dropdown.Size = UDim2.new(0.9,0,0,30)
-Dropdown.Position = UDim2.new(0.05,0,0,210)
+Dropdown.Position = UDim2.new(0.05,0,0,250)
 Dropdown.TextColor3 = Color3.new(1,1,1)
 Dropdown.BackgroundColor3 = Color3.fromRGB(100,100,150)
 Instance.new('UICorner', Dropdown).CornerRadius = UDim.new(0,6)
@@ -181,7 +200,7 @@ Dropdown.Parent = Frame
 
 local Scrolling = Instance.new('ScrollingFrame')
 Scrolling.Size = UDim2.new(0.9,0,0,100)
-Scrolling.Position = UDim2.new(0.05,0,0,250)
+Scrolling.Position = UDim2.new(0.05,0,0,290)
 Scrolling.BackgroundColor3 = Color3.fromRGB(40,40,40)
 Scrolling.Visible = false
 Scrolling.CanvasSize = UDim2.fromOffset(0, #DungeonOptions * 30)
@@ -211,36 +230,7 @@ for _, name in ipairs(DungeonOptions) do
     end)
 end
 
---================= 技能循环释放 ===================
-local autoSkillEnabled = false
-
-local autoSkillBtn = Instance.new('TextButton')
-autoSkillBtn.Size = UDim2.new(0.9,0,0,30)
-autoSkillBtn.Position = UDim2.new(0.05,0,0,360)
-autoSkillBtn.TextColor3 = Color3.new(1,1,1)
-autoSkillBtn.BackgroundColor3 = Color3.fromRGB(120,80,80)
-Instance.new('UICorner', autoSkillBtn).CornerRadius = UDim.new(0,6)
-autoSkillBtn.Text = '❌ auto skill release'
-autoSkillBtn.Parent = Frame
-CreateContentControl(autoSkillBtn)
-
-autoSkillBtn.MouseButton1Click:Connect(function()
-    autoSkillEnabled = not autoSkillEnabled
-    autoSkillBtn.Text = autoSkillEnabled and '✅ auto skill release' or '❌ auto skill release'
-end)
-
-task.spawn(function()
-    while task.wait(1) do
-        if autoSkillEnabled then
-            for spell = 1,4 do
-                TNet.FireServer('Skill_Release', spell)
-                task.wait(0.5)
-            end
-        end
-    end
-end)
-
---================= 拖动、折叠、隐藏 ===================
+-- 拖动功能
 local dragging, dragInput, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -266,6 +256,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
+-- 折叠逻辑
 local collapsed = false
 local fullSize = UDim2.new(0, 320, 0, 370)
 local collapsedSize = UDim2.new(0, 320, 0, 40)
@@ -289,6 +280,7 @@ CollapseBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- 隐藏逻辑
 local hidden = false
 CloseBtn.MouseButton1Click:Connect(function()
     hidden = not hidden
@@ -404,3 +396,8 @@ task.spawn(function()
     repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
     SetupInDungeon()
 end)
+
+--================= 技能循环释放 ===================
+task.spawn(function()
+    while task.wait(1) do
+        if Settings.AutoSkillEnabled and
