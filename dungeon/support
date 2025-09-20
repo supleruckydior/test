@@ -398,16 +398,28 @@ task.spawn(function()
 end)
 
 --================= 技能循环释放 ===================
+--================= 技能循环释放（带冷却） ===================
 task.spawn(function()
-    while task.wait(1) do
-        -- 只有开启技能循环并且玩家在副本中才执行
-        if Settings.AutoSkillEnabled and player.Character and player:FindFirstChild('PlayerGui') then
-            -- 检查玩家是否在副本中
-            local inDungeon = Workspace:FindFirstChild('Dungeon')
-            if inDungeon then
+    local skillCooldown = { [1]=false, [2]=false, [3]=false, [4]=false } -- 每个技能冷却状态
+    local cooldownTime = 1 -- 每个技能冷却时间（秒）
+
+    while true do
+        task.wait(0.5) -- 循环间隔
+        if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
+            local inLobby = Workspace:FindFirstChild('Lobby')
+            if not inLobby then -- 不在大厅才释放
                 for spell = 1, 4 do
-                    TNet.FireServer('Skill_Release', spell)
-                    task.wait(0.2)
+                    if not skillCooldown[spell] then
+                        skillCooldown[spell] = true
+                        pcall(function()
+                            TNet.FireServer('Skill_Release', spell)
+                        end)
+                        -- 设置冷却重置
+                        task.delay(cooldownTime, function()
+                            skillCooldown[spell] = false
+                        end)
+                        task.wait(0.2) -- 技能间小间隔
+                    end
                 end
             end
         end
