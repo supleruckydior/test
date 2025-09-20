@@ -11,29 +11,43 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
---================= 服务引用 ===================
+--================= 加载UI库 =================--
+local library = loadstring(
+    game:HttpGet(
+        'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
+        true
+    )
+)()
+
+-- 防AFK
+local AntiAFK = game:GetService('VirtualUser')
+game.Players.LocalPlayer.Idled:Connect(function()
+    AntiAFK:CaptureController()
+    AntiAFK:ClickButton2(Vector2.new())
+    wait(2)
+end)
+
+--================= 服务引用 =================--
 local Players = game:GetService('Players')
 local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local ReplicatedFirst = game:GetService('ReplicatedFirst')
 local Workspace = game:GetService('Workspace')
-local UserInputService = game:GetService('UserInputService')
 local HttpService = game:GetService('HttpService')
 local TeleportService = game:GetService('TeleportService')
-local RunService = game:GetService('RunService')
 
 local player = Players.LocalPlayer
 local TNet = require(ReplicatedFirst.Component.TNet)
+local Config = require(ReplicatedStorage.Config)
 
---================= 设置保存 ===================
-local SettingsFile = 'DungeonSettings_' .. player.Name .. '.json'
+--================= 设置保存 =================--
+local SettingsFile = 'DungeonSettings_'..player.Name..'.json'
 local Settings = {
     AutoDungeonEnabled = false,
     SelectedDungeon = '1-1',
+    AutoSkillEnabled = false,
     HealthMonitorEnabled = true,
     RoundTeleportEnabled = true,
-    AutoEndlessChoose = true,
     RoundTeleportThreshold = 55,
-    AutoSkillEnabled = false, -- 技能循环保存
 }
 
 pcall(function()
@@ -48,12 +62,13 @@ local function SaveSettings()
     end
 end
 
---================= endless配置 ===================
+--================= Dungeon 配置 =================--
 local DungeonOptions = {
     '1-1','1-2','1-3','2-1','2-2','2-3',
     '3-1','3-2','3-3','4-1','4-2','4-3',
-    'endless-1','endless-16','endless-31','endless-46','endless-61'
+    'endless-1','endless-16','endless-31','endless-46','endless-61','',''
 }
+
 local DungeonMap = {
     ['1-1']={1300001,1},['1-2']={1300001,2},['1-3']={1300001,3},
     ['2-1']={1300002,1},['2-2']={1300002,2},['2-3']={1300002,3},
@@ -64,365 +79,323 @@ local DungeonMap = {
     ['endless-61']={3200001,61}
 }
 
---================= UI 创建 ===================
-local ScreenGui = Instance.new('ScreenGui', game.CoreGui)
-ScreenGui.Name = 'AutoDungeonGUI'
+--================= 进入副本逻辑 =================--
+local dungeonLock = false
 
-local Frame = Instance.new('Frame', ScreenGui)
-Frame.Size = UDim2.new(0, 320, 0, 370)
-Frame.Position = UDim2.new(0.35, 0, 0.35, 0)
-Frame.BackgroundColor3 = Color3.fromRGB(35,35,35)
-Frame.Active = true
-Instance.new('UICorner', Frame).CornerRadius = UDim.new(0,10)
+local function EnterDungeon(dungeonId, difficulty)
+    if dungeonLock then
+        print('[DEBUG] 已经在进入副本锁定状态，跳过')
+        return
+    end
+    dungeonLock = true
+    task.delay(10, function() dungeonLock = false end)
 
--- 标题栏
-local TitleBar = Instance.new('Frame', Frame)
-TitleBar.Size = UDim2.new(1,0,0,40)
-TitleBar.BackgroundColor3 = Color3.fromRGB(50,50,50)
-Instance.new('UICorner', TitleBar).CornerRadius = UDim.new(0,10)
+    repeat task.wait() until Workspace:FindFirstChild('Lobby')
+    local lobby = Workspace:FindFirstChild('Lobby')
 
-local Title = Instance.new('TextLabel', TitleBar)
-Title.Size = UDim2.new(1,-80,1,0)
-Title.Text = 'auto dungeon&auto pot'
-Title.TextColor3 = Color3.new(1,1,1)
-Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Position = UDim2.new(0,10,0,0)
+    local function FindIdleTable()
+        local lobbySection = Workspace.Lobby:FindFirstChild('\229\140\185\233\133\141\229\140\186')
+        if not lobbySection then return nil end
+        for i=4,#lobbySection:GetChildren() do
+            local tableObj = lobbySection:GetChildren()[i]
+            local match = tableObj:FindFirstChild('Match')
+            if match and match:FindFirstChild('BillboardGui') then
+                local idle = match.BillboardGui:FindFirstChild('Idle')
+                if idle and idle.Visible then return match end
+            end
+        end
+        return nil
+    end
 
--- 折叠按钮
-local CollapseBtn = Instance.new('TextButton', TitleBar)
-CollapseBtn.Size = UDim2.new(0,40,1,0)
-CollapseBtn.Position = UDim2.new(1,-80,0,0)
-CollapseBtn.Text = '▼'
-CollapseBtn.TextColor3 = Color3.fromRGB(0.3,1,0.3)
-CollapseBtn.BackgroundTransparency = 1
-CollapseBtn.Font = Enum.Font.GothamBold
-CollapseBtn.TextSize = 20
+    local tableObj = FindIdleTable()
+    if not tableObj then
+        print('[DEBUG] 没有找到空闲桌子')
+        dungeonLock = false
+        return
+    end
 
--- 隐藏按钮
-local CloseBtn = Instance.new('TextButton', TitleBar)
-CloseBtn.Size = UDim2.new(0,40,1,0)
-CloseBtn.Position = UDim2.new(1,-40,0,0)
-CloseBtn.Text = '✖'
-CloseBtn.TextColor3 = Color3.fromRGB(1,0.3,0.3)
-CloseBtn.BackgroundTransparency = 1
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 20
+    if not player.Character or not player.Character:FindFirstChild('HumanoidRootPart') then
+        print('[DEBUG] 玩家角色或 HumanoidRootPart 未就绪')
+        dungeonLock = false
+        return
+    end
 
--- 存储所有内容控件
-local ContentControls = {}
-local function CreateContentControl(instance)
-    table.insert(ContentControls, instance)
-    return instance
-end
+    print('[DEBUG] 移动到桌子:', tableObj.Parent.Name)
+    player.Character.HumanoidRootPart.CFrame = CFrame.new(tableObj.Position)
+    task.wait(1)
 
--- 创建切换按钮函数
-local function createToggleButton(yPos, text, key)
-    local btn = Instance.new('TextButton')
-    btn.Size = UDim2.new(0.5,0,0,30)
-    btn.Position = UDim2.new(0.05,0,0,yPos)
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.BackgroundColor3 = Color3.fromRGB(80,80,120)
-    Instance.new('UICorner', btn).CornerRadius = UDim.new(0,6)
-    btn.Text = Settings[key] and '✅ ' .. text or '❌ ' .. text
-    btn.MouseButton1Click:Connect(function()
-        Settings[key] = not Settings[key]
-        btn.Text = Settings[key] and '✅ ' .. text or '❌ ' .. text
-        SaveSettings()
+    print('[DEBUG] 发送 PlayerInput')
+    pcall(function() TNet.FireServer('Playerinput') end)
+    task.wait(0.1)
+
+    print('[DEBUG] 选择副本 ID:', dungeonId, '难度:', difficulty)
+    pcall(function() TNet.FireServer('Dungeon_Select', dungeonId, difficulty) end)
+    task.wait(0.1)
+
+    print('[DEBUG] 开始副本')
+    pcall(function() TNet.FireServer('Dungeon_StartParty') end)
+
+    task.delay(2, function()
+        dungeonLock = false
+        print('[DEBUG] 解除进入副本锁定')
     end)
-    return CreateContentControl(btn)
 end
 
--- 按钮排列
-local autoDungeonBtn = createToggleButton(50,'auto join','AutoDungeonEnabled')
-autoDungeonBtn.Parent = Frame
+--================= UI 初始化 =================--
+local window = library:AddWindow('DUNGEON LOOTIFY',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
+local features = window:AddTab('功能')
 
-local healthMonitorBtn = createToggleButton(90,'auto pot','HealthMonitorEnabled')
-healthMonitorBtn.Parent = Frame
-
--- 技能释放按钮（血药下面）
-local autoSkillBtn = Instance.new('TextButton')
-autoSkillBtn.Size = UDim2.new(0.5,0,0,30)
-autoSkillBtn.Position = UDim2.new(0.05,0,0,130)
-autoSkillBtn.TextColor3 = Color3.new(1,1,1)
-autoSkillBtn.BackgroundColor3 = Color3.fromRGB(120,80,80)
-Instance.new('UICorner', autoSkillBtn).CornerRadius = UDim.new(0,6)
-autoSkillBtn.Text = Settings.AutoSkillEnabled and '✅ auto skill release' or '❌ auto skill release'
-autoSkillBtn.Parent = Frame
-CreateContentControl(autoSkillBtn)
-
-autoSkillBtn.MouseButton1Click:Connect(function()
-    Settings.AutoSkillEnabled = not Settings.AutoSkillEnabled
-    autoSkillBtn.Text = Settings.AutoSkillEnabled and '✅ auto skill release' or '❌ auto skill release'
+-- 自动进入副本开关
+local autoJoinSwitch = features:AddSwitch('自动进入副本', function(bool)
+    Settings.AutoDungeonEnabled = bool
     SaveSettings()
 end)
+if autoJoinSwitch.Set then autoJoinSwitch:Set(Settings.AutoDungeonEnabled) end
 
--- 其他按钮下移
-local roundTeleportBtn = createToggleButton(170,'endless teleport out','RoundTeleportEnabled')
-roundTeleportBtn.Parent = Frame
-
-local endlessChooseBtn = createToggleButton(210,'Endless random pick enchant','AutoEndlessChoose')
-endlessChooseBtn.Parent = Frame
-
--- 回合传送阈值输入框
-local RoundInput = Instance.new('TextBox')
-RoundInput.Size = UDim2.new(0.35,0,0,30)
-RoundInput.Position = UDim2.new(0.6,0,0,170)
-RoundInput.Text = tostring(Settings.RoundTeleportThreshold)
-RoundInput.ClearTextOnFocus = false
-RoundInput.TextColor3 = Color3.new(1,1,1)
-RoundInput.BackgroundColor3 = Color3.fromRGB(50,50,50)
-Instance.new('UICorner', RoundInput).CornerRadius = UDim.new(0,6)
-RoundInput.FocusLost:Connect(function()
-    local num = tonumber(RoundInput.Text)
-    if num then
-        Settings.RoundTeleportThreshold = num
+-- 当前选择关卡
+local selectedLabel = features:AddLabel('当前选择: ' .. Settings.SelectedDungeon)
+local dungeonDropdown = features:AddDropdown('选择地下城', function(text)
+    local cleaned = text:match('^%s*(.-)%s*$') or text
+    if cleaned ~= '' then
+        Settings.SelectedDungeon = cleaned
         SaveSettings()
-    else
-        RoundInput.Text = tostring(Settings.RoundTeleportThreshold)
+        if selectedLabel.Set then 
+            selectedLabel:Set('当前选择: ' .. cleaned)
+        end
     end
 end)
-CreateContentControl(RoundInput)
-RoundInput.Parent = Frame
-
--- endless选择下拉
-local Dropdown = Instance.new('TextButton')
-Dropdown.Size = UDim2.new(0.9,0,0,30)
-Dropdown.Position = UDim2.new(0.05,0,0,250)
-Dropdown.TextColor3 = Color3.new(1,1,1)
-Dropdown.BackgroundColor3 = Color3.fromRGB(100,100,150)
-Instance.new('UICorner', Dropdown).CornerRadius = UDim.new(0,6)
-Dropdown.Text = 'endless: ' .. Settings.SelectedDungeon
-CreateContentControl(Dropdown)
-Dropdown.Parent = Frame
-
-local Scrolling = Instance.new('ScrollingFrame')
-Scrolling.Size = UDim2.new(0.9,0,0,100)
-Scrolling.Position = UDim2.new(0.05,0,0,290)
-Scrolling.BackgroundColor3 = Color3.fromRGB(40,40,40)
-Scrolling.Visible = false
-Scrolling.CanvasSize = UDim2.fromOffset(0, #DungeonOptions * 30)
-Scrolling.ScrollBarThickness = 6
-Instance.new('UICorner', Scrolling).CornerRadius = UDim.new(0,6)
-local UIList = Instance.new('UIListLayout',Scrolling)
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-CreateContentControl(Scrolling)
-Scrolling.Parent = Frame
-
-Dropdown.MouseButton1Click:Connect(function()
-    Scrolling.Visible = not Scrolling.Visible
-end)
-
 for _, name in ipairs(DungeonOptions) do
-    local Btn = Instance.new('TextButton',Scrolling)
-    Btn.Size = UDim2.new(1,-10,0,30)
-    Btn.Text = name
-    Btn.BackgroundColor3 = Color3.fromRGB(70,70,70)
-    Btn.TextColor3 = Color3.new(1,1,1)
-    Instance.new('UICorner', Btn).CornerRadius = UDim.new(0,4)
-    Btn.MouseButton1Click:Connect(function()
-        Settings.SelectedDungeon = name
-        Dropdown.Text = 'endless: ' .. name
-        SaveSettings()
-        Scrolling.Visible = false
-    end)
+    dungeonDropdown:Add(name)
+end
+if dungeonDropdown.Set then
+    dungeonDropdown:Set(Settings.SelectedDungeon)
 end
 
--- 拖动功能
-local dragging, dragInput, dragStart, startPos
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = Frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
+-- 自动吃血药开关
+local autoPotionSwitch = features:AddSwitch('自动吃血药', function(bool)
+    Settings.HealthMonitorEnabled = bool
+    SaveSettings()
+end)
+if autoPotionSwitch.Set then autoPotionSwitch:Set(Settings.HealthMonitorEnabled) end
+
+-- 技能循环释放开关
+local autoSkillSwitch = features:AddSwitch('技能循环释放', function(bool)
+    Settings.AutoSkillEnabled = bool
+    SaveSettings()
+end)
+if autoSkillSwitch.Set then autoSkillSwitch:Set(Settings.AutoSkillEnabled) end
+features:AddSwitch('自动选择 Endless', function(state)
+    Settings.AutoEndlessChoose = state
+    SaveSettings()
+
+    -- 确保只注册一次监听
+    if not _G.AutoEndlessListenerRegistered then
+        _G.AutoEndlessListenerRegistered = true
+
+        -- 全局注册监听
+        TNet.SetEvent("Endless_ShowPlayerUpgrade", function(upgradeList)
+            print("⚠️ 收到 Endless_ShowPlayerUpgrade 下发数据:")
+            for i, id in ipairs(upgradeList) do
+        local name = Config.Endless.UpgradeList[id] and Config.Endless.UpgradeList[id].name or "未知"
+        local desc = Config.Endless.UpgradeList[id] and Config.Endless.UpgradeList[id].description or "无描述"
+                print(string.format("Index[%d] -> ID: %d, 名称: %s, 描述: %s", i, id, name, desc))
+            end
+
+            if Settings.AutoEndlessChoose then
+                -- 自动选择 Stable Crystal，如果没有则默认选 2
+                local chosenIndex = 2
+                for i, id in ipairs(upgradeList) do
+                    local upgradeInfo = Config.Endless.UpgradeList[id]
+                    if upgradeInfo and string.find(upgradeInfo.name, "Stable Crystal") then
+                        chosenIndex = i
+                        break
+                    end
+                end
+
+                pcall(function()
+                    print("[AutoEndless] 自动选择 Index:", chosenIndex)
+                    TNet.FireServer("Endless_PlayerChoose", chosenIndex)
+                end)
             end
         end)
     end
-end)
-TitleBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
+end):Set(Settings.AutoEndlessChoose)
 
--- 折叠逻辑
-local collapsed = false
-local fullSize = UDim2.new(0, 320, 0, 370)
-local collapsedSize = UDim2.new(0, 320, 0, 40)
+-- 回合检测开关
+local roundCheckSwitch = features:AddSwitch('回合检查', function(bool)
+    Settings.RoundTeleportEnabled = bool
+    SaveSettings()
+end)
+if roundCheckSwitch.Set then roundCheckSwitch:Set(Settings.RoundTeleportEnabled) end
 
-local function SetContentVisibility(visible)
-    for _, control in ipairs(ContentControls) do
-        control.Visible = visible
-    end
+--================= 回合阈值与显示 =================--
+if type(Settings.RoundTeleportThreshold) ~= 'number' then
+    Settings.RoundTeleportThreshold = 55
+    SaveSettings()
 end
+local RoundThresholdValue = Settings.RoundTeleportThreshold
+-- 回合显示Label
+local roundLabel = features:AddLabel('回合: 0 / ' .. RoundThresholdValue)
 
-CollapseBtn.MouseButton1Click:Connect(function()
-    collapsed = not collapsed
-    if collapsed then
-        Frame.Size = collapsedSize
-        CollapseBtn.Text = '▲'
-        SetContentVisibility(false)
+-- 刷新函数
+local function UpdateRoundLabel(currentRound)
+    currentRound = currentRound or 0
+    roundLabel.Text = '回合: ' .. currentRound .. ' / ' .. RoundThresholdValue
+end
+-- 添加阈值显示更新函数
+local function UpdateThresholdDisplay()
+    RoundThresholdValue = Settings.RoundTeleportThreshold
+    -- 更新回合显示的阈值部分
+    local currentRound = tonumber(string.match(roundLabel.Text, '回合: (%d+)') or 0)
+    roundLabel.Text = '回合: ' .. currentRound .. ' / ' .. RoundThresholdValue
+    print('[DEBUG] 阈值更新为:', RoundThresholdValue)
+end
+-- 设置退出回合阈值输入框
+local thresholdInput = features:AddTextBox('设置退出回合阈值', function(text)
+    local num = tonumber(text)
+    if num and num > 0 then
+        Settings.RoundTeleportThreshold = num
+        SaveSettings()
+        UpdateThresholdDisplay()
+        print('[DEBUG] 阈值设置为:', num)
     else
-        Frame.Size = fullSize
-        CollapseBtn.Text = '▼'
-        SetContentVisibility(true)
+        -- 输入无效，直接修改Text属性恢复原值
+        thresholdInput.Text = tostring(Settings.RoundTeleportThreshold)
+        print('[WARN] 无效输入，已恢复为:', Settings.RoundTeleportThreshold)
     end
 end)
-
--- 隐藏逻辑
-local hidden = false
-CloseBtn.MouseButton1Click:Connect(function()
-    hidden = not hidden
-    Frame.Visible = not hidden
-end)
-
---================= 大厅与endless逻辑 ===================
-local dungeonLock = false
-
-local function WaitForLobby()
-    repeat task.wait() until Workspace:FindFirstChild('Lobby')
-end
-
-local function FindIdleTable()
-    local lobbySection = Workspace.Lobby:FindFirstChild('\229\140\185\233\133\141\229\140\186')
-    if not lobbySection then return nil end
-    for i=4,#lobbySection:GetChildren() do
-        local tableObj = lobbySection:GetChildren()[i]
-        local match = tableObj:FindFirstChild('Match')
-        if match and match:FindFirstChild('BillboardGui') then
-            local idle = match.BillboardGui:FindFirstChild('Idle')
-            if idle and idle.Visible then return match end
-        end
-    end
-    return nil
-end
-
-local function EnterDungeon(dungeonId,difficulty)
-    if dungeonLock then return end
-    dungeonLock = true
-    WaitForLobby()
-    local match = FindIdleTable()
-    if match and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
-        player.Character.HumanoidRootPart.CFrame = CFrame.new(match.Position)
-        task.wait(1)
-        TNet.FireServer('Playerinput')
-        task.wait(0.1)
-        TNet.FireServer('Dungeon_Select',dungeonId,difficulty)
-        task.wait(0.1)
-        TNet.FireServer('Dungeon_StartParty')
-    end
-    dungeonLock = false
-end
-
-local function SetupInDungeon()
-    local healthPath = player:WaitForChild('PlayerGui'):WaitForChild('Main')
-        :WaitForChild('HomePage'):WaitForChild('Bottom')
-        :WaitForChild('Main'):WaitForChild('Health')
-        :WaitForChild('Num'):WaitForChild('Health')
-
-    local roundPath = player:WaitForChild('PlayerGui'):WaitForChild('Main')
-        :WaitForChild('HomePage'):WaitForChild('EndlessTop')
-        :WaitForChild('Top'):WaitForChild('RoundTitle')
-
-    local tipPath = player:WaitForChild("PlayerGui"):WaitForChild("Main")
-    :WaitForChild("HomePage"):WaitForChild("EndlessTop"):WaitForChild("Tip")
-
-    local onCooldown=false
-    local chooseExecuted=false
-
-    local function checkHealth(text)
-        if not Settings.HealthMonitorEnabled then return end
-        local current,max=string.match(text,'(%d+)%/(%d+)')
-        if current and max then
-            current,max=tonumber(current),tonumber(max)
-            if max>0 and current/max<0.63 and not onCooldown then
-                onCooldown=true
-                TNet.FireServer('Potion_TryHealth')
-                task.delay(2,function() onCooldown=false end)
-            end
-        end
-    end
-
-    local function checkRound(text)
-        if not Settings.RoundTeleportEnabled then return end
-        local roundNum = tonumber(string.match(text,'%d+'))
-        if roundNum and roundNum >= Settings.RoundTeleportThreshold then
-            TeleportService:Teleport(121727847541143)
-        end
-    end
-
-    local function checkChoose()
-        if not Settings.AutoEndlessChoose then return end
-        if tipPath.Visible and not chooseExecuted then
-            chooseExecuted = true
-            task.wait(1)
-            TNet.FireServer("Endless_PlayerChoose", 1) -- 自动选择第1个
-            tipPath.Visible = false -- 选择后隐藏Tip，等待下一次触发
-        elseif not tipPath.Visible then
-            chooseExecuted = false
-        end
-    end
-
-    healthPath:GetPropertyChangedSignal('Text'):Connect(function() checkHealth(healthPath.Text) end)
-    roundPath:GetPropertyChangedSignal('Text'):Connect(function() checkRound(roundPath.Text) end)
-    tipPath:GetPropertyChangedSignal("Visible"):Connect(checkChoose)
-
-    checkHealth(healthPath.Text)
-    checkRound(roundPath.Text)
-    checkChoose()
-end
-
---================= 循环逻辑 ===================
-task.spawn(function()
-    while task.wait(5) do
-        if Settings.AutoDungeonEnabled and Workspace:FindFirstChild('Lobby') then
-            local dungeonId,difficulty=unpack(DungeonMap[Settings.SelectedDungeon])
-            EnterDungeon(dungeonId,difficulty)
-        end
-    end
-end)
-
-task.spawn(function()
-    repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
-    SetupInDungeon()
-end)
-
---================= 技能循环释放 ===================
---================= 技能循环释放（带冷却） ===================
-task.spawn(function()
-    local skillCooldown = { [1]=false, [2]=false, [3]=false, [4]=false } -- 每个技能冷却状态
-    local cooldownTime = 1 -- 每个技能冷却时间（秒）
-
+thresholdInput.Text = tostring(Settings.RoundTeleportThreshold)
+print('[DEBUG] 输入框初始值设置为:', Settings.RoundTeleportThreshold)
+-- 主循环刷新回合 Label
+spawn(function()
     while true do
-        task.wait(0.5) -- 循环间隔
-        if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
-            local inLobby = Workspace:FindFirstChild('Lobby')
-            if not inLobby then -- 不在大厅才释放
-                for spell = 1, 4 do
-                    if not skillCooldown[spell] then
-                        skillCooldown[spell] = true
-                        pcall(function()
-                            TNet.FireServer('Skill_Release', spell)
-                        end)
-                        -- 设置冷却重置
-                        task.delay(cooldownTime, function()
-                            skillCooldown[spell] = false
-                        end)
-                        task.wait(0.2) -- 技能间小间隔
+        task.wait(0.5)
+        local currentRound = 0
+        pcall(function()
+            local roundGui = player.PlayerGui:FindFirstChild('Main')
+                and player.PlayerGui.Main:FindFirstChild('HomePage')
+                and player.PlayerGui.Main.HomePage:FindFirstChild('EndlessTop')
+                and player.PlayerGui.Main.HomePage.EndlessTop:FindFirstChild('Top')
+                and player.PlayerGui.Main.HomePage.EndlessTop.Top:FindFirstChild('RoundTitle')
+            if roundGui then
+                currentRound = tonumber(string.match(roundGui.Text, '%d+')) or 0
+            end
+        end)
+        UpdateRoundLabel(currentRound)
+    end
+end)
+
+
+--================= 自动进入副本循环 =================--
+spawn(function()
+    while true do
+        task.wait(5)
+        if not Settings.AutoDungeonEnabled then continue end
+        if Workspace:FindFirstChild('Lobby') then
+            local sel = Settings.SelectedDungeon or '1-1'
+            local dungeonId, difficulty = unpack(DungeonMap[sel] or DungeonMap['1-1'])
+            print('[DEBUG] 尝试进入副本:', sel)
+            pcall(function() EnterDungeon(dungeonId, difficulty) end)
+        end
+    end
+end)
+
+--================= 副本内监控 ===================
+local function SetupInDungeon()
+    if Workspace:FindFirstChild('Lobby') then return end
+
+    local healthPath, roundPath
+    pcall(function()
+        local mainGui = player:WaitForChild('PlayerGui'):WaitForChild('Main', 5)
+        if mainGui then
+            local home = mainGui:WaitForChild('HomePage', 3)
+            if home then
+                local bottom = home:WaitForChild('Bottom', 3)
+                if bottom then
+                    local mainBottom = bottom:WaitForChild('Main', 3)
+                    if mainBottom then
+                        local health = mainBottom:WaitForChild('Health', 3)
+                        if health then
+                            local num = health:WaitForChild('Num', 3)
+                            if num then
+                                healthPath = num:WaitForChild('Health', 3)
+                            end
+                        end
+                    end
+                end
+                local endlessTop = home:FindFirstChild('EndlessTop')
+                if endlessTop then
+                    local top = endlessTop:WaitForChild('Top', 3)
+                    if top then
+                        roundPath = top:WaitForChild('RoundTitle', 3)
                     end
                 end
             end
         end
+    end)
+
+    -- 自动吃血药
+    if healthPath then
+        local onCooldown = false
+        healthPath:GetPropertyChangedSignal('Text'):Connect(function()
+            if not Settings.HealthMonitorEnabled then return end
+            local cur, max = string.match(healthPath.Text, '(%d+)%/(%d+)')
+            if cur and max then
+                cur, max = tonumber(cur), tonumber(max)
+                if max > 0 and cur/max < 0.63 and not onCooldown then
+                    onCooldown = true
+                    pcall(function() TNet.FireServer('Potion_TryHealth') end)
+                    task.delay(2, function() onCooldown = false end)
+                end
+            end
+        end)
     end
+
+    -- 回合监控
+    if roundPath then
+        roundPath:GetPropertyChangedSignal('Text'):Connect(function()
+            local roundNum = tonumber(string.match(roundPath.Text, '%d+')) or 0
+            UpdateRoundLabel(roundNum)
+            if Settings.RoundTeleportEnabled and roundNum >= RoundThresholdValue then
+                print('[DEBUG] 达到回合阈值，退出副本')
+                pcall(function()
+                    TNet.FireServer('Dungeon_Leave')
+                    task.wait(1)
+                    TeleportService:Teleport(121727847541143)
+                end)
+            end
+        end)
+    end
+
+    -- 技能循环释放
+    if Settings.AutoSkillEnabled then
+        spawn(function()
+            local skillCooldown = {[1]=false,[2]=false,[3]=false,[4]=false}
+            while true do
+                task.wait(0.5)
+                if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
+                    if not Workspace:FindFirstChild('Lobby') then
+                        for spell=1,4 do
+                            if not skillCooldown[spell] then
+                                skillCooldown[spell] = true
+                                pcall(function() TNet.FireServer('Skill_Release', spell) end)
+                                task.delay(1, function() skillCooldown[spell] = false end)
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+spawn(function()
+    repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
+    SetupInDungeon()
+end)
+
+--================= 退出副本按钮 =================--
+features:AddButton('退出副本', function()
+    pcall(function() TeleportService:Teleport(121727847541143) end)
 end)
