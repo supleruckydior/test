@@ -68,7 +68,7 @@ local ScreenGui = Instance.new('ScreenGui', game.CoreGui)
 ScreenGui.Name = 'AutoDungeonGUI'
 
 local Frame = Instance.new('Frame', ScreenGui)
-Frame.Size = UDim2.new(0, 320, 0, 340)
+Frame.Size = UDim2.new(0, 320, 0, 370)
 Frame.Position = UDim2.new(0.35, 0, 0.35, 0)
 Frame.BackgroundColor3 = Color3.fromRGB(35,35,35)
 Frame.Active = true
@@ -112,8 +112,6 @@ CloseBtn.TextSize = 20
 
 -- 存储所有内容控件
 local ContentControls = {}
-
--- 创建内容控件并添加到列表
 local function CreateContentControl(instance)
     table.insert(ContentControls, instance)
     return instance
@@ -213,7 +211,36 @@ for _, name in ipairs(DungeonOptions) do
     end)
 end
 
--- 拖动功能 (兼容PC鼠标 + 手机触摸)
+--================= 技能循环释放 ===================
+local autoSkillEnabled = false
+
+local autoSkillBtn = Instance.new('TextButton')
+autoSkillBtn.Size = UDim2.new(0.9,0,0,30)
+autoSkillBtn.Position = UDim2.new(0.05,0,0,360)
+autoSkillBtn.TextColor3 = Color3.new(1,1,1)
+autoSkillBtn.BackgroundColor3 = Color3.fromRGB(120,80,80)
+Instance.new('UICorner', autoSkillBtn).CornerRadius = UDim.new(0,6)
+autoSkillBtn.Text = '❌ auto skill release'
+autoSkillBtn.Parent = Frame
+CreateContentControl(autoSkillBtn)
+
+autoSkillBtn.MouseButton1Click:Connect(function()
+    autoSkillEnabled = not autoSkillEnabled
+    autoSkillBtn.Text = autoSkillEnabled and '✅ auto skill release' or '❌ auto skill release'
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if autoSkillEnabled then
+            for spell = 1,4 do
+                TNet.FireServer('Skill_Release', spell)
+                task.wait(0.5)
+            end
+        end
+    end
+end)
+
+--================= 拖动、折叠、隐藏 ===================
 local dragging, dragInput, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -239,9 +266,8 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- 折叠逻辑
 local collapsed = false
-local fullSize = UDim2.new(0, 320, 0, 340)
+local fullSize = UDim2.new(0, 320, 0, 370)
 local collapsedSize = UDim2.new(0, 320, 0, 40)
 
 local function SetContentVisibility(visible)
@@ -263,7 +289,6 @@ CollapseBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- 隐藏逻辑
 local hidden = false
 CloseBtn.MouseButton1Click:Connect(function()
     hidden = not hidden
