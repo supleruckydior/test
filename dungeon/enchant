@@ -19,7 +19,7 @@ local TARGET_AFFIX_IDS = {
 }
 
 -- 配置：初始锁定的位置（比如锁定已有的好词条）
-local INITIAL_LOCKED_SLOTS = { 2 } -- 初始锁定第2和第3个位置
+local INITIAL_LOCKED_SLOTS = { 2,3 } -- 初始锁定第2和第3个位置
 
 -- 保存当前附魔结果的函数（使用FireServer）
 local function saveCurrentEnchant()
