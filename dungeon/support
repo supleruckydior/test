@@ -335,8 +335,8 @@ local function SetupInDungeon()
         :WaitForChild('HomePage'):WaitForChild('EndlessTop')
         :WaitForChild('Top'):WaitForChild('RoundTitle')
 
-    local choosePath = player:WaitForChild('PlayerGui'):WaitForChild('Main')
-        :WaitForChild('Func'):WaitForChild('EndlessChoose')
+    local tipPath = player:WaitForChild("PlayerGui"):WaitForChild("Main")
+    :WaitForChild("HomePage"):WaitForChild("EndlessTop"):WaitForChild("Tip")
 
     local onCooldown=false
     local chooseExecuted=false
@@ -364,12 +364,13 @@ local function SetupInDungeon()
 
     local function checkChoose()
         if not Settings.AutoEndlessChoose then return end
-        if choosePath.Visible and not chooseExecuted then
-            chooseExecuted=true
+        if tipPath.Visible and not chooseExecuted then
+            chooseExecuted = true
             task.wait(1)
-            TNet.FireServer('Endless_PlayerChoose',1)
-        elseif not choosePath.Visible then
-            chooseExecuted=false
+            TNet.FireServer("Endless_PlayerChoose", 1) -- 自动选择第1个
+            tipPath.Visible = false -- 选择后隐藏Tip，等待下一次触发
+        elseif not tipPath.Visible then
+            chooseExecuted = false
         end
     end
 
