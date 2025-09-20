@@ -184,6 +184,7 @@ local autoSkillSwitch = features:AddSwitch('技能循环释放', function(bool)
     SaveSettings()
 end)
 if autoSkillSwitch.Set then autoSkillSwitch:Set(Settings.AutoSkillEnabled) end
+-- edndless循环释放开关
 features:AddSwitch('自动选择 Endless', function(state)
     Settings.AutoEndlessChoose = state
     SaveSettings()
@@ -196,22 +197,36 @@ features:AddSwitch('自动选择 Endless', function(state)
         TNet.SetEvent("Endless_ShowPlayerUpgrade", function(upgradeList)
             print("⚠️ 收到 Endless_ShowPlayerUpgrade 下发数据:")
             for i, id in ipairs(upgradeList) do
-        local name = Config.Endless.UpgradeList[id] and Config.Endless.UpgradeList[id].name or "未知"
-        local desc = Config.Endless.UpgradeList[id] and Config.Endless.UpgradeList[id].description or "无描述"
+                local upgradeInfo = Config.Endless.UpgradeList[id]
+                local name = upgradeInfo and upgradeInfo.name or "未知"
+                local desc = upgradeInfo and upgradeInfo.description or "无描述"
                 print(string.format("Index[%d] -> ID: %d, 名称: %s, 描述: %s", i, id, name, desc))
             end
 
             if Settings.AutoEndlessChoose then
-                -- 自动选择 Stable Crystal，如果没有则默认选 2
-                local chosenIndex = 2
+                local chosenIndex = nil
+                -- 优先找名字包含 Crystal（忽略大小写）
                 for i, id in ipairs(upgradeList) do
                     local upgradeInfo = Config.Endless.UpgradeList[id]
-                    if upgradeInfo and string.find(upgradeInfo.name, "Stable Crystal") then
+                    if upgradeInfo and string.find(upgradeInfo.name:lower(), "crystal") then
                         chosenIndex = i
                         break
                     end
                 end
 
+                -- 如果没有找到，则选 ID 最后一个数字最大的
+                if not chosenIndex then
+                    local maxLastDigit = -1
+                    for i, id in ipairs(upgradeList) do
+                        local lastDigit = tonumber(tostring(id):sub(-1)) or 0
+                        if lastDigit > maxLastDigit then
+                            maxLastDigit = lastDigit
+                            chosenIndex = i
+                        end
+                    end
+                end
+
+                -- 发送选择
                 pcall(function()
                     print("[AutoEndless] 自动选择 Index:", chosenIndex)
                     TNet.FireServer("Endless_PlayerChoose", chosenIndex)
@@ -220,6 +235,7 @@ features:AddSwitch('自动选择 Endless', function(state)
         end)
     end
 end):Set(Settings.AutoEndlessChoose)
+
 
 -- 回合检测开关
 local roundCheckSwitch = features:AddSwitch('回合检查', function(bool)
