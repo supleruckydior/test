@@ -376,7 +376,7 @@ local function SetupInDungeon()
 
     healthPath:GetPropertyChangedSignal('Text'):Connect(function() checkHealth(healthPath.Text) end)
     roundPath:GetPropertyChangedSignal('Text'):Connect(function() checkRound(roundPath.Text) end)
-    choosePath:GetPropertyChangedSignal('Visible'):Connect(checkChoose)
+    tipPath:GetPropertyChangedSignal("Visible"):Connect(checkTip)
 
     checkHealth(healthPath.Text)
     checkRound(roundPath.Text)
