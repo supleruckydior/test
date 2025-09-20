@@ -400,4 +400,16 @@ end)
 --================= 技能循环释放 ===================
 task.spawn(function()
     while task.wait(1) do
-        if Settings.AutoSkillEnabled and
+        -- 只有开启技能循环并且玩家在副本中才执行
+        if Settings.AutoSkillEnabled and player.Character and player:FindFirstChild('PlayerGui') then
+            -- 检查玩家是否在副本中
+            local inDungeon = Workspace:FindFirstChild('Dungeon')
+            if inDungeon then
+                for spell = 1, 4 do
+                    TNet.FireServer('Skill_Release', spell)
+                    task.wait(0.2)
+                end
+            end
+        end
+    end
+end)
