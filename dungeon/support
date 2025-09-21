@@ -10,7 +10,7 @@ end
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
-
+wait(3)
 --================= 加载UI库 =================--
 local library = loadstring(
     game:HttpGet(
