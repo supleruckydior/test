@@ -122,11 +122,7 @@ local function EnterDungeon(dungeonId, difficulty)
 
     print('[DEBUG] 移动到桌子:', tableObj.Parent.Name)
     player.Character.HumanoidRootPart.CFrame = CFrame.new(tableObj.Position)
-    task.wait(1)
-
-    print('[DEBUG] 发送 PlayerInput')
-    pcall(function() TNet.FireServer('Playerinput') end)
-    task.wait(0.1)
+    task.wait(0.3)
 
     print('[DEBUG] 选择副本 ID:', dungeonId, '难度:', difficulty)
     pcall(function() TNet.FireServer('Dungeon_Select', dungeonId, difficulty) end)
