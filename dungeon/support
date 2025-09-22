@@ -1,8 +1,8 @@
 --================= 配置 =================--
 local TARGET_GAME_ID_1 = 113080689665370
 local TARGET_GAME_ID_2 = 120876398824321
-
-if game.PlaceId ~= TARGET_GAME_ID_1 and game.PlaceId ~= TARGET_GAME_ID_2 then
+local TARGET_GAME_ID_3 = 72607172956362
+if game.PlaceId ~= TARGET_GAME_ID_1 and game.PlaceId ~= TARGET_GAME_ID_2 and game.PlaceId ~= TARGET_GAME_ID_3 then
     print("⚠️ wrong game")
     return
 end
