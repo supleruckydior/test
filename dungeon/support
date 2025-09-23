@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.2',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
+local window = library:AddWindow('DUNGEON LOOTIFY v1.3',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -316,6 +316,40 @@ features:AddSwitch('killaura', function(state)
         end
     end
 end):Set(Settings.AutoAttackEnabled)
+features:AddSwitch("自动重试副本", function(state)
+    Settings.AutoDungeonRetry = state
+    SaveSettings()
+
+    if state then
+        print("[AutoRetry] 自动副本重试已开启")
+
+        local Players = game:GetService("Players")
+        local player = Players.LocalPlayer
+        local ReplicatedFirst = game:GetService("ReplicatedFirst")
+        local TNet = require(ReplicatedFirst.Component.TNet)
+
+        -- 循环检测
+        spawn(function()
+            while Settings.AutoDungeonRetry do
+                task.wait(2)
+                local success, gui = pcall(function()
+                    return player.PlayerGui.Main.Func.DungeonObtain
+                end)
+                if success and gui and gui.Visible then
+                    print("[AutoRetry] 检测到 DungeonObtain 可见，发送 Dungeon_RetryCmd")
+                    pcall(function()
+                        TNet.FireServer("Dungeon_RetryCmd")
+                    end)
+                    break -- ✅ 发送一次后直接退出循环
+                end
+            end
+        end)
+
+    else
+        print("[AutoRetry] 自动副本重试已关闭")
+    end
+end):Set(Settings.AutoDungeonRetry or false)
+
 --================= 自动传送与宝箱开关 =================--
 features:AddSwitch("自动传送 & 开宝箱", function(state)
     Settings.AutoTeleportChests = state
