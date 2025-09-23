@@ -417,6 +417,7 @@ features:AddSwitch("自动传送 & 开宝箱", function(state)
             if not prompt then return end
             local chestPos = chest.PrimaryPart and chest.PrimaryPart.Position or chest:GetPivot().Position
             teleportToPosition(chestPos)
+            task.wait(1)
             prompt:InputHoldBegin()
             task.wait(1)
             prompt:InputHoldEnd()
