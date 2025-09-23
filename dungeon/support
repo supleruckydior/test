@@ -387,7 +387,7 @@ local function SetupInDungeon()
                 task.wait(0.5)
                 if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
                     if not Workspace:FindFirstChild('Lobby') then
-                        for spell=1,4 do
+                        for spell=1,5 do
                             if not skillCooldown[spell] then
                                 skillCooldown[spell] = true
                                 pcall(function() TNet.FireServer('Skill_Release', spell) end)
