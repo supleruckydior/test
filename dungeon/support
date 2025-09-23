@@ -48,6 +48,7 @@ local Settings = {
     HealthMonitorEnabled = true,
     RoundTeleportEnabled = true,
     RoundTeleportThreshold = 55,
+    AutoAttackEnabled = false,  -- 新增的功能
 }
 
 pcall(function()
@@ -166,6 +167,155 @@ end
 if dungeonDropdown.Set then
     dungeonDropdown:Set(Settings.SelectedDungeon)
 end
+-- 自动攻击开关
+features:AddSwitch('killaura', function(state)
+    Settings.AutoAttackEnabled = state
+    SaveSettings()
+
+    if state then
+        print("[AutoAttack] 自动攻击已开启")
+
+        -- 配置
+        local Workspace = game:GetService("Workspace")
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local RunService = game:GetService("RunService")
+
+        local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
+
+        local weaponName = "SwordShield"
+        local animCycle = {"SwordShield1"}
+        local cycleIndex, attackId = 1, 0
+        local lastPositions = {}
+
+        -- 工具函数
+        local function getServerTime()
+            return Workspace:GetServerTimeNow()
+        end
+
+        local function parseHealth(str)
+            if not str or str == "" then return nil end
+            local num, suffix = str:match("([%d%.]+)([kKmM]?)")
+            num = tonumber(num)
+            if not num then return nil end
+            if suffix == "k" or suffix == "K" then
+                num = num * 1000
+            elseif suffix == "m" or suffix == "M" then
+                num = num * 1000000
+            end
+            return num
+        end
+
+        local function attack(enemy, cf)
+            local args = {
+                "Bc",
+                attackId,
+                getServerTime(),
+                cycleIndex,
+                weaponName,
+                {
+                    hitNum = math.random(0,5),
+                    onHitAnimName = animCycle[cycleIndex],
+                    hrtCF = cf
+                }
+            }
+            TNetSent:FireServer(unpack(args))
+
+            cycleIndex = cycleIndex + 1
+            if cycleIndex > #animCycle then cycleIndex = 1 end
+            attackId = attackId + 1
+        end
+
+        local function getPredictedCFrame(enemy, dt)
+            local root = enemy:FindFirstChild("HumanoidRootPart")
+            if not root then return nil end
+            local lastPos = lastPositions[enemy] or root.Position
+            local currentPos = root.Position
+            local velocity = (currentPos - lastPos) / dt
+            local predictionFactor = 0.1
+            local predictedPos = currentPos + velocity * predictionFactor
+            lastPositions[enemy] = currentPos
+            return CFrame.new(predictedPos)
+        end
+
+        local function getClosestEnemy(dt)
+            local closest, shortestDist = nil, math.huge
+            local playerPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or Vector3.new(0,0,0)
+
+            for _, room in ipairs(Workspace:GetChildren()) do
+                if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+                    for _, obj in ipairs(room:GetChildren()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+                            local root = obj.HumanoidRootPart
+
+                            local isBoss = false
+                            local typeAttr = obj:GetAttribute("Type")
+                            if typeAttr and string.find(string.lower(typeAttr), "boss") then
+                                isBoss = true
+                            end
+
+                            local healthTextObj = root:FindFirstChild("Health") 
+                                and root.Health:FindFirstChild("Canvas") 
+                                and root.Health.Canvas:FindFirstChild("Health") 
+                                and root.Health.Canvas.Health:FindFirstChild("HealthText")
+                            local healthNum = healthTextObj and parseHealth(healthTextObj.Text) or 0
+
+                            if isBoss or (healthNum and healthNum > 0) then
+                                local dist = (root.Position - playerPos).Magnitude
+                                if dist < shortestDist then
+                                    shortestDist, closest = dist, obj
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if closest then
+                return getPredictedCFrame(closest, dt), closest
+            end
+            return nil, nil
+        end
+
+        -- 等待战斗
+        spawn(function()
+            print("[AutoAttack] 等待敌人出现...")
+            local found = false
+            repeat
+                for _, room in ipairs(Workspace:GetChildren()) do
+                    if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+                        for _, obj in ipairs(room:GetChildren()) do
+                            if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+                                print("[AutoAttack] 检测到敌人:", obj.Name, "开始自动战斗！")
+                                found = true
+                                break
+                            end
+                        end
+                    end
+                    if found then break end
+                end
+                task.wait(1)
+            until found or not Settings.AutoAttackEnabled
+        end)
+
+        -- 主循环
+        if not _G.AutoAttackConnection then
+            _G.AutoAttackConnection = RunService.Heartbeat:Connect(function(dt)
+                if not Settings.AutoAttackEnabled then return end
+                local cf, enemy = getClosestEnemy(dt)
+                if cf and enemy then
+                    attack(enemy, cf)
+                end
+            end)
+        end
+
+    else
+        print("[AutoAttack] 自动攻击已关闭")
+        if _G.AutoAttackConnection then
+            _G.AutoAttackConnection:Disconnect()
+            _G.AutoAttackConnection = nil
+        end
+    end
+end):Set(Settings.AutoAttackEnabled)
 
 -- 自动吃血药开关
 local autoPotionSwitch = features:AddSwitch('自动吃血药', function(bool)
