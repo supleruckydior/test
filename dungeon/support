@@ -323,193 +323,194 @@ features:AddSwitch("自动传送 & 开宝箱", function(state)
 
     if state then
         --================= 初始化 =================--
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
+        local Players = game:GetService("Players")
+        local Workspace = game:GetService("Workspace")
 
-local player = Players.LocalPlayer
+        local player = Players.LocalPlayer
 
-local ignoredModels = {
-    ["84f0df6486bd4efa"] = true,
-}
+        local ignoredModels = {
+            ["84f0df6486bd4efa"] = true,
+        }
 
-local teleportDelay = 3 -- 秒
-local openedChests = {} -- 已开启宝箱记录
+        local teleportDelay = 3 -- 秒
+        local openedChests = {} -- 已开启宝箱记录
 
---================= 工具函数 =================--
+        --================= 工具函数 =================--
 
-local function hasBoss()
-    for _, room in ipairs(Workspace:GetChildren()) do
-        if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
-            for _, obj in ipairs(room:GetChildren()) do
-                if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and not ignoredModels[obj.Name] then
-                    local typeAttr = obj:GetAttribute("Type")
-                    local hasBossChild = obj:FindFirstChild("Boss") ~= nil
-                    if (typeAttr and string.find(string.lower(typeAttr), "boss")) or hasBossChild then
-                        return true
+        local function hasBoss()
+            for _, room in ipairs(Workspace:GetChildren()) do
+                if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+                    for _, obj in ipairs(room:GetChildren()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and not ignoredModels[obj.Name] then
+                            local typeAttr = obj:GetAttribute("Type")
+                            local hasBossChild = obj:FindFirstChild("Boss") ~= nil
+                            if (typeAttr and string.find(string.lower(typeAttr), "boss")) or hasBossChild then
+                                return true
+                            end
+                        end
                     end
                 end
             end
+            return false
         end
-    end
-    return false
-end
 
-local function hasEnemy()
-    for _, room in ipairs(Workspace:GetChildren()) do
-        if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
-            for _, obj in ipairs(room:GetChildren()) do
-                if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and not ignoredModels[obj.Name] then
-                    return true
+        local function hasEnemy()
+            for _, room in ipairs(Workspace:GetChildren()) do
+                if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+                    for _, obj in ipairs(room:GetChildren()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and not ignoredModels[obj.Name] then
+                            return true
+                        end
+                    end
                 end
             end
+            return false
         end
-    end
-    return false
-end
 
-local function getClosestDoor()
-    local closestDoor, shortestDist = nil, math.huge
-    local playerPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
-    if not playerPos then return nil end
+        local function getClosestDoor()
+            local closestDoor, shortestDist = nil, math.huge
+            local playerPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
+            if not playerPos then return nil end
 
-    for _, room in ipairs(Workspace:GetChildren()) do
-        local door = room:FindFirstChild("Door")
-        if door then
-            local doorPos
-            if door.PrimaryPart then
-                doorPos = door.PrimaryPart.Position
-            else
-                local success, pivot = pcall(function() return door:GetPivot().Position end)
-                if success then doorPos = pivot else
-                    local part = door:FindFirstChildWhichIsA("BasePart")
-                    if part then doorPos = part.Position end
+            for _, room in ipairs(Workspace:GetChildren()) do
+                local door = room:FindFirstChild("Door")
+                if door then
+                    local doorPos
+                    if door.PrimaryPart then
+                        doorPos = door.PrimaryPart.Position
+                    else
+                        local success, pivot = pcall(function() return door:GetPivot().Position end)
+                        if success then doorPos = pivot else
+                            local part = door:FindFirstChildWhichIsA("BasePart")
+                            if part then doorPos = part.Position end
+                        end
+                    end
+                    if doorPos then
+                        local dist = (doorPos - playerPos).Magnitude
+                        if dist < shortestDist then
+                            shortestDist, closestDoor = dist, door
+                        end
+                    end
                 end
             end
-            if doorPos then
-                local dist = (doorPos - playerPos).Magnitude
-                if dist < shortestDist then
-                    shortestDist, closestDoor = dist, door
+            return closestDoor
+        end
+
+        local function getFurthestDoorInRoom(room)
+            if not room then return nil end
+            local furthestDoor, maxDist = nil, -math.huge
+            local playerPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
+            if not playerPos then return nil end
+
+            for _, door in ipairs(room:GetChildren()) do
+                if door:IsA("Model") and string.find(door.Name, "Door") and door:FindFirstChild("Collider") then
+                    local collider = door:FindFirstChild("Collider")
+                    local dist = (collider.Position - playerPos).Magnitude
+                    if dist > maxDist then
+                        maxDist = dist
+                        furthestDoor = door
+                    end
                 end
             end
+            return furthestDoor
         end
-    end
-    return closestDoor
-end
 
-local function getFurthestDoorInRoom(room)
-    if not room then return nil end
-    local furthestDoor, maxDist = nil, -math.huge
-    local playerPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
-    if not playerPos then return nil end
-
-    for _, door in ipairs(room:GetChildren()) do
-        if door:IsA("Model") and string.find(door.Name, "Door") and door:FindFirstChild("Collider") then
+        local function teleportToDoorCollider(door)
+            if not door or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
             local collider = door:FindFirstChild("Collider")
-            local dist = (collider.Position - playerPos).Magnitude
-            if dist > maxDist then
-                maxDist = dist
-                furthestDoor = door
+            if not collider then
+                print("[TeleportTest] Door 没有 Collider:", door.Name)
+                return
             end
-        end
-    end
-    return furthestDoor
-end
-
-local function teleportToDoorCollider(door)
-    if not door or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
-    local collider = door:FindFirstChild("Collider")
-    if not collider then
-        print("[TeleportTest] Door 没有 Collider:", door.Name)
-        return
-    end
-    player.Character.HumanoidRootPart.CFrame = CFrame.new(collider.Position + Vector3.new(0,3,0))
-    print("[TeleportTest] 已传送到目录:", door.Parent.Name, "Door:", door.Name, "Collider Pos:", collider.Position)
-end
-
---================= 宝箱相关 =================--
-
-local function getChestsInRoom(room)
-    local chests = {}
-    for _, obj in ipairs(room:GetChildren()) do
-        if obj:IsA("Model") and string.find(obj.Name, "DungeonChest") then
-            if not openedChests[obj] then
-                table.insert(chests, obj)
-            end
-        end
-    end
-    return chests
-end
-
-local function openChest(chest)
-    if not chest or not chest:IsDescendantOf(workspace) then return end
-    local prompt = chest:FindFirstChild("ProximityPrompt", true)
-    if not prompt then return end
-
-    local chestPos = chest.PrimaryPart and chest.PrimaryPart.Position or chest:GetPivot().Position
-    player.Character.HumanoidRootPart.CFrame = CFrame.new(chestPos + Vector3.new(0,3,0))
-    task.wait(1)
-    prompt:InputHoldBegin()
-    task.wait(1)
-    prompt:InputHoldEnd()
-    
-    print("[Chest] 已打开宝箱:", chest.Name)
-    openedChests[chest] = true
-    task.wait(0.5)
-end
-
---================= 主循环 =================--
-
-spawn(function()
-    while true do
-        task.wait(1)
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
-
-        if hasBoss() then
-            print("[AutoTest] 检测到 Boss，停止传送脚本")
-            break
+            player.Character.HumanoidRootPart.CFrame = CFrame.new(collider.Position + Vector3.new(0,3,0))
+            print("[TeleportTest] 已传送到目录:", door.Parent.Name, "Door:", door.Name, "Collider Pos:", collider.Position)
         end
 
-        if hasEnemy() then
-            print("[AutoTest] 场景中存在敌人，暂停传送")
-            task.wait(1)
-        else
-            local closestDoor = getClosestDoor()
-            if closestDoor and closestDoor.Parent then
-                local room = closestDoor.Parent
-                -- 先记录最远门 Collider
-                local furthestDoor = getFurthestDoorInRoom(room)
-                local furthestColliderPos = furthestDoor and furthestDoor:FindFirstChild("Collider") and furthestDoor.Collider.Position or nil
+        --================= 宝箱相关 =================--
 
-                -- 扫描宝箱
-                local chests = getChestsInRoom(room)
-                if #chests > 0 then
-                    table.sort(chests, function(a, b)
-                        local pa = a.PrimaryPart and a.PrimaryPart.Position or a:GetPivot().Position
-                        local pb = b.PrimaryPart and b.PrimaryPart.Position or b:GetPivot().Position
-                        local playerPos = player.Character.HumanoidRootPart.Position
-                        return (pa - playerPos).Magnitude < (pb - playerPos).Magnitude
-                    end)
-                    for _, chest in ipairs(chests) do
-                        openChest(chest)
+        local function getChestsInRoom(room)
+            local chests = {}
+            for _, obj in ipairs(room:GetChildren()) do
+                if obj:IsA("Model") and string.find(obj.Name, "DungeonChest") then
+                    if not openedChests[obj] then
+                        table.insert(chests, obj)
                     end
                 end
+            end
+            return chests
+        end
 
-                -- 宝箱开完后，传送到最远门 Collider
-                if furthestColliderPos then
-                    player.Character.HumanoidRootPart.CFrame = CFrame.new(furthestColliderPos + Vector3.new(0,3,0))
-                    print("[TeleportTest] 宝箱处理完毕，传送到最远门 Collider:", furthestDoor.Name, "Pos:", furthestColliderPos)
-                    task.wait(teleportDelay)
+        local function openChest(chest)
+            if not chest or not chest:IsDescendantOf(workspace) then return end
+            local prompt = chest:FindFirstChild("ProximityPrompt", true)
+            if not prompt then return end
+
+            local chestPos = chest.PrimaryPart and chest.PrimaryPart.Position or chest:GetPivot().Position
+            player.Character.HumanoidRootPart.CFrame = CFrame.new(chestPos + Vector3.new(0,3,0))
+            task.wait(1)
+            prompt:InputHoldBegin()
+            task.wait(1)
+            prompt:InputHoldEnd()
+            
+            print("[Chest] 已打开宝箱:", chest.Name)
+            openedChests[chest] = true
+            task.wait(0.5)
+        end
+
+        --================= 主循环 =================--
+
+        task.spawn(function()
+            while Settings.AutoTeleportChests do -- ✅ 检查开关状态
+                task.wait(1)
+                if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then continue end
+
+                if hasBoss() then
+                    print("[AutoTest] 检测到 Boss，停止传送脚本")
+                    break
+                end
+
+                if hasEnemy() then
+                    print("[AutoTest] 场景中存在敌人，暂停传送")
+                    task.wait(1)
+                else
+                    local closestDoor = getClosestDoor()
+                    if closestDoor and closestDoor.Parent then
+                        local room = closestDoor.Parent
+                        -- 先记录最远门 Collider
+                        local furthestDoor = getFurthestDoorInRoom(room)
+                        local furthestColliderPos = furthestDoor and furthestDoor:FindFirstChild("Collider") and furthestDoor.Collider.Position or nil
+
+                        -- 扫描宝箱
+                        local chests = getChestsInRoom(room)
+                        if #chests > 0 then
+                            table.sort(chests, function(a, b)
+                                local pa = a.PrimaryPart and a.PrimaryPart.Position or a:GetPivot().Position
+                                local pb = b.PrimaryPart and b.PrimaryPart.Position or b:GetPivot().Position
+                                local playerPos = player.Character.HumanoidRootPart.Position
+                                return (pa - playerPos).Magnitude < (pb - playerPos).Magnitude
+                            end)
+                            for _, chest in ipairs(chests) do
+                                openChest(chest)
+                            end
+                        end
+
+                        -- 宝箱开完后，传送到最远门 Collider
+                        if furthestColliderPos then
+                            player.Character.HumanoidRootPart.CFrame = CFrame.new(furthestColliderPos + Vector3.new(0,3,0))
+                            print("[TeleportTest] 宝箱处理完毕，传送到最远门 Collider:", furthestDoor.Name, "Pos:", furthestColliderPos)
+                            task.wait(teleportDelay)
+                        end
+                    end
                 end
             end
-        end
-    end
-end)
-
+            print("[AutoTeleport] 循环结束")
+        end)
 
     else
         print("[AutoTeleport] 自动传送与宝箱已关闭")
     end
 end):Set(Settings.AutoTeleportChests or false)
+
 
 -- 自动吃血药开关
 local autoPotionSwitch = features:AddSwitch('自动吃血药', function(bool)
