@@ -222,15 +222,28 @@ features:AddSwitch('自动选择 Endless', function(state)
                     end
                 end
 
-                -- 发送选择
+                -- 发送选择并隐藏界面
                 pcall(function()
                     print("[AutoEndless] 自动选择 Index:", chosenIndex)
                     TNet.FireServer("Endless_PlayerChoose", chosenIndex)
+
+                    -- 选择后隐藏 Endless 界面
+                    local gui = player:FindFirstChild("PlayerGui")
+                    if gui then
+                        local endlessUI = gui:FindFirstChild("Main")
+                            and gui.Main:FindFirstChild("Func")
+                            and gui.Main.Func:FindFirstChild("EndlessChoose")
+                        if endlessUI then
+                            endlessUI.Visible = false
+                            print("[AutoEndless] 已隐藏 Endless 选择界面")
+                        end
+                    end
                 end)
             end
         end)
     end
 end):Set(Settings.AutoEndlessChoose)
+
 
 
 -- 回合检测开关
