@@ -536,7 +536,7 @@ local function SetupInDungeon()
                 pcall(function()
                     TNet.FireServer('Dungeon_Leave')
                     task.wait(1)
-                    TeleportService:Teleport(121727847541143)
+                    TeleportService:Teleport(113080689665370)
                 end)
             end
         end)
@@ -572,5 +572,5 @@ end)
 
 --================= 退出副本按钮 =================--
 features:AddButton('退出副本', function()
-    pcall(function() TeleportService:Teleport(121727847541143) end)
+    pcall(function() TeleportService:Teleport(113080689665370) end)
 end)
