@@ -327,7 +327,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
         if not _G.SimAttackThread then
             _G.SimAttackThread = spawn(function()
                 while Settings.SimulatedAttackEnabled do
-                    task.wait(0.02)
+                    task.wait(0.04)
 
                     -- 模拟坐标
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
