@@ -813,7 +813,7 @@ if Settings.AutoSkillEnabled then
                         pcall(function() 
                             TNet.FireServer("Skill_Release", spell) 
                         end)
-                        task.wait(0.01) -- 控制释放频率
+                        task.wait(0.03) -- 控制释放频率
                     end
                 end
             end
