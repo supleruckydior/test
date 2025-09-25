@@ -4,6 +4,8 @@ local ReplicatedFirst = game:GetService("ReplicatedFirst")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TNet = require(ReplicatedFirst.Component.TNet)
 local Config = require(ReplicatedStorage:WaitForChild('Config'))
+local UserInputService = game:GetService("UserInputService")
+
 -- 添加缺失的 table.find 函数
 if not table.find then
     table.find = function(t, value)
@@ -15,6 +17,7 @@ if not table.find then
         return nil
     end
 end
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild('PlayerGui')
 
@@ -25,19 +28,39 @@ local CURRENT_COUNT = 0
 local EQUIP_ID = nil
 local lockedSlots = {}
 
+-- 检测设备类型
+local function isMobile()
+    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+end
+
+-- 获取屏幕尺寸并计算缩放比例
+local function getUIScale()
+    if isMobile() then
+        return 0.8  -- 手机端缩放
+    else
+        return 1.0  -- PC端不缩放
+    end
+end
+
+local UI_SCALE = getUIScale()
+local SCREEN_WIDTH = workspace.CurrentCamera.ViewportSize.X
+local SCREEN_HEIGHT = workspace.CurrentCamera.ViewportSize.Y
+
 -- 创建主UI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AutoEnchantUI"
 ScreenGui.Parent = playerGui
-
--- 🔹 保证在最前面显示
 ScreenGui.DisplayOrder = 999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.ResetOnSpawn = false
 
+-- 主框架尺寸自适应
+local mainFrameWidth = math.min(650 * UI_SCALE, SCREEN_WIDTH * 0.9)
+local mainFrameHeight = math.min(565 * UI_SCALE, SCREEN_HEIGHT * 0.8)
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 650, 0, 565)
-mainFrame.Position = UDim2.new(0.5, -325, 0.2, 0)
+mainFrame.Size = UDim2.new(0, mainFrameWidth, 0, mainFrameHeight)
+mainFrame.Position = UDim2.new(0.5, -mainFrameWidth/2, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -46,52 +69,54 @@ mainFrame.Parent = ScreenGui
 
 -- 标题栏
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1,0,0,30)
+titleBar.Size = UDim2.new(1, 0, 0, 30 * UI_SCALE)
 titleBar.BackgroundColor3 = Color3.fromRGB(50,50,50)
 titleBar.Parent = mainFrame
 
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Text = "附魔工具（整合版）"
-titleLabel.Size = UDim2.new(1,-60,1,0)
+titleLabel.Size = UDim2.new(1, -60 * UI_SCALE, 1, 0)
+titleLabel.Position = UDim2.new(0, 10 * UI_SCALE, 0, 0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.TextColor3 = Color3.fromRGB(255,255,255)
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Font = Enum.Font.SourceSans
+titleLabel.TextSize = 14 * UI_SCALE
 titleLabel.Parent = titleBar
 
 local closeButton = Instance.new("TextButton")
 closeButton.Text = "X"
-closeButton.Size = UDim2.new(0,30,1,0)
-closeButton.Position = UDim2.new(1,-30,0,0)
+closeButton.Size = UDim2.new(0, 30 * UI_SCALE, 1, 0)
+closeButton.Position = UDim2.new(1, -30 * UI_SCALE, 0, 0)
 closeButton.BackgroundColor3 = Color3.fromRGB(200,50,50)
 closeButton.TextColor3 = Color3.fromRGB(255,255,255)
+closeButton.Font = Enum.Font.SourceSans
+closeButton.TextSize = 14 * UI_SCALE
 closeButton.Parent = titleBar
-closeButton.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-end)
 
--- 最小化按钮
 local minimizeButton = Instance.new("TextButton")
 minimizeButton.Text = "_"
-minimizeButton.Size = UDim2.new(0,30,1,0)
-minimizeButton.Position = UDim2.new(1,-60,0,0)
+minimizeButton.Size = UDim2.new(0, 30 * UI_SCALE, 1, 0)
+minimizeButton.Position = UDim2.new(1, -60 * UI_SCALE, 0, 0)
 minimizeButton.BackgroundColor3 = Color3.fromRGB(100,100,100)
 minimizeButton.TextColor3 = Color3.fromRGB(255,255,255)
+minimizeButton.Font = Enum.Font.SourceSans
+minimizeButton.TextSize = 14 * UI_SCALE
 minimizeButton.Parent = titleBar
 
--- 最小化后的显示框（位置修正）
+-- 最小化后的显示框
 local minimizedBox = Instance.new("TextButton")
-minimizedBox.Size = UDim2.new(0,120,0,40)
-minimizedBox.Position = UDim2.new(0,10,1,-50)  -- 修正为左上角
+minimizedBox.Size = UDim2.new(0, 120 * UI_SCALE, 0, 40 * UI_SCALE)
+minimizedBox.Position = UDim2.new(0, 10 * UI_SCALE, 0, 10 * UI_SCALE)
 minimizedBox.Text = "显示附魔工具"
 minimizedBox.BackgroundColor3 = Color3.fromRGB(50,50,150)
 minimizedBox.TextColor3 = Color3.fromRGB(255,255,255)
 minimizedBox.Font = Enum.Font.SourceSans
-minimizedBox.TextSize = 14
+minimizedBox.TextSize = 14 * UI_SCALE
 minimizedBox.Visible = false
+minimizedBox.ZIndex = 10
 minimizedBox.Parent = ScreenGui
 
--- 🔹 保证最前显示
-minimizedBox.ZIndex = 10
 -- 最小化/恢复功能
 minimizeButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
@@ -103,187 +128,212 @@ minimizedBox.MouseButton1Click:Connect(function()
     minimizedBox.Visible = false
 end)
 
--- 关闭时也隐藏最小化框
 closeButton.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- 搜索框
+-- 计算内容区域尺寸
+local contentPadding = 10 * UI_SCALE
+local contentWidth = mainFrameWidth - 2 * contentPadding
+
+-- 搜索框标签
 local searchLabel = Instance.new("TextLabel")
 searchLabel.Text = "搜索附魔："
-searchLabel.Size = UDim2.new(0, 100, 0, 20)
-searchLabel.Position = UDim2.new(0, 10, 0, 40)
+searchLabel.Size = UDim2.new(0, 80 * UI_SCALE, 0, 20 * UI_SCALE)
+searchLabel.Position = UDim2.new(0, contentPadding, 0, 40 * UI_SCALE)
 searchLabel.BackgroundTransparency = 1
 searchLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 searchLabel.TextXAlignment = Enum.TextXAlignment.Left
+searchLabel.Font = Enum.Font.SourceSans
+searchLabel.TextSize = 12 * UI_SCALE
 searchLabel.Parent = mainFrame
 
--- 搜索框（调整位置）
+-- 搜索框
 local searchBox = Instance.new("TextBox")
 searchBox.PlaceholderText = "输入关键词搜索附魔"
-searchBox.Size = UDim2.new(0, 300, 0, 35)
-searchBox.Position = UDim2.new(0, 80, 0, 40)
+searchBox.Size = UDim2.new(0, contentWidth - 90 * UI_SCALE, 0, 30 * UI_SCALE)
+searchBox.Position = UDim2.new(0, 90 * UI_SCALE, 0, 40 * UI_SCALE)
 searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchBox.Text = ""  -- 确保初始文本为空
-searchBox.Font = Enum.Font.SourceSans  -- 添加字体
-searchBox.TextSize = 14  -- 添加文字大小
+searchBox.Text = ""
+searchBox.Font = Enum.Font.SourceSans
+searchBox.TextSize = 14 * UI_SCALE
 searchBox.Parent = mainFrame
--- 搜索结果标题
+
+-- 搜索结果标签
 local resultsLabel = Instance.new("TextLabel")
 resultsLabel.Text = "搜索结果："
-resultsLabel.Size = UDim2.new(0, 100, 0, 20)
-resultsLabel.Position = UDim2.new(0, 10, 0, 80)
+resultsLabel.Size = UDim2.new(0, 80 * UI_SCALE, 0, 20 * UI_SCALE)
+resultsLabel.Position = UDim2.new(0, contentPadding, 0, 80 * UI_SCALE)
 resultsLabel.BackgroundTransparency = 1
 resultsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 resultsLabel.TextXAlignment = Enum.TextXAlignment.Left
+resultsLabel.Font = Enum.Font.SourceSans
+resultsLabel.TextSize = 12 * UI_SCALE
 resultsLabel.Parent = mainFrame
+
 -- 滚动搜索结果
 local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(0, 630, 0, 150)
-scrollingFrame.Position = UDim2.new(0, 10, 0, 100)  -- 调整位置
+scrollingFrame.Size = UDim2.new(0, contentWidth, 0, 120 * UI_SCALE)
+scrollingFrame.Position = UDim2.new(0, contentPadding, 0, 100 * UI_SCALE)
 scrollingFrame.BackgroundTransparency = 1
-scrollingFrame.ScrollBarThickness = 8
+scrollingFrame.ScrollBarThickness = 8 * UI_SCALE
 scrollingFrame.Parent = mainFrame
 
 -- 目标附魔标题
 local targetLabel = Instance.new("TextLabel")
-targetLabel.Text = "目标附魔ID（最多6个）："
-targetLabel.Size = UDim2.new(0, 200, 0, 20)
-targetLabel.Position = UDim2.new(0, 10, 0, 260)
+targetLabel.Text = "目标附魔ID："
+targetLabel.Size = UDim2.new(0, contentWidth, 0, 20 * UI_SCALE)
+targetLabel.Position = UDim2.new(0, contentPadding, 0, 230 * UI_SCALE)
 targetLabel.BackgroundTransparency = 1
 targetLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 targetLabel.TextXAlignment = Enum.TextXAlignment.Left
+targetLabel.Font = Enum.Font.SourceSans
+targetLabel.TextSize = 12 * UI_SCALE
 targetLabel.Parent = mainFrame
 
--- 附魔ID输入框（修正版）
+-- 附魔ID输入框 - 改为两列布局适应手机
 local affixInputs = {}
+local inputWidth = (contentWidth - 10 * UI_SCALE) / 2
 for i=1,6 do
+    local col = (i-1) % 2
+    local row = math.floor((i-1) / 2)
+    
     local input = Instance.new("TextBox")
-    input.Size = UDim2.new(0, 300, 0, 30)
-    input.Position = UDim2.new(0, 10, 0, 285 + (i-1)*35)
-    input.PlaceholderText = "附魔ID - 点击上方搜索结果自动填充"
-    input.ClearTextOnFocus = true  -- 恢复点击清空功能
+    input.Size = UDim2.new(0, inputWidth, 0, 25 * UI_SCALE)
+    input.Position = UDim2.new(0, contentPadding + col * (inputWidth + 10 * UI_SCALE), 0, 255 * UI_SCALE + row * 30 * UI_SCALE)
+    input.PlaceholderText = "附魔ID " .. i
+    input.ClearTextOnFocus = true
     input.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     input.TextColor3 = Color3.fromRGB(255, 255, 255)
-    input.Text = ""  -- 确保初始文本为空
-    input.Font = Enum.Font.SourceSans  -- 添加字体
-    input.TextSize = 14  -- 添加文字大小
+    input.Text = ""
+    input.Font = Enum.Font.SourceSans
+    input.TextSize = 12 * UI_SCALE
     input.Parent = mainFrame
     affixInputs[i] = input
 end
+
 -- 装备信息标题
 local equipLabel = Instance.new("TextLabel")
 equipLabel.Text = "装备附魔信息："
-equipLabel.Size = UDim2.new(0, 150, 0, 20)
-equipLabel.Position = UDim2.new(0, 320, 0, 260)
+equipLabel.Size = UDim2.new(0, contentWidth, 0, 20 * UI_SCALE)
+equipLabel.Position = UDim2.new(0, contentPadding, 0, 355 * UI_SCALE)
 equipLabel.BackgroundTransparency = 1
 equipLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 equipLabel.TextXAlignment = Enum.TextXAlignment.Left
+equipLabel.Font = Enum.Font.SourceSans
+equipLabel.TextSize = 12 * UI_SCALE
 equipLabel.Parent = mainFrame
 
-
--- 显示装备附魔信息（修正版）
+-- 显示装备附魔信息
 local AffixLabel = Instance.new("TextLabel")
-AffixLabel.Size = UDim2.new(0, 300, 0, 180)
-AffixLabel.Position = UDim2.new(0, 320, 0, 285)
+AffixLabel.Size = UDim2.new(0, contentWidth, 0, 80 * UI_SCALE)
+AffixLabel.Position = UDim2.new(0, contentPadding, 0, 375 * UI_SCALE)
 AffixLabel.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 AffixLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 AffixLabel.TextWrapped = true
-AffixLabel.TextScaled = false  -- 改为false，使用固定文字大小
-AffixLabel.Font = Enum.Font.SourceSans  -- 添加字体
-AffixLabel.TextSize = 20  -- 添加文字大小
+AffixLabel.TextScaled = true
+AffixLabel.Font = Enum.Font.SourceSans
 AffixLabel.Text = "点击读取装备查看附魔"
 AffixLabel.Parent = mainFrame
+
 -- 手动锁定标题
 local manualLockLabel = Instance.new("TextLabel")
-manualLockLabel.Text = "手动锁定位置："
-manualLockLabel.Size = UDim2.new(0, 120, 0, 20)
-manualLockLabel.Position = UDim2.new(0, 10, 0, 500)
+manualLockLabel.Text = "手动锁定："
+manualLockLabel.Size = UDim2.new(0, 80 * UI_SCALE, 0, 20 * UI_SCALE)
+manualLockLabel.Position = UDim2.new(0, contentPadding, 0, 465 * UI_SCALE)
 manualLockLabel.BackgroundTransparency = 1
 manualLockLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 manualLockLabel.TextXAlignment = Enum.TextXAlignment.Left
 manualLockLabel.Font = Enum.Font.SourceSans
-manualLockLabel.TextSize = 12
+manualLockLabel.TextSize = 12 * UI_SCALE
 manualLockLabel.Parent = mainFrame
 
 -- 手动锁定输入框
 local manualLockBox = Instance.new("TextBox")
-manualLockBox.Size = UDim2.new(0, 200, 0, 25)
-manualLockBox.Position = UDim2.new(0, 100, 0, 500)
-manualLockBox.PlaceholderText = "输入位置编号，如：1 3 4 或 1,3,4"
+manualLockBox.Size = UDim2.new(0, contentWidth - 90 * UI_SCALE, 0, 25 * UI_SCALE)
+manualLockBox.Position = UDim2.new(0, 90 * UI_SCALE, 0, 465 * UI_SCALE)
+manualLockBox.PlaceholderText = "如：1 3 4"
 manualLockBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 manualLockBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 manualLockBox.Text = "" 
 manualLockBox.Font = Enum.Font.SourceSans
-manualLockBox.TextSize = 12
+manualLockBox.TextSize = 12 * UI_SCALE
 manualLockBox.Parent = mainFrame
 
-
--- 融合次数标题和输入框
+-- 融合次数标题
 local fuseLabel = Instance.new("TextLabel")
-fuseLabel.Text = "最大融合次数："
-fuseLabel.Size = UDim2.new(0, 100, 0, 20)
-fuseLabel.Position = UDim2.new(0, 10, 0, 530)
+fuseLabel.Text = "最大次数："
+fuseLabel.Size = UDim2.new(0, 80 * UI_SCALE, 0, 20 * UI_SCALE)
+fuseLabel.Position = UDim2.new(0, contentPadding, 0, 495 * UI_SCALE)
 fuseLabel.BackgroundTransparency = 1
 fuseLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 fuseLabel.TextXAlignment = Enum.TextXAlignment.Left
+fuseLabel.Font = Enum.Font.SourceSans
+fuseLabel.TextSize = 12 * UI_SCALE
 fuseLabel.Parent = mainFrame
--- 融合次数输入框（修正版）
+
+-- 融合次数输入框
 local fuseBox = Instance.new("TextBox")
-fuseBox.Size = UDim2.new(0, 100, 0, 30)
-fuseBox.Position = UDim2.new(0, 110, 0, 530)
-fuseBox.PlaceholderText = "融合次数"
+fuseBox.Size = UDim2.new(0, 80 * UI_SCALE, 0, 25 * UI_SCALE)
+fuseBox.Position = UDim2.new(0, 90 * UI_SCALE, 0, 495 * UI_SCALE)
+fuseBox.PlaceholderText = "次数"
 fuseBox.Text = tostring(MAX_ENCHANT_COUNT)
 fuseBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 fuseBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-fuseBox.Font = Enum.Font.SourceSans  -- 添加字体
-fuseBox.TextSize = 14  -- 添加文字大小
+fuseBox.Font = Enum.Font.SourceSans
+fuseBox.TextSize = 12 * UI_SCALE
 fuseBox.Parent = mainFrame
 
--- 锁定状态标签（调整位置，避免与按钮重叠）
+-- 锁定状态标签
 local lockStatusLabel = Instance.new("TextLabel")
-lockStatusLabel.Text = "锁定状态：未锁定任何位置"
-lockStatusLabel.Size = UDim2.new(0, 300, 0, 20)
-lockStatusLabel.Position = UDim2.new(0, 320, 0, 455)  -- 上移避免重叠
+lockStatusLabel.Text = "锁定状态：未锁定"
+lockStatusLabel.Size = UDim2.new(0, contentWidth, 0, 20 * UI_SCALE)
+lockStatusLabel.Position = UDim2.new(0, contentPadding, 0, 525 * UI_SCALE)
 lockStatusLabel.BackgroundTransparency = 1
 lockStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-lockStatusLabel.Font = Enum.Font.SourceSans
-lockStatusLabel.TextSize = 12
 lockStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+lockStatusLabel.Font = Enum.Font.SourceSans
+lockStatusLabel.TextSize = 12 * UI_SCALE
 lockStatusLabel.Parent = mainFrame
 
+-- 按钮区域
+local buttonArea = Instance.new("Frame")
+buttonArea.Size = UDim2.new(0, contentWidth, 0, 40 * UI_SCALE)
+buttonArea.Position = UDim2.new(0, contentPadding, 0, mainFrameHeight - 50 * UI_SCALE)
+buttonArea.BackgroundTransparency = 1
+buttonArea.Parent = mainFrame
 
--- 读取装备按钮（调整位置）
+-- 读取装备按钮
 local ReadButton = Instance.new("TextButton")
-ReadButton.Size = UDim2.new(0,150,0,35)
-ReadButton.Position = UDim2.new(0, 320, 0, 475)
+ReadButton.Size = UDim2.new(0, contentWidth/2 - 5 * UI_SCALE, 0, 35 * UI_SCALE)
+ReadButton.Position = UDim2.new(0, 0, 0, 0)
 ReadButton.Text = "读取装备"
 ReadButton.BackgroundColor3 = Color3.fromRGB(60, 60, 200)
 ReadButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ReadButton.Font = Enum.Font.SourceSans
-ReadButton.TextSize = 14
-ReadButton.Parent = mainFrame
+ReadButton.TextSize = 14 * UI_SCALE
+ReadButton.Parent = buttonArea
 
--- 开始附魔按钮（调整位置）
+-- 开始附魔按钮
 local StartButton = Instance.new("TextButton")
-StartButton.Size = UDim2.new(0,150,0,35)
-StartButton.Position = UDim2.new(0, 480, 0, 475)
+StartButton.Size = UDim2.new(0, contentWidth/2 - 5 * UI_SCALE, 0, 35 * UI_SCALE)
+StartButton.Position = UDim2.new(0.5, 5 * UI_SCALE, 0, 0)
 StartButton.Text = "开始附魔"
 StartButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 StartButton.Font = Enum.Font.SourceSans
-StartButton.TextSize = 14
-StartButton.Parent = mainFrame
+StartButton.TextSize = 14 * UI_SCALE
+StartButton.Parent = buttonArea
 
 -- 更新锁定状态显示函数
 local function updateLockStatusDisplay()
     if #lockedSlots > 0 then
         lockStatusLabel.Text = "锁定位置: " .. table.concat(lockedSlots, ", ")
-        lockStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)  -- 绿色表示已锁定
+        lockStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
     else
-        lockStatusLabel.Text = "锁定状态：未锁定任何位置"
-        lockStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- 白色表示未锁定
+        lockStatusLabel.Text = "锁定状态：未锁定"
+        lockStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     end
 end
 
@@ -316,21 +366,25 @@ local function updateResults(results)
     end
 
     local yOffset = 0
+    local itemHeight = 30 * UI_SCALE
+    
     for _,result in ipairs(results) do
         local itemFrame = Instance.new("Frame")
-        itemFrame.Size = UDim2.new(1,-10,0,30)
-        itemFrame.Position = UDim2.new(0,5,0,yOffset)
+        itemFrame.Size = UDim2.new(1, -10 * UI_SCALE, 0, itemHeight)
+        itemFrame.Position = UDim2.new(0, 5 * UI_SCALE, 0, yOffset)
         itemFrame.BackgroundColor3 = Color3.fromRGB(50,50,50)
         itemFrame.Parent = scrollingFrame
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1,-10,1,0)
-        label.Position = UDim2.new(0,5,0,0)
+        label.Size = UDim2.new(1, -10 * UI_SCALE, 1, 0)
+        label.Position = UDim2.new(0, 5 * UI_SCALE, 0, 0)
         label.BackgroundTransparency = 1
         label.TextColor3 = Color3.fromRGB(255,255,255)
         label.TextXAlignment = Enum.TextXAlignment.Left
-        label.TextYAlignment = Enum.TextYAlignment.Top
-        label.Text = string.format("ID:%d 描述:%s",result.id,result.description)
+        label.TextYAlignment = Enum.TextYAlignment.Center
+        label.Text = string.format("ID:%d %s",result.id,string.sub(result.description,1,20)..(string.len(result.description)>20 and "..." or ""))
+        label.Font = Enum.Font.SourceSans
+        label.TextSize = 12 * UI_SCALE
         label.Parent = itemFrame
 
         local button = Instance.new("TextButton")
@@ -341,20 +395,53 @@ local function updateResults(results)
 
         button.MouseButton1Click:Connect(function()
             for i,input in ipairs(affixInputs) do
-                if input.Text=="" or input.Text=="附魔ID" then
+                if input.Text=="" then
                     input.Text = string.format("%d | %s",result.id,result.description)
                     break
                 end
             end
         end)
 
-        yOffset = yOffset + 35
+        yOffset = yOffset + itemHeight + 2 * UI_SCALE
     end
 
-    -- 🔹关键：设置CanvasSize，让滚动条可用
     scrollingFrame.CanvasSize = UDim2.new(0,0,0,yOffset)
 end
 
+-- 屏幕尺寸变化时自适应
+workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    SCREEN_WIDTH = workspace.CurrentCamera.ViewportSize.X
+    SCREEN_HEIGHT = workspace.CurrentCamera.ViewportSize.Y
+    
+    local newWidth = math.min(650 * UI_SCALE, SCREEN_WIDTH * 0.9)
+    local newHeight = math.min(565 * UI_SCALE, SCREEN_HEIGHT * 0.8)
+    
+    mainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+    mainFrame.Position = UDim2.new(0.5, -newWidth/2, 0.1, 0)
+end)
+
+-- 这里继续添加您的其他功能函数（getCurrentEquipment, getEnchantDescription, smartLockAffixes等）
+-- 注意：所有尺寸相关的数值都需要乘以 UI_SCALE
+
+-- 搜索框监听
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local text = searchBox.Text
+    local results = searchAffixByDescription(text)
+    updateResults(results)
+end)
+
+-- 手动锁定框监听
+manualLockBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if EQUIP_ID then
+        local item = getCurrentEquipment()
+        if item then
+            displayAffixes(item)
+            autoLockExistingAffixes(item)
+        end
+    end
+end)
+
+print("📱 附魔工具已加载 - " .. (isMobile() and "手机模式" or "PC模式"))
 -- 获取当前装备
 local function getCurrentEquipment()
     for _, func in pairs(getgc(true)) do
