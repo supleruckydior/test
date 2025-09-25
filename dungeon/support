@@ -777,6 +777,7 @@ spawn(function()
 end)
 
 --================= 副本内监控 ===================
+--================= 副本内监控 ===================
 local function SetupInDungeon()
     if Workspace:FindFirstChild('Lobby') then return end
 
@@ -844,35 +845,36 @@ local function SetupInDungeon()
     end
 
     -- 技能循环释放
-if Settings.AutoSkillEnabled then
-    spawn(function()
-        while true do
-            if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
-                if not Workspace:FindFirstChild("Lobby") then
-                    for spell = 1, 5 do
-                        pcall(function() 
-                            TNet.FireServer("Skill_Release", spell) 
-                        end)
-                        task.wait(0.03) -- 控制释放频率
+    if Settings.AutoSkillEnabled then
+        spawn(function()
+            while true do
+                if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
+                    if not Workspace:FindFirstChild("Lobby") then
+                        for spell = 1, 5 do
+                            pcall(function() 
+                                TNet.FireServer("Skill_Release", spell) 
+                            end)
+                            task.wait(0.03) -- 控制释放频率
+                        end
                     end
                 end
+                task.wait(0.1) -- ⚠️ 必须加个等待，避免死循环卡死
             end
-        end
-    end)
-end
+        end)
+    end
+end -- ⚠️ 这里要结束 SetupInDungeon 函数
 
-
-
+-- 准备好玩家以后再执行
 spawn(function()
     repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
     SetupInDungeon()
 end)
 
-
 --================= 退出副本按钮 =================--
 features:AddButton('退出副本', function()
     pcall(function() TeleportService:Teleport(113080689665370) end)
 end)
+
 features:AddButton('附魔工具', function()
-loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/dungeon/附魔工具"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/dungeon/附魔工具"))()
 end)
