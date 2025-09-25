@@ -1,0 +1,799 @@
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TNet = require(ReplicatedFirst.Component.TNet)
+local Config = require(ReplicatedStorage:WaitForChild('Config'))
+-- 添加缺失的 table.find 函数
+if not table.find then
+    table.find = function(t, value)
+        for i, v in ipairs(t) do
+            if v == value then
+                return i
+            end
+        end
+        return nil
+    end
+end
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild('PlayerGui')
+
+-- 用户配置
+local TARGET_AFFIX_IDS = {}
+local MAX_ENCHANT_COUNT = 200
+local CURRENT_COUNT = 0
+local EQUIP_ID = nil
+local lockedSlots = {}
+
+-- 创建主UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoEnchantUI"
+ScreenGui.Parent = playerGui
+
+-- 🔹 保证在最前面显示
+ScreenGui.DisplayOrder = 999
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 650, 0, 565)
+mainFrame.Position = UDim2.new(0.5, -325, 0.2, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = ScreenGui
+
+-- 标题栏
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1,0,0,30)
+titleBar.BackgroundColor3 = Color3.fromRGB(50,50,50)
+titleBar.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Text = "附魔工具（整合版）"
+titleLabel.Size = UDim2.new(1,-60,1,0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3 = Color3.fromRGB(255,255,255)
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local closeButton = Instance.new("TextButton")
+closeButton.Text = "X"
+closeButton.Size = UDim2.new(0,30,1,0)
+closeButton.Position = UDim2.new(1,-30,0,0)
+closeButton.BackgroundColor3 = Color3.fromRGB(200,50,50)
+closeButton.TextColor3 = Color3.fromRGB(255,255,255)
+closeButton.Parent = titleBar
+closeButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- 最小化按钮
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Text = "_"
+minimizeButton.Size = UDim2.new(0,30,1,0)
+minimizeButton.Position = UDim2.new(1,-60,0,0)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(100,100,100)
+minimizeButton.TextColor3 = Color3.fromRGB(255,255,255)
+minimizeButton.Parent = titleBar
+
+-- 最小化后的显示框（位置修正）
+local minimizedBox = Instance.new("TextButton")
+minimizedBox.Size = UDim2.new(0,120,0,40)
+minimizedBox.Position = UDim2.new(0,10,1,-50)  -- 修正为左上角
+minimizedBox.Text = "显示附魔工具"
+minimizedBox.BackgroundColor3 = Color3.fromRGB(50,50,150)
+minimizedBox.TextColor3 = Color3.fromRGB(255,255,255)
+minimizedBox.Font = Enum.Font.SourceSans
+minimizedBox.TextSize = 14
+minimizedBox.Visible = false
+minimizedBox.Parent = ScreenGui
+
+-- 🔹 保证最前显示
+minimizedBox.ZIndex = 10
+-- 最小化/恢复功能
+minimizeButton.MouseButton1Click:Connect(function()
+    mainFrame.Visible = false
+    minimizedBox.Visible = true
+end)
+
+minimizedBox.MouseButton1Click:Connect(function()
+    mainFrame.Visible = true
+    minimizedBox.Visible = false
+end)
+
+-- 关闭时也隐藏最小化框
+closeButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- 搜索框
+local searchLabel = Instance.new("TextLabel")
+searchLabel.Text = "搜索附魔："
+searchLabel.Size = UDim2.new(0, 100, 0, 20)
+searchLabel.Position = UDim2.new(0, 10, 0, 40)
+searchLabel.BackgroundTransparency = 1
+searchLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchLabel.TextXAlignment = Enum.TextXAlignment.Left
+searchLabel.Parent = mainFrame
+
+-- 搜索框（调整位置）
+local searchBox = Instance.new("TextBox")
+searchBox.PlaceholderText = "输入关键词搜索附魔"
+searchBox.Size = UDim2.new(0, 300, 0, 35)
+searchBox.Position = UDim2.new(0, 80, 0, 40)
+searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchBox.Text = ""  -- 确保初始文本为空
+searchBox.Font = Enum.Font.SourceSans  -- 添加字体
+searchBox.TextSize = 14  -- 添加文字大小
+searchBox.Parent = mainFrame
+-- 搜索结果标题
+local resultsLabel = Instance.new("TextLabel")
+resultsLabel.Text = "搜索结果："
+resultsLabel.Size = UDim2.new(0, 100, 0, 20)
+resultsLabel.Position = UDim2.new(0, 10, 0, 80)
+resultsLabel.BackgroundTransparency = 1
+resultsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+resultsLabel.TextXAlignment = Enum.TextXAlignment.Left
+resultsLabel.Parent = mainFrame
+-- 滚动搜索结果
+local scrollingFrame = Instance.new("ScrollingFrame")
+scrollingFrame.Size = UDim2.new(0, 630, 0, 150)
+scrollingFrame.Position = UDim2.new(0, 10, 0, 100)  -- 调整位置
+scrollingFrame.BackgroundTransparency = 1
+scrollingFrame.ScrollBarThickness = 8
+scrollingFrame.Parent = mainFrame
+
+-- 目标附魔标题
+local targetLabel = Instance.new("TextLabel")
+targetLabel.Text = "目标附魔ID（最多6个）："
+targetLabel.Size = UDim2.new(0, 200, 0, 20)
+targetLabel.Position = UDim2.new(0, 10, 0, 260)
+targetLabel.BackgroundTransparency = 1
+targetLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+targetLabel.TextXAlignment = Enum.TextXAlignment.Left
+targetLabel.Parent = mainFrame
+
+-- 附魔ID输入框（修正版）
+local affixInputs = {}
+for i=1,6 do
+    local input = Instance.new("TextBox")
+    input.Size = UDim2.new(0, 300, 0, 30)
+    input.Position = UDim2.new(0, 10, 0, 285 + (i-1)*35)
+    input.PlaceholderText = "附魔ID - 点击上方搜索结果自动填充"
+    input.ClearTextOnFocus = true  -- 恢复点击清空功能
+    input.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    input.TextColor3 = Color3.fromRGB(255, 255, 255)
+    input.Text = ""  -- 确保初始文本为空
+    input.Font = Enum.Font.SourceSans  -- 添加字体
+    input.TextSize = 14  -- 添加文字大小
+    input.Parent = mainFrame
+    affixInputs[i] = input
+end
+-- 装备信息标题
+local equipLabel = Instance.new("TextLabel")
+equipLabel.Text = "装备附魔信息："
+equipLabel.Size = UDim2.new(0, 150, 0, 20)
+equipLabel.Position = UDim2.new(0, 320, 0, 260)
+equipLabel.BackgroundTransparency = 1
+equipLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+equipLabel.TextXAlignment = Enum.TextXAlignment.Left
+equipLabel.Parent = mainFrame
+
+
+-- 显示装备附魔信息（修正版）
+local AffixLabel = Instance.new("TextLabel")
+AffixLabel.Size = UDim2.new(0, 300, 0, 180)
+AffixLabel.Position = UDim2.new(0, 320, 0, 285)
+AffixLabel.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+AffixLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+AffixLabel.TextWrapped = true
+AffixLabel.TextScaled = false  -- 改为false，使用固定文字大小
+AffixLabel.Font = Enum.Font.SourceSans  -- 添加字体
+AffixLabel.TextSize = 20  -- 添加文字大小
+AffixLabel.Text = "点击读取装备查看附魔"
+AffixLabel.Parent = mainFrame
+-- 手动锁定标题
+local manualLockLabel = Instance.new("TextLabel")
+manualLockLabel.Text = "手动锁定位置："
+manualLockLabel.Size = UDim2.new(0, 120, 0, 20)
+manualLockLabel.Position = UDim2.new(0, 10, 0, 500)
+manualLockLabel.BackgroundTransparency = 1
+manualLockLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+manualLockLabel.TextXAlignment = Enum.TextXAlignment.Left
+manualLockLabel.Font = Enum.Font.SourceSans
+manualLockLabel.TextSize = 12
+manualLockLabel.Parent = mainFrame
+
+-- 手动锁定输入框
+local manualLockBox = Instance.new("TextBox")
+manualLockBox.Size = UDim2.new(0, 200, 0, 25)
+manualLockBox.Position = UDim2.new(0, 100, 0, 500)
+manualLockBox.PlaceholderText = "输入位置编号，如：1 3 4 或 1,3,4"
+manualLockBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+manualLockBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+manualLockBox.Text = "" 
+manualLockBox.Font = Enum.Font.SourceSans
+manualLockBox.TextSize = 12
+manualLockBox.Parent = mainFrame
+
+
+-- 融合次数标题和输入框
+local fuseLabel = Instance.new("TextLabel")
+fuseLabel.Text = "最大融合次数："
+fuseLabel.Size = UDim2.new(0, 100, 0, 20)
+fuseLabel.Position = UDim2.new(0, 10, 0, 530)
+fuseLabel.BackgroundTransparency = 1
+fuseLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+fuseLabel.TextXAlignment = Enum.TextXAlignment.Left
+fuseLabel.Parent = mainFrame
+-- 融合次数输入框（修正版）
+local fuseBox = Instance.new("TextBox")
+fuseBox.Size = UDim2.new(0, 100, 0, 30)
+fuseBox.Position = UDim2.new(0, 110, 0, 530)
+fuseBox.PlaceholderText = "融合次数"
+fuseBox.Text = tostring(MAX_ENCHANT_COUNT)
+fuseBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+fuseBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+fuseBox.Font = Enum.Font.SourceSans  -- 添加字体
+fuseBox.TextSize = 14  -- 添加文字大小
+fuseBox.Parent = mainFrame
+
+-- 锁定状态标签（调整位置，避免与按钮重叠）
+local lockStatusLabel = Instance.new("TextLabel")
+lockStatusLabel.Text = "锁定状态：未锁定任何位置"
+lockStatusLabel.Size = UDim2.new(0, 300, 0, 20)
+lockStatusLabel.Position = UDim2.new(0, 320, 0, 455)  -- 上移避免重叠
+lockStatusLabel.BackgroundTransparency = 1
+lockStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+lockStatusLabel.Font = Enum.Font.SourceSans
+lockStatusLabel.TextSize = 12
+lockStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+lockStatusLabel.Parent = mainFrame
+
+
+-- 读取装备按钮（调整位置）
+local ReadButton = Instance.new("TextButton")
+ReadButton.Size = UDim2.new(0,150,0,35)
+ReadButton.Position = UDim2.new(0, 320, 0, 475)
+ReadButton.Text = "读取装备"
+ReadButton.BackgroundColor3 = Color3.fromRGB(60, 60, 200)
+ReadButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ReadButton.Font = Enum.Font.SourceSans
+ReadButton.TextSize = 14
+ReadButton.Parent = mainFrame
+
+-- 开始附魔按钮（调整位置）
+local StartButton = Instance.new("TextButton")
+StartButton.Size = UDim2.new(0,150,0,35)
+StartButton.Position = UDim2.new(0, 480, 0, 475)
+StartButton.Text = "开始附魔"
+StartButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+StartButton.Font = Enum.Font.SourceSans
+StartButton.TextSize = 14
+StartButton.Parent = mainFrame
+
+-- 更新锁定状态显示函数
+local function updateLockStatusDisplay()
+    if #lockedSlots > 0 then
+        lockStatusLabel.Text = "锁定位置: " .. table.concat(lockedSlots, ", ")
+        lockStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)  -- 绿色表示已锁定
+    else
+        lockStatusLabel.Text = "锁定状态：未锁定任何位置"
+        lockStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- 白色表示未锁定
+    end
+end
+
+-- 搜索功能
+local function normalize(str)
+    return string.lower(str:gsub("%s+",""):gsub("[%p%c]",""))
+end
+
+local function searchAffixByDescription(searchText)
+    searchText = normalize(searchText)
+    local results = {}
+    if Config and Config.Affix and Config.Affix.Attribute then
+        for affixId, affixData in pairs(Config.Affix.Attribute) do
+            if type(affixData)=="table" and affixData.description then
+                local description = normalize(tostring(affixData.description))
+                if string.find(description,searchText) then
+                    table.insert(results,{id=affixId,description=affixData.description})
+                end
+            end
+        end
+    end
+    table.sort(results,function(a,b) return a.id<b.id end)
+    return results
+end
+
+-- 更新搜索结果
+local function updateResults(results)
+    for _,child in ipairs(scrollingFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+
+    local yOffset = 0
+    for _,result in ipairs(results) do
+        local itemFrame = Instance.new("Frame")
+        itemFrame.Size = UDim2.new(1,-10,0,30)
+        itemFrame.Position = UDim2.new(0,5,0,yOffset)
+        itemFrame.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        itemFrame.Parent = scrollingFrame
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1,-10,1,0)
+        label.Position = UDim2.new(0,5,0,0)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255,255,255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextYAlignment = Enum.TextYAlignment.Top
+        label.Text = string.format("ID:%d 描述:%s",result.id,result.description)
+        label.Parent = itemFrame
+
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1,0,1,0)
+        button.BackgroundTransparency = 1
+        button.Text = ""
+        button.Parent = itemFrame
+
+        button.MouseButton1Click:Connect(function()
+            for i,input in ipairs(affixInputs) do
+                if input.Text=="" or input.Text=="附魔ID" then
+                    input.Text = string.format("%d | %s",result.id,result.description)
+                    break
+                end
+            end
+        end)
+
+        yOffset = yOffset + 35
+    end
+
+    -- 🔹关键：设置CanvasSize，让滚动条可用
+    scrollingFrame.CanvasSize = UDim2.new(0,0,0,yOffset)
+end
+
+-- 获取当前装备
+local function getCurrentEquipment()
+    for _, func in pairs(getgc(true)) do
+        if type(func) == "function" and islclosure(func) then
+            local upvalues = getupvalues(func)
+            for _, v in pairs(upvalues) do
+                if type(v) == "table" and rawget(v, "item") and v.item.ref then
+                    return v.item -- 返回找到的装备
+                end
+            end
+        end
+    end
+    return nil -- 如果没找到
+end
+
+-- 调用示例
+local currentEquip = getCurrentEquipment()
+if currentEquip then
+    print("🎒 当前装备ID:", currentEquip.ref)
+else
+    print("❌ 没找到当前装备")
+end
+
+
+
+-- 获取附魔描述
+local function getEnchantDescription(enchantId)
+    if Config and Config.Affix and Config.Affix.Attribute and Config.Affix.Attribute[enchantId] then
+        return Config.Affix.Attribute[enchantId].description or "未知附魔"
+    end
+    return "未找到附魔ID: "..tostring(enchantId)
+end
+
+local function parseManualLockInput(inputText)
+    local slots = {}
+    
+    if inputText == "" then
+        return slots
+    end
+    
+    -- 支持空格、逗号、分号分隔
+    local pattern = "[%s,;]+"
+    for slotStr in string.gmatch(inputText, "[^%s,;]+") do
+        local slot = tonumber(slotStr)
+        if slot and slot >= 1 and slot <= 6 then  -- 假设最多6个附魔位置
+            table.insert(slots, slot)
+        end
+    end
+    
+    return slots
+end
+
+-- 去重函数
+local function removeDuplicates(t)
+    local seen = {}
+    local result = {}
+    
+    for _, v in ipairs(t) do
+        if not seen[v] then
+            seen[v] = true
+            table.insert(result, v)
+        end
+    end
+    
+    return result
+end
+
+-- 合并锁定位置（脚本锁定 + 手动锁定）
+local function mergeLockedSlots(scriptLocks, manualLocks)
+    local allLocks = {}
+    
+    -- 添加脚本锁定的位置
+    for _, slot in ipairs(scriptLocks) do
+        table.insert(allLocks, slot)
+    end
+    
+    -- 添加手动锁定的位置
+    for _, slot in ipairs(manualLocks) do
+        table.insert(allLocks, slot)
+    end
+    
+    -- 去重并排序
+    allLocks = removeDuplicates(allLocks)
+    table.sort(allLocks)
+    
+    return allLocks
+end
+
+local function saveCurrentEnchant()
+    if EQUIP_ID then
+        print("💾 保存当前附魔结果...")
+        TNet.FireServer("UseNewEquipmentAffixGroup", EQUIP_ID)
+    end
+end
+
+local function smartLockAffixes(affixes)
+    local newLockedSlots = {}
+    
+    -- 第一步：保持所有之前已经锁定的位置
+    for _, slot in ipairs(lockedSlots) do
+        if slot >= 1 and slot <= #affixes then
+            table.insert(newLockedSlots, slot)
+            print("🔒 保持锁定位置 " .. slot)
+        end
+    end
+    
+    -- 第二步：检查新出现的目标附魔并锁定
+    for slot = 1, #affixes do
+        local affixId = affixes[slot]
+        
+        -- 如果这个位置还没有被锁定
+        if not table.find(newLockedSlots, slot) then
+            -- 检查这个附魔是否在目标列表中
+            for _, targetId in ipairs(TARGET_AFFIX_IDS) do
+                if affixId == targetId then
+                    table.insert(newLockedSlots, slot)
+                    print("🎯 发现新目标附魔，锁定位置 " .. slot)
+                    saveCurrentEnchant()
+                    break
+                end
+            end
+        end
+    end
+    
+    -- 第三步：添加手动锁定的位置
+    local manualLockedSlots = parseManualLockInput(manualLockBox.Text)
+    for _, slot in ipairs(manualLockedSlots) do
+        if slot >= 1 and slot <= #affixes then
+            if not table.find(newLockedSlots, slot) then
+                table.insert(newLockedSlots, slot)
+                print("👆 手动锁定位置 " .. slot)
+            end
+        end
+    end
+    
+    -- 排序锁定位置
+    table.sort(newLockedSlots)
+    lockedSlots = newLockedSlots
+    
+    -- 更新显示
+    updateLockStatusDisplay()
+    
+    print("🔒 当前锁定位置: " .. (#lockedSlots > 0 and table.concat(lockedSlots, ", ") or "无"))
+end
+
+
+-- 自动锁定已有目标附魔（增强版，包含手动锁定）
+local function autoLockExistingAffixes(item)
+    if not item or not item.attributeGroup then
+        return
+    end
+    
+    local newLockedSlots = {}
+    
+    -- 第一步：保持当前已锁定的位置
+    for _, slot in ipairs(lockedSlots) do
+        if item.attributeGroup[slot] then
+            table.insert(newLockedSlots, slot)
+            print("🔒 保持当前锁定位置 " .. slot)
+        end
+    end
+    
+    -- 第二步：锁定所有包含目标附魔的位置
+    for slot, affixId in pairs(item.attributeGroup) do
+        -- 如果这个位置还没有被锁定
+        if not table.find(newLockedSlots, slot) then
+            for _, targetId in ipairs(TARGET_AFFIX_IDS) do
+                if affixId == targetId then
+                    table.insert(newLockedSlots, slot)
+                    print("🎯 锁定已有目标附魔位置 " .. slot)
+                    break
+                end
+            end
+        end
+    end
+    
+    -- 第三步：添加手动锁定的位置
+    local manualLockedSlots = parseManualLockInput(manualLockBox.Text)
+    for _, slot in ipairs(manualLockedSlots) do
+        if slot >= 1 and slot <= 6 then  -- 假设最多6个位置
+            if not table.find(newLockedSlots, slot) then
+                table.insert(newLockedSlots, slot)
+                print("👆 手动锁定位置 " .. slot)
+            end
+        end
+    end
+    
+    -- 排序锁定位置
+    table.sort(newLockedSlots)
+    lockedSlots = newLockedSlots
+    
+    -- 更新显示
+    updateLockStatusDisplay()
+    
+    print("🔒 最终锁定位置: " .. (#lockedSlots > 0 and table.concat(lockedSlots, ", ") or "无"))
+end
+-- 显示装备附魔信息
+local function displayAffixes(item)
+    if not item then
+        AffixLabel.Text = "❌ 未找到装备"
+        EQUIP_ID = nil
+        return
+    end
+    EQUIP_ID = item.ref
+    
+    -- 解析手动锁定
+    local manualLocks = parseManualLockInput(manualLockBox.Text)
+    
+    local text = "装备ID: " .. EQUIP_ID .. "\n附魔信息:\n"
+    if item.attributeGroup then
+        for slot, affixId in pairs(item.attributeGroup) do
+            local desc = getEnchantDescription(affixId)
+            local marker = ""
+            
+            -- 检查是否是目标附魔
+            for _, targetId in ipairs(TARGET_AFFIX_IDS) do
+                if affixId == targetId then 
+                    marker = "🎯"
+                    break
+                end
+            end
+            
+            -- 检查是否已锁定（脚本锁定或手动锁定）
+            local isScriptLocked = table.find(lockedSlots, slot)
+            local isManualLocked = table.find(manualLocks, slot)
+            
+            if isScriptLocked then
+                marker = marker .. "🔒"
+            end
+            if isManualLocked then
+                marker = marker .. "👆"
+            end
+            
+            text = text .. string.format("位置%d: %s (%d) %s\n", slot, desc, affixId, marker)
+        end
+    else
+        text = text .. "无附魔信息"
+    end
+    
+    -- 显示手动锁定信息
+    if #manualLocks > 0 then
+        text = text .. "\n手动锁定: " .. table.concat(manualLocks, ", ")
+    end
+    
+    AffixLabel.Text = text
+end
+
+
+
+-- 保存附魔
+
+
+-- 智能附魔
+local function checkAllSlotsAreTargetAffixes(affixes)
+    -- 检查每个位置是否都是目标附魔
+    for slot = 1, #affixes do
+        local affixId = affixes[slot]
+        local isTarget = false
+        
+        -- 检查这个位置的附魔是否在目标列表中
+        for _, targetId in ipairs(TARGET_AFFIX_IDS) do
+            if affixId == targetId then
+                isTarget = true
+                break
+            end
+        end
+        
+        -- 如果任何一个位置不是目标附魔，就返回false
+        if not isTarget then
+            return false, slot
+        end
+    end
+    
+    -- 所有位置都是目标附魔
+    return true
+end
+
+-- 智能附魔（修正版）
+local function performEnchant()
+    if #lockedSlots >= affixnum then
+        print("⚠️ 已经全部锁定，停止附魔")
+        return
+    end
+    CURRENT_COUNT = CURRENT_COUNT + 1
+    if CURRENT_COUNT > MAX_ENCHANT_COUNT then
+        print("⏹️ 已达到最大附魔次数，停止")
+        return
+    end
+autoLockExistingAffixes(item)
+    print(string.format("🔄 第%d/%d次附魔，当前锁定: %s", CURRENT_COUNT, MAX_ENCHANT_COUNT, 
+        #lockedSlots > 0 and table.concat(lockedSlots, ", ") or "无"))
+
+    TNet.InvokeServer("Equipment_Enchant", 5, function(success, ...)
+        local results = {...}
+        if success and #results > 0 and typeof(results[1]) == "table" then
+            local affixes = results[1]
+            
+            -- 保存附魔前的锁定状态
+            local previousLocked = table.concat(lockedSlots, ", ")
+            if previousLocked == "" then previousLocked = "无" end
+            
+            -- 显示本次附魔结果
+            print("📊 本次附魔结果:")
+            for i, affixId in ipairs(affixes) do
+                local desc = getEnchantDescription(affixId)
+                local isLocked = table.find(lockedSlots, i)
+                local isTarget = false
+                
+                for _, targetId in ipairs(TARGET_AFFIX_IDS) do
+                    if affixId == targetId then 
+                        isTarget = true
+                        break
+                    end
+                end
+                
+                local status = isLocked and "🔒" or "  "
+                status = status .. (isTarget and "🎯" or "  ")
+                
+                print(string.format("  %s 位置%d: %s (%d)", status, i, desc, affixId))
+            end
+
+            -- 使用智能锁定逻辑
+            smartLockAffixes(affixes)
+            
+            -- 显示锁定状态变化
+            local currentLocked = table.concat(lockedSlots, ", ")
+            if currentLocked == "" then currentLocked = "无" end
+            
+            if currentLocked ~= previousLocked then
+                print("🔄 锁定状态变化: " .. previousLocked .. " → " .. currentLocked)
+            else
+                print("🔒 锁定状态保持不变: " .. currentLocked)
+            end
+            
+            -- 检查是否所有词条都是目标附魔
+            local allSlotsAreTarget, nonTargetSlot = checkAllSlotsAreTargetAffixes(affixes)
+            
+            if allSlotsAreTarget then
+                print("🎉 所有词条都是目标附魔！完美附魔完成！")
+                saveCurrentEnchant()
+                return
+            else
+                print(string.format("🎯 继续优化，位置 %d 需要改进", nonTargetSlot))
+            end
+            
+            wait(0.05)
+            performEnchant()
+        else
+            print("❌ 附魔失败或返回数据异常，重试...")
+            wait(0.05)
+            performEnchant()
+        end
+    end, EQUIP_ID, lockedSlots)
+end
+
+
+-- 读取装备按钮逻辑
+ReadButton.MouseButton1Click:Connect(function()
+    item = getCurrentEquipment()
+    affix = item.attributeGroup
+    affixnum = #affix
+    if item then
+        EQUIP_ID = item.ref
+        displayAffixes(item)
+        if #TARGET_AFFIX_IDS > 0 then
+            autoLockExistingAffixes(item)
+        end
+        print("📖 装备读取成功，ID: " .. EQUIP_ID)
+    else
+        print("❌ 未找到装备")
+    end
+end)
+
+-- 开始附魔按钮逻辑
+StartButton.MouseButton1Click:Connect(function()
+    -- 先收集目标附魔ID
+    TARGET_AFFIX_IDS = {}
+    for _, input in ipairs(affixInputs) do
+        local text = input.Text
+        if text ~= "" and text ~= "附魔ID - 点击上方搜索结果自动填充" then
+            local id = tonumber(text:match("^(%d+)"))
+            if id then 
+                table.insert(TARGET_AFFIX_IDS, id)
+            end
+        end
+    end
+    
+    if #TARGET_AFFIX_IDS == 0 then
+        print("❌ 请先选择至少一个目标附魔ID")
+        return
+    end
+    
+    print("🎯 目标附魔: " .. table.concat(TARGET_AFFIX_IDS, ", "))
+    
+    -- 获取当前装备
+    local currentItem = getCurrentEquipment()
+    if not currentItem then
+        print("❌ 无法获取装备信息，请先读取装备")
+        return
+    end
+    
+    EQUIP_ID = currentItem.ref
+    
+    local count = tonumber(fuseBox.Text)
+    if count then 
+        MAX_ENCHANT_COUNT = count
+        print("📊 最大附魔次数: " .. count)
+    end
+    
+    -- 重置计数
+    CURRENT_COUNT = 0
+
+    -- 🔹 重置锁定，只保留手动锁定
+    local manualLocks = parseManualLockInput(manualLockBox.Text)
+    lockedSlots = removeDuplicates(manualLocks)
+    table.sort(lockedSlots)
+    
+    -- 显示装备信息
+    displayAffixes(currentItem)
+    autoLockExistingAffixes(currentItem)
+    -- 自动锁定只在附魔结果出现后应用，不累积上一次的自动锁定
+    print("🚀 开始附魔...")
+    performEnchant()
+end)
+
+
+manualLockBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if EQUIP_ID then
+        local item = getCurrentEquipment()
+        if item then
+            displayAffixes(item)
+            -- 重新应用锁定逻辑
+            autoLockExistingAffixes(item)
+        end
+    end
+end)
+-- 搜索框监听
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local text = searchBox.Text
+    local results = searchAffixByDescription(text)
+    updateResults(results)
+end)
