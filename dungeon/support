@@ -316,6 +316,43 @@ features:AddSwitch('killaura', function(state)
         end
     end
 end):Set(Settings.AutoAttackEnabled)
+-- 模拟攻击开关
+local attackSwitch = features:AddSwitch("刷技能bug", function(state)
+    Settings.SimulatedAttackEnabled = state
+    SaveSettings()
+
+    if state then
+        print("[SimAttack] 开始模拟攻击循环")
+        -- 启动循环
+        if not _G.SimAttackConnection then
+            _G.SimAttackConnection = spawn(function()
+                while Settings.SimulatedAttackEnabled do
+                    task.wait(0.02)
+                    local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20)) -- 固定模拟坐标
+                    pcall(function()
+                        TNet.FireServer("Bc", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
+                            hitNum = 0,
+                            onHitAnimName = "SwordShield1",
+                            hrtCF = simulatedCFrame
+                        })
+                    end)
+                end
+                print("[SimAttack] 模拟攻击循环已退出")
+            end)
+        end
+    else
+        print("[SimAttack] 模拟攻击已关闭")
+        Settings.SimulatedAttackEnabled = false
+        -- spawn 是一次性的，所以这里只需要等待 while 循环退出
+        _G.SimAttackConnection = nil
+    end
+end)
+
+-- 初始化开关状态
+if attackSwitch.Set then
+    attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
+end
+
 features:AddSwitch("自动重试副本", function(state)
     Settings.AutoDungeonRetry = state
     SaveSettings()
@@ -821,23 +858,7 @@ if Settings.AutoSkillEnabled then
     end)
 end
 
-    -- 模拟攻击指令，每0.05秒发送一次
-    spawn(function()
-        while true do
-            task.wait(0.02)
-            -- 模拟敌人坐标
-            local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
-            -- 发送攻击指令
-            pcall(function()
-                TNet.FireServer('Bc', 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
-                    hitNum = 0,
-                    onHitAnimName = "SwordShield1",
-                    hrtCF = simulatedCFrame
-                })
-            end)
-        end
-    end)
-end
+
 
 spawn(function()
     repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
