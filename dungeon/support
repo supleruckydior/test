@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.9',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.0',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -317,18 +317,22 @@ features:AddSwitch('killaura', function(state)
     end
 end):Set(Settings.AutoAttackEnabled)
 -- 模拟攻击开关
-local attackSwitch = features:AddSwitch("刷技能bug", function(state)
+local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
     SaveSettings()
 
     if state then
-        print("[SimAttack] 开始模拟攻击循环")
+
         -- 启动循环
-        if not _G.SimAttackConnection then
-            _G.SimAttackConnection = spawn(function()
+        if not _G.SimAttackThread then
+            _G.SimAttackThread = spawn(function()
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.02)
-                    local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20)) -- 固定模拟坐标
+
+                    -- 模拟坐标
+                    local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
+
+                    -- 攻击事件
                     pcall(function()
                         TNet.FireServer("Bc", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
                             hitNum = 0,
@@ -337,14 +341,12 @@ local attackSwitch = features:AddSwitch("刷技能bug", function(state)
                         })
                     end)
                 end
-                print("[SimAttack] 模拟攻击循环已退出")
             end)
         end
     else
-        print("[SimAttack] 模拟攻击已关闭")
         Settings.SimulatedAttackEnabled = false
-        -- spawn 是一次性的，所以这里只需要等待 while 循环退出
-        _G.SimAttackConnection = nil
+        -- spawn 线程会检测到标志位，自动退出
+        _G.SimAttackThread = nil
     end
 end)
 
@@ -352,6 +354,7 @@ end)
 if attackSwitch.Set then
     attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
 end
+
 
 features:AddSwitch("自动重试副本", function(state)
     Settings.AutoDungeonRetry = state
