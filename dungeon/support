@@ -327,7 +327,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
         if not _G.SimAttackThread then
             _G.SimAttackThread = spawn(function()
                 while Settings.SimulatedAttackEnabled do
-                    task.wait(0.04)
+                    task.wait(0.05)
 
                     -- 模拟坐标
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
@@ -854,7 +854,7 @@ local function SetupInDungeon()
                             pcall(function() 
                                 TNet.FireServer("Skill_Release", spell) 
                             end)
-                            task.wait(0.03) -- 控制释放频率
+                            task.wait(0.1) -- 控制释放频率
                         end
                     end
                 end
