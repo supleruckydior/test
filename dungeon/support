@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.6',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,420)})
+local window = library:AddWindow('DUNGEON LOOTIFY v1.7',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,420)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -808,7 +808,7 @@ local function SetupInDungeon()
         spawn(function()
             local skillCooldown = {[1]=false,[2]=false,[3]=false,[4]=false}
             while true do
-                task.wait(0.5)
+                task.wait(0.02)
                 if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
                     if not Workspace:FindFirstChild('Lobby') then
                         for spell=1,5 do
@@ -816,7 +816,7 @@ local function SetupInDungeon()
                                 skillCooldown[spell] = true
                                 pcall(function() TNet.FireServer('Skill_Release', spell) end)
                                 task.delay(1, function() skillCooldown[spell] = false end)
-                                task.wait(0.2)
+                                task.wait(0.02)
                             end
                         end
                     end
