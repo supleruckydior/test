@@ -804,26 +804,22 @@ local function SetupInDungeon()
     end
 
     -- 技能循环释放
-    if Settings.AutoSkillEnabled then
-        spawn(function()
-            local skillCooldown = {[1]=false,[2]=false,[3]=false,[4]=false}
-            while true do
-                task.wait(0.02)
-                if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
-                    if not Workspace:FindFirstChild('Lobby') then
-                        for spell=1,5 do
-                            if not skillCooldown[spell] then
-                                skillCooldown[spell] = true
-                                pcall(function() TNet.FireServer('Skill_Release', spell) end)
-                                task.delay(1, function() skillCooldown[spell] = false end)
-                                task.wait(0.02)
-                            end
-                        end
+if Settings.AutoSkillEnabled then
+    spawn(function()
+        while true do
+            if Settings.AutoSkillEnabled and player.Character and player.PlayerGui then
+                if not Workspace:FindFirstChild("Lobby") then
+                    for spell = 1, 5 do
+                        pcall(function() 
+                            TNet.FireServer("Skill_Release", spell) 
+                        end)
+                        task.wait(0.01) -- 控制释放频率
                     end
                 end
             end
-        end)
-    end
+        end
+    end)
+end
 
     -- 模拟攻击指令，每0.05秒发送一次
     spawn(function()
