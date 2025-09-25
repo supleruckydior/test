@@ -828,7 +828,7 @@ local function SetupInDungeon()
     -- 模拟攻击指令，每0.05秒发送一次
     spawn(function()
         while true do
-            task.wait(0.05)
+            task.wait(0.02)
             -- 模拟敌人坐标
             local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
             -- 发送攻击指令
