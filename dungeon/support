@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.4',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
+local window = library:AddWindow('DUNGEON LOOTIFY v1.5',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -184,6 +184,8 @@ features:AddSwitch('killaura', function(state)
 
         local weaponName = "SwordShield"
         local animCycle = {"SwordShield1"}
+        local attackCycle = {"Bb", "Bc"}
+        local attackIndex = 1
         local cycleIndex, attackId = 1, 0
         local lastPositions = {}
 
@@ -206,24 +208,31 @@ features:AddSwitch('killaura', function(state)
         end
 
         local function attack(enemy, cf)
-            local args = {
-                "Bb",
-                attackId,
-                getServerTime(),
-                cycleIndex,
-                weaponName,
-                {
-                    hitNum = math.random(0,5),
-                    onHitAnimName = animCycle[cycleIndex],
-                    hrtCF = cf
-                }
-            }
-            TNetSent:FireServer(unpack(args))
+    local currentAttack = attackCycle[attackIndex] -- 获取当前攻击
+    local args = {
+        currentAttack,
+        attackCycle,
+        getServerTime(),
+        cycleIndex,
+        weaponName,
+        {
+            hitNum = math.random(0,5),
+            onHitAnimName = animCycle[cycleIndex],
+            hrtCF = cf
+        }
+    }
+    TNetSent:FireServer(unpack(args))
 
-            cycleIndex = cycleIndex + 1
-            if cycleIndex > #animCycle then cycleIndex = 1 end
-            attackId = attackId + 1
-        end
+    -- 切换到下一个攻击
+    attackIndex = attackIndex + 1
+    if attackIndex > #attackCycle then
+        attackIndex = 1
+    end
+
+    cycleIndex = cycleIndex + 1
+    if cycleIndex > #animCycle then cycleIndex = 1 end
+    attackId = attackId + 1
+end
 
         local function getPredictedCFrame(enemy, dt)
             local root = enemy:FindFirstChild("HumanoidRootPart")
