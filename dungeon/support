@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.5',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
+local window = library:AddWindow('DUNGEON LOOTIFY v1.6',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,400)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -184,8 +184,6 @@ features:AddSwitch('killaura', function(state)
 
         local weaponName = "SwordShield"
         local animCycle = {"SwordShield1"}
-        local attackCycle = {"Bb", "Bc"}
-        local attackIndex = 1
         local cycleIndex, attackId = 1, 0
         local lastPositions = {}
 
@@ -208,31 +206,24 @@ features:AddSwitch('killaura', function(state)
         end
 
         local function attack(enemy, cf)
-    local currentAttack = attackCycle[attackIndex] -- 获取当前攻击
-    local args = {
-        currentAttack,
-        attackCycle,
-        getServerTime(),
-        cycleIndex,
-        weaponName,
-        {
-            hitNum = math.random(0,5),
-            onHitAnimName = animCycle[cycleIndex],
-            hrtCF = cf
-        }
-    }
-    TNetSent:FireServer(unpack(args))
+            local args = {
+                "Bb",
+                attackId,
+                getServerTime(),
+                cycleIndex,
+                weaponName,
+                {
+                    hitNum = math.random(0,5),
+                    onHitAnimName = animCycle[cycleIndex],
+                    hrtCF = cf
+                }
+            }
+            TNetSent:FireServer(unpack(args))
 
-    -- 切换到下一个攻击
-    attackIndex = attackIndex + 1
-    if attackIndex > #attackCycle then
-        attackIndex = 1
-    end
-
-    cycleIndex = cycleIndex + 1
-    if cycleIndex > #animCycle then cycleIndex = 1 end
-    attackId = attackId + 1
-end
+            cycleIndex = cycleIndex + 1
+            if cycleIndex > #animCycle then cycleIndex = 1 end
+            attackId = attackId + 1
+        end
 
         local function getPredictedCFrame(enemy, dt)
             local root = enemy:FindFirstChild("HumanoidRootPart")
@@ -561,7 +552,38 @@ local autoPotionSwitch = features:AddSwitch('自动吃血药', function(bool)
     SaveSettings()
 end)
 if autoPotionSwitch.Set then autoPotionSwitch:Set(Settings.HealthMonitorEnabled) end
+-- 获取玩家
 
+-- 创建开关
+local autodisable = features:AddSwitch('关闭选择和施法动画', function(bool)
+    Settings.DisableSkillAnimations = bool
+    SaveSettings()
+
+    -- 如果开关开启，就禁用相关 LocalScript/Script
+    if bool then
+        -- 禁用 GUI 内的 LocalScript
+        local endlessChooseScript = player.PlayerGui:FindFirstChild("Main") 
+            and player.PlayerGui.Main:FindFirstChild("Func") 
+            and player.PlayerGui.Main.Func:FindFirstChild("EndlessChoose") 
+            and player.PlayerGui.Main.Func.EndlessChoose:FindFirstChild("EndlessChoose")
+        if endlessChooseScript and endlessChooseScript:IsA("LocalScript") then
+            endlessChooseScript.Disabled = true
+        end
+
+        -- 禁用 ReplicatedStorage 的 Script/LocalScript
+        local clientRunTimeScript = game:GetService("ReplicatedStorage"):FindFirstChild("ClientBase")
+            and game:GetService("ReplicatedStorage").ClientBase:FindFirstChild("Skill")
+            and game:GetService("ReplicatedStorage").ClientBase.Skill:FindFirstChild("ClientRunTime")
+        if clientRunTimeScript and (clientRunTimeScript:IsA("Script") or clientRunTimeScript:IsA("LocalScript")) then
+            clientRunTimeScript.Disabled = true
+        end
+    end
+end)
+
+-- 设置开关初始状态
+if autodisable.Set then
+    autodisable:Set(Settings.DisableSkillAnimations)
+end
 -- 技能循环释放开关
 local autoSkillSwitch = features:AddSwitch('技能循环释放', function(bool)
     Settings.AutoSkillEnabled = bool
@@ -589,6 +611,7 @@ features:AddSwitch('自动选择 Endless', function(state)
 
             if Settings.AutoEndlessChoose then
                 local chosenIndex = nil
+
                 -- 优先找名字包含 Crystal（忽略大小写）
                 for i, id in ipairs(upgradeList) do
                     local upgradeInfo = Config.Endless.UpgradeList[id]
@@ -598,7 +621,18 @@ features:AddSwitch('自动选择 Endless', function(state)
                     end
                 end
 
-                -- 如果没有找到，则选 ID 最后一个数字最大的
+                -- 如果没有找到 Crystal，则找 Chest
+                if not chosenIndex then
+                    for i, id in ipairs(upgradeList) do
+                        local upgradeInfo = Config.Endless.UpgradeList[id]
+                        if upgradeInfo and string.find(upgradeInfo.name:lower(), "chest") then
+                            chosenIndex = i
+                            break
+                        end
+                    end
+                end
+
+                -- 如果还是没有找到，则按 ID 最后数字最大
                 if not chosenIndex then
                     local maxLastDigit = -1
                     for i, id in ipairs(upgradeList) do
@@ -610,27 +644,16 @@ features:AddSwitch('自动选择 Endless', function(state)
                     end
                 end
 
-                -- 发送选择并隐藏界面
+                -- 发送选择
                 pcall(function()
                     print("[AutoEndless] 自动选择 Index:", chosenIndex)
                     TNet.FireServer("Endless_PlayerChoose", chosenIndex)
-
-                    -- 选择后隐藏 Endless 界面
-                    local gui = player:FindFirstChild("PlayerGui")
-                    if gui then
-                        local endlessUI = gui:FindFirstChild("Main")
-                            and gui.Main:FindFirstChild("Func")
-                            and gui.Main.Func:FindFirstChild("EndlessChoose")
-                        if endlessUI then
-                            endlessUI.Visible = false
-                            print("[AutoEndless] 已隐藏 Endless 选择界面")
-                        end
-                    end
                 end)
             end
         end)
     end
 end):Set(Settings.AutoEndlessChoose)
+
 
 
 
@@ -801,12 +824,30 @@ local function SetupInDungeon()
             end
         end)
     end
+
+    -- 模拟攻击指令，每0.05秒发送一次
+    spawn(function()
+        while true do
+            task.wait(0.05)
+            -- 模拟敌人坐标
+            local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
+            -- 发送攻击指令
+            pcall(function()
+                TNet.FireServer('Bc', 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
+                    hitNum = 0,
+                    onHitAnimName = "SwordShield1",
+                    hrtCF = simulatedCFrame
+                })
+            end)
+        end
+    end)
 end
 
 spawn(function()
     repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
     SetupInDungeon()
 end)
+
 
 --================= 退出副本按钮 =================--
 features:AddButton('退出副本', function()
