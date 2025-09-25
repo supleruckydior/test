@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.8',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
+local window = library:AddWindow('DUNGEON LOOTIFY v1.9',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
