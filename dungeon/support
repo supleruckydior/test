@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v1.9',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.0',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -334,7 +334,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
 
                     -- 攻击事件
                     pcall(function()
-                        TNet.FireServer("Bb", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
+                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
                             hitNum = 0,
                             onHitAnimName = "SwordShield1",
                             hrtCF = simulatedCFrame
