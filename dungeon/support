@@ -207,7 +207,7 @@ features:AddSwitch('killaura', function(state)
 
         local function attack(enemy, cf)
             local args = {
-                "Bb",
+                "Bd",
                 attackId,
                 getServerTime(),
                 cycleIndex,
@@ -334,7 +334,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
 
                     -- 攻击事件
                     pcall(function()
-                        TNet.FireServer("Bc", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
+                        TNet.FireServer("Bb", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
                             hitNum = 0,
                             onHitAnimName = "SwordShield1",
                             hrtCF = simulatedCFrame
