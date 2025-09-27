@@ -141,7 +141,7 @@ end
 --================= UI 初始化 =================--
 local window = library:AddWindow('DUNGEON LOOTIFY v2.2',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
-local features1 = window:AddTab('功能')
+local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
 local autoJoinSwitch = features:AddSwitch('自动进入副本', function(bool)
     Settings.AutoDungeonEnabled = bool
@@ -874,10 +874,10 @@ features:AddButton('退出副本', function()
     pcall(function() TeleportService:Teleport(113080689665370) end)
 end)
 
-features:AddButton('附魔工具', function()
+features1:AddButton('附魔工具', function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/dungeon/附魔工具"))()
 end)
-
+features1:AddLabel('装备出售数量为1000')
 -- 按钮功能：批量发送稀有度为1的装备 ref
 features1:AddButton("出售白色装备", function()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
