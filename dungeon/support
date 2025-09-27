@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.0',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,450)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.1',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 
 -- 自动进入副本开关
@@ -167,45 +167,63 @@ end
 if dungeonDropdown.Set then
     dungeonDropdown:Set(Settings.SelectedDungeon)
 end
--- 自动攻击开关
-features:AddSwitch('killaura', function(state)
+-- 武器配置选项
+local weaponOptions = {
+    ["SwordShield"] = "SwordShield1",
+    ["DuoSword"]    = "Duosword1",
+    ["Wood"]        = "Wood1"
+}
+
+-- 如果没设置过，就给默认值
+if not Settings.SelectedWeapon then
+    Settings.SelectedWeapon = "SwordShield"
+    SaveSettings()
+end
+
+-- 武器下拉菜单
+local weaponDropdown = features:AddDropdown("选择武器", function(choice)
+    if weaponOptions[choice] then
+        Settings.SelectedWeapon = choice
+        SaveSettings()
+        print("[Killaura] 已切换武器:", choice, "动画:", weaponOptions[choice])
+    end
+end)
+
+-- 初始化下拉框显示上次保存的值
+for weaponName, _ in pairs(weaponOptions) do
+    weaponDropdown:Add(weaponName)
+end
+if weaponDropdown.Set then
+    weaponDropdown:Set(Settings.SelectedWeapon)
+end
+
+
+-- ================= killaura 开关 =================
+features:AddSwitch("killaura", function(state)
     Settings.AutoAttackEnabled = state
     SaveSettings()
 
     if state then
         print("[AutoAttack] 自动攻击已开启")
 
-        -- 配置
+        -- 服务获取
         local Workspace = game:GetService("Workspace")
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local RunService = game:GetService("RunService")
 
         local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
 
-        local weaponName = "SwordShield"
-        local animCycle = {"SwordShield1"}
         local cycleIndex, attackId = 1, 0
         local lastPositions = {}
 
-        -- 工具函数
         local function getServerTime()
             return Workspace:GetServerTimeNow()
         end
 
-        local function parseHealth(str)
-            if not str or str == "" then return nil end
-            local num, suffix = str:match("([%d%.]+)([kKmM]?)")
-            num = tonumber(num)
-            if not num then return nil end
-            if suffix == "k" or suffix == "K" then
-                num = num * 1000
-            elseif suffix == "m" or suffix == "M" then
-                num = num * 1000000
-            end
-            return num
-        end
-
         local function attack(enemy, cf)
+            local weaponName = Settings.SelectedWeapon
+            local animName   = weaponOptions[weaponName] or "SwordShield1"
+
             local args = {
                 "Bd",
                 attackId,
@@ -214,14 +232,14 @@ features:AddSwitch('killaura', function(state)
                 weaponName,
                 {
                     hitNum = math.random(0,5),
-                    onHitAnimName = animCycle[cycleIndex],
+                    onHitAnimName = animName,
                     hrtCF = cf
                 }
             }
             TNetSent:FireServer(unpack(args))
 
             cycleIndex = cycleIndex + 1
-            if cycleIndex > #animCycle then cycleIndex = 1 end
+            if cycleIndex > 1 then cycleIndex = 1 end
             attackId = attackId + 1
         end
 
@@ -257,7 +275,7 @@ features:AddSwitch('killaura', function(state)
                                 and root.Health:FindFirstChild("Canvas") 
                                 and root.Health.Canvas:FindFirstChild("Health") 
                                 and root.Health.Canvas.Health:FindFirstChild("HealthText")
-                            local healthNum = healthTextObj and parseHealth(healthTextObj.Text) or 0
+                            local healthNum = healthTextObj and tonumber(healthTextObj.Text:match("%d+")) or 0
 
                             if isBoss or (healthNum and healthNum > 0) then
                                 local dist = (root.Position - playerPos).Magnitude
@@ -275,27 +293,6 @@ features:AddSwitch('killaura', function(state)
             end
             return nil, nil
         end
-
-        -- 等待战斗
-        spawn(function()
-            print("[AutoAttack] 等待敌人出现...")
-            local found = false
-            repeat
-                for _, room in ipairs(Workspace:GetChildren()) do
-                    if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
-                        for _, obj in ipairs(room:GetChildren()) do
-                            if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
-                                print("[AutoAttack] 检测到敌人:", obj.Name, "开始自动战斗！")
-                                found = true
-                                break
-                            end
-                        end
-                    end
-                    if found then break end
-                end
-                task.wait(1)
-            until found or not Settings.AutoAttackEnabled
-        end)
 
         -- 主循环
         if not _G.AutoAttackConnection then
@@ -316,6 +313,8 @@ features:AddSwitch('killaura', function(state)
         end
     end
 end):Set(Settings.AutoAttackEnabled)
+
+
 -- 模拟攻击开关
 local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
@@ -334,9 +333,9 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
 
                     -- 攻击事件
                     pcall(function()
-                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, "SwordShield", {
+                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, "weaponName", {
                             hitNum = 0,
-                            onHitAnimName = "SwordShield1",
+                            onHitAnimName = "animName",
                             hrtCF = simulatedCFrame
                         })
                     end)
