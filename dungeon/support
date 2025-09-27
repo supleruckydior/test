@@ -951,7 +951,7 @@ features1:AddButton("出售蓝色装备", function()
 
     for _, item in ipairs(items) do
         local idStr = item and item.id and tostring(item.id)
-        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 2 then
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 3 then
             table.insert(refsToSend, item.ref)
         end
     end
