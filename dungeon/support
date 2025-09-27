@@ -319,8 +319,6 @@ end):Set(Settings.AutoAttackEnabled)
 local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
     SaveSettings()
-    local weaponName = Settings.SelectedWeapon
-    local animName   = weaponOptions[weaponName] or "SwordShield1"
     if state then
 
         -- 启动循环
@@ -328,15 +326,16 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
             _G.SimAttackThread = spawn(function()
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.05)
-
+                    local weaponName = Settings.SelectedWeapon
+                    local animName   = weaponOptions[weaponName] or "SwordShield1"
                     -- 模拟坐标
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
 
                     -- 攻击事件
                     pcall(function()
-                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, "weaponName", {
+                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
                             hitNum = 0,
-                            onHitAnimName = "animName",
+                            onHitAnimName = animName,
                             hrtCF = simulatedCFrame
                         })
                     end)
