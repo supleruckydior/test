@@ -141,7 +141,7 @@ end
 --================= UI 初始化 =================--
 local window = library:AddWindow('DUNGEON LOOTIFY v2.1',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
-
+local features1 = window:AddTab('功能')
 -- 自动进入副本开关
 local autoJoinSwitch = features:AddSwitch('自动进入副本', function(bool)
     Settings.AutoDungeonEnabled = bool
@@ -877,3 +877,98 @@ end)
 features:AddButton('附魔工具', function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/dungeon/附魔工具"))()
 end)
+
+-- 按钮功能：批量发送稀有度为1的装备 ref
+features1:AddButton("出售白色装备", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+    local tnet = ReplicatedStorage:WaitForChild("TNetSent")
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 1 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+            tnet:FireServer("B1", 86, batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度1装备的 ref")
+    else
+        warn("未找到稀有度为1的装备")
+    end
+end)
+
+features1:AddButton("出售绿色装备", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+    local tnet = ReplicatedStorage:WaitForChild("TNetSent")
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 2 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+            tnet:FireServer("B1", 86, batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度2装备的 ref")
+    else
+        warn("未找到稀有度为2的装备")
+    end
+end)
+
+features1:AddButton("出售蓝色装备", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+    local tnet = ReplicatedStorage:WaitForChild("TNetSent")
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 2 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+            tnet:FireServer("B1", 86, batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度3装备的 ref")
+    else
+        warn("未找到稀有度为3的装备")
+    end
+end)
+
