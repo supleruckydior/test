@@ -792,7 +792,7 @@ autoLockExistingAffixes(item)
         else
             print("❌ 附魔失败或返回数据异常，重试...")
             wait(0.05)
-            performEnchant()
+            return
         end
     end, EQUIP_ID, lockedSlots)
 end
