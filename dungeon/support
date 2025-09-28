@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.5',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.6',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -197,61 +197,13 @@ if weaponDropdown.Set then
     weaponDropdown:Set(Settings.SelectedWeapon)
 end
 -- ================= killaura 判断逻辑 =================
---[[
-    全局 Key 初始为 nil，等待捕获
-]]
-_G.KillauraKey = nil
+-- 全局变量
+_G.KillauraKey = nil       -- 开局为 nil
+_G.KillauraReady = false   -- 是否可以启动 killaura 和 SetupInDungeon
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
-
--- 控制变量
-local StartSetupInDungeon = false
-local StartKillaura = false
-local sending = true
-local FIXED_TIMESTAMP = 1759091754 -- 固定 timestamp，仅用于匹配 arg
-
--- 备份原 hook
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-
-    -- 监听 TNetSent FireServer
-    if self == TNetSent and method == "FireServer" and typeof(args) == "table" then
-        print("[DEBUG] TNetSent Fired Args:", unpack(args))
-
-        -- 检查 timestamp 是否匹配
-        if args[3] == FIXED_TIMESTAMP then
-            _G.KillauraKey = args[1] -- 捕获 Key
-            print("[DEBUG] 捕获 Key:", _G.KillauraKey)
-
-            -- 设置启动变量
-            StartSetupInDungeon = true
-            StartKillaura = true
-
-            -- 停止发送 Weapon_OnHit
-            sending = false
-
-            -- 还原 hook
-            if oldNamecall then
-                hookmetamethod(game, "__namecall", oldNamecall)
-                oldNamecall = nil
-                print("[DEBUG] 已还原 hookmetamethod")
-            end
-        end
-    end
-
-    return oldNamecall(self, ...)
-end)
-
--- 发送 Weapon_OnHit 请求，用于捕获 Key
 local function sendWeaponOnHit()
-    TNet.FireServer("Weapon_OnHit",
-        FIXED_TIMESTAMP, -- 固定 timestamp 用于匹配
+    local args = {
+        Workspace:GetServerTimeNow(), -- timestamp 固定或当前时间
         1,
         "SwordShield",
         {
@@ -260,38 +212,55 @@ local function sendWeaponOnHit()
             hrtCF = CFrame.fromMatrix(
                 Vector3.new(-332.72, 1003.56, 1.07),
                 Vector3.new(0.52, 0.00, 0.85),
-                Vector3.new(-0.00, 1.00, -0.00),
+                Vector3.new(0.00, 1.00, 0.00),
                 Vector3.new(-0.85, 0.00, 0.52)
             )
         }
-    )
-    print("[DEBUG] 已发送 Weapon_OnHit 请求")
+    }
+    TNet.FireServer("Weapon_OnHit", unpack(args))
+    print("[DEBUG] Weapon_OnHit 发送成功")
 end
 
--- 循环发送请求直到捕获 Key
+-- Hook TNetSent，只捕获客户端发出的特定事件
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if self == TNetSent and method == "FireServer" then
+        if type(args[1]) == "string" and type(args[3]) == "number" then
+            print("[DEBUG] 捕获 TNetSent:", args[1], args[3])
+            _G.KillauraKey = args[1]          -- 更新 Key
+            _G.KillauraReady = true           -- 可以启动逻辑
+
+            -- 捕获后立即还原 hook
+            hookmetamethod(game, "__namecall", oldNamecall)
+
+            print("[DEBUG] Hook 已还原")
+        end
+    end
+
+    return oldNamecall(self, ...)
+end)
+
+-- 循环发送 Weapon_OnHit 直到捕获 Key
 spawn(function()
-    while sending do
+    while not _G.KillauraKey do
         sendWeaponOnHit()
-        task.wait(5)
+        task.wait(5) -- 节流，避免崩溃
     end
 end)
 
--- 轮询变量状态，启动逻辑
+-- 等待 Key 后启动逻辑
 spawn(function()
-    while true do
-        if StartSetupInDungeon then
-            pcall(function() SetupInDungeon() end)
-            StartSetupInDungeon = false
-            print("[DEBUG] 已启动 SetupInDungeon")
-        end
-        if StartKillaura then
-            Settings.SimulatedAttackEnabled = true
-            StartKillaura = false
-            print("[DEBUG] 已启动 Killaura 和刷技能无冷却")
-        end
+    while not _G.KillauraReady do
         task.wait(0.1)
     end
+
+    print("[DEBUG] Key 捕获完成，启动逻辑")
+
 end)
+
 
 
 
