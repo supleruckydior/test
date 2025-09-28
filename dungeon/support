@@ -34,11 +34,11 @@ local ReplicatedFirst = game:GetService('ReplicatedFirst')
 local Workspace = game:GetService('Workspace')
 local HttpService = game:GetService('HttpService')
 local TeleportService = game:GetService('TeleportService')
-
 local player = Players.LocalPlayer
 local TNet = require(ReplicatedFirst.Component.TNet)
 local Config = require(ReplicatedStorage.Config)
-
+local RunService = game:GetService("RunService")
+local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
 --================= 设置保存 =================--
 local SettingsFile = 'DungeonSettings_'..player.Name..'.json'
 local Settings = {
@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.3',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.4',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -196,6 +196,68 @@ end
 if weaponDropdown.Set then
     weaponDropdown:Set(Settings.SelectedWeapon)
 end
+-- ================= killaura 判断逻辑 =================
+_G.KillauraKey = nil
+
+-- 固定时间戳
+local FIXED_TIMESTAMP = 1759091754
+
+-- 循环发送 Weapon_OnHit，直到捕获 Key
+local sending = true
+local function sendWeaponOnHit()
+    TNet.FireServer("Weapon_OnHit",
+        FIXED_TIMESTAMP,  -- 固定时间戳
+        1,
+        "SwordShield",
+        {
+            hitNum = 0,
+            onHitAnimName = "SwordShield1",
+            hrtCF = CFrame.fromMatrix(
+                Vector3.new(-332.72, 1003.56, 1.07),
+                Vector3.new(0.52, 0.00, 0.85),
+                Vector3.new(-0.00, 1.00, -0.00),
+                Vector3.new(-0.85, 0.00, 0.52)
+            )
+        }
+    )
+    print("[DEBUG] 已发送 Weapon_OnHit 请求")
+end
+
+-- 循环发送 Weapon_OnHit
+spawn(function()
+    while sending do
+        sendWeaponOnHit()
+        task.wait(5)
+    end
+end)
+
+-- Hook TNetSent，只捕获我们发送的固定时间戳
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if self == TNetSent and method == "FireServer" then
+        if typeof(args) == "table" and args[3] == FIXED_TIMESTAMP then
+            _G.KillauraKey = args[1]  -- 捕获 Key
+            print("[DEBUG] 捕获 TNetSent Key:", _G.KillauraKey)
+
+            -- 停止循环发送
+            sending = false
+        end
+    end
+
+    return oldNamecall(self, ...)
+end)
+
+-- 等待 Key 再启动 SetupInDungeon
+spawn(function()
+    while _G.KillauraKey == nil do
+        task.wait(0.1)
+    end
+    pcall(function() SetupInDungeon() end)
+    print("[DEBUG] 已启动 SetupInDungeon")
+end)
 
 
 -- ================= killaura 开关 =================
@@ -205,13 +267,6 @@ features:AddSwitch("killaura", function(state)
 
     if state then
         print("[AutoAttack] 自动攻击已开启")
-
-        -- 服务获取
-        local Workspace = game:GetService("Workspace")
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local RunService = game:GetService("RunService")
-
-        local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
 
         local cycleIndex, attackId = 1, 0
         local lastPositions = {}
@@ -225,7 +280,7 @@ features:AddSwitch("killaura", function(state)
             local animName   = weaponOptions[weaponName] or "SwordShield1"
 
             local args = {
-                "Bd",
+                _G.KillauraKey, -- [MOD] 必须等待到这个值
                 attackId,
                 getServerTime(),
                 cycleIndex,
@@ -264,47 +319,35 @@ features:AddSwitch("killaura", function(state)
                     for _, obj in ipairs(room:GetChildren()) do
                         if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
                             local root = obj.HumanoidRootPart
-
-                            local isBoss = false
-                            local typeAttr = obj:GetAttribute("Type")
-                            if typeAttr and string.find(string.lower(typeAttr), "boss") then
-                                isBoss = true
-                            end
-
-                            local healthTextObj = root:FindFirstChild("Health") 
-                                and root.Health:FindFirstChild("Canvas") 
-                                and root.Health.Canvas:FindFirstChild("Health") 
-                                and root.Health.Canvas.Health:FindFirstChild("HealthText")
-                            local healthNum = healthTextObj and tonumber(healthTextObj.Text:match("%d+")) or 0
-
-                            if isBoss or (healthNum and healthNum > 0) then
-                                local dist = (root.Position - playerPos).Magnitude
-                                if dist < shortestDist then
-                                    shortestDist, closest = dist, obj
-                                end
+                            local dist = (root.Position - playerPos).Magnitude
+                            if dist < shortestDist then
+                                shortestDist, closest = dist, obj
                             end
                         end
                     end
                 end
             end
-
             if closest then
                 return getPredictedCFrame(closest, dt), closest
             end
             return nil, nil
         end
 
-        -- 主循环
         if not _G.AutoAttackConnection then
             _G.AutoAttackConnection = RunService.Heartbeat:Connect(function(dt)
                 if not Settings.AutoAttackEnabled then return end
+
+                -- [MOD] 等待 _G.KillauraKey 捕获成功
+                if not _G.KillauraKey or _G.KillauraKey == "Bd" then
+                    return -- 捕获前不执行攻击
+                end
+
                 local cf, enemy = getClosestEnemy(dt)
                 if cf and enemy then
                     attack(enemy, cf)
                 end
             end)
         end
-
     else
         print("[AutoAttack] 自动攻击已关闭")
         if _G.AutoAttackConnection then
@@ -315,25 +358,20 @@ features:AddSwitch("killaura", function(state)
 end):Set(Settings.AutoAttackEnabled)
 
 
--- 模拟攻击开关
+-- ================= 模拟攻击开关 =================
 local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
     SaveSettings()
     if state then
-
-        -- 启动循环
         if not _G.SimAttackThread then
             _G.SimAttackThread = spawn(function()
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.03)
                     local weaponName = Settings.SelectedWeapon
                     local animName   = weaponOptions[weaponName] or "SwordShield1"
-                    -- 模拟坐标
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
-
-                    -- 攻击事件
                     pcall(function()
-                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
+                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, { -- [MOD]
                             hitNum = 0,
                             onHitAnimName = animName,
                             hrtCF = simulatedCFrame
@@ -344,12 +382,9 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
         end
     else
         Settings.SimulatedAttackEnabled = false
-        -- spawn 线程会检测到标志位，自动退出
         _G.SimAttackThread = nil
     end
 end)
-
--- 初始化开关状态
 if attackSwitch.Set then
     attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
 end
@@ -776,8 +811,15 @@ spawn(function()
 end)
 
 --================= 副本内监控 ===================
---================= 副本内监控 ===================
-local function SetupInDungeon()
+function SetupInDungeon()
+    -- [MOD] 等待 _G.KillauraKey 被捕获
+    spawn(function()
+        while not _G.KillauraKey or _G.KillauraKey == "Bd" do
+            print("[SetupInDungeon] 等待 _G.KillauraKey 捕获中...")
+            task.wait(1)
+        end
+
+        print("[SetupInDungeon] 已捕获到 Key:", _G.KillauraKey)
     if Workspace:FindFirstChild('Lobby') then return end
 
     local healthPath, roundPath
@@ -861,8 +903,8 @@ local function SetupInDungeon()
             end
         end)
     end
-end -- ⚠️ 这里要结束 SetupInDungeon 函数
-
+    end)
+end
 -- 准备好玩家以后再执行
 spawn(function()
     repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
