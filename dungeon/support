@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.6',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.5',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -272,8 +272,21 @@ features:AddSwitch("killaura", function(state)
     if state then
         print("[AutoAttack] 自动攻击已开启")
 
+        -- 服务获取
+        local Workspace = game:GetService("Workspace")
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local RunService = game:GetService("RunService")
+
+        local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
+
         local cycleIndex, attackId = 1, 0
         local lastPositions = {}
+
+        -- 等待 _G.KillauraKey 捕获
+        while not _G.KillauraKey do
+            task.wait(0.1)
+        end
+        print("[AutoAttack] 捕获到 KillauraKey =", _G.KillauraKey)
 
         local function getServerTime()
             return Workspace:GetServerTimeNow()
@@ -284,7 +297,7 @@ features:AddSwitch("killaura", function(state)
             local animName   = weaponOptions[weaponName] or "SwordShield1"
 
             local args = {
-                _G.KillauraKey, -- [MOD] 必须等待到这个值
+                _G.KillauraKey, -- 替换 Bd 为捕获到的 Key
                 attackId,
                 getServerTime(),
                 cycleIndex,
@@ -323,36 +336,47 @@ features:AddSwitch("killaura", function(state)
                     for _, obj in ipairs(room:GetChildren()) do
                         if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
                             local root = obj.HumanoidRootPart
-                            local dist = (root.Position - playerPos).Magnitude
-                            if dist < shortestDist then
-                                shortestDist, closest = dist, obj
+
+                            local isBoss = false
+                            local typeAttr = obj:GetAttribute("Type")
+                            if typeAttr and string.find(string.lower(typeAttr), "boss") then
+                                isBoss = true
+                            end
+
+                            local healthTextObj = root:FindFirstChild("Health") 
+                                and root.Health:FindFirstChild("Canvas") 
+                                and root.Health.Canvas:FindFirstChild("Health") 
+                                and root.Health.Canvas.Health:FindFirstChild("HealthText")
+                            local healthNum = healthTextObj and tonumber(healthTextObj.Text:match("%d+")) or 0
+
+                            if isBoss or (healthNum and healthNum > 0) then
+                                local dist = (root.Position - playerPos).Magnitude
+                                if dist < shortestDist then
+                                    shortestDist, closest = dist, obj
+                                end
                             end
                         end
                     end
                 end
             end
+
             if closest then
                 return getPredictedCFrame(closest, dt), closest
             end
             return nil, nil
         end
 
-        -- 仅在未创建连接时创建
+        -- 主循环
         if not _G.AutoAttackConnection then
             _G.AutoAttackConnection = RunService.Heartbeat:Connect(function(dt)
                 if not Settings.AutoAttackEnabled then return end
-
-                -- [MOD] 等待 _G.KillauraKey 捕获成功
-                if not _G.KillauraKey then
-                    return -- 捕获前不执行攻击
-                end
-
                 local cf, enemy = getClosestEnemy(dt)
                 if cf and enemy then
                     attack(enemy, cf)
                 end
             end)
         end
+
     else
         print("[AutoAttack] 自动攻击已关闭")
         if _G.AutoAttackConnection then
@@ -361,6 +385,7 @@ features:AddSwitch("killaura", function(state)
         end
     end
 end):Set(Settings.AutoAttackEnabled)
+
 
 
 
