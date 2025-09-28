@@ -393,41 +393,47 @@ end):Set(Settings.AutoAttackEnabled)
 local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
     SaveSettings()
-
     if state then
-        -- 避免重复创建线程
+        -- 启动循环
         if not _G.SimAttackThread then
             _G.SimAttackThread = spawn(function()
+                -- 等待 _G.KillauraKey 捕获
+                while not _G.KillauraKey do
+                    print("[SimulatedAttack] 等待 _G.KillauraKey 捕获中...")
+                    task.wait(1)
+                end
+                print("[SimulatedAttack] 已捕获到 Key:", _G.KillauraKey)
+
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.03)
-
-                    -- [MOD] 等待 _G.KillauraKey 捕获成功
-                    if not _G.KillauraKey then
-                        continue  -- 捕获前不发送请求
-                    end
-
                     local weaponName = Settings.SelectedWeapon
                     local animName   = weaponOptions[weaponName] or "SwordShield1"
+                    -- 模拟坐标
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
 
+                    -- 攻击事件
                     pcall(function()
-                        TNetSent.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
+                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
                             hitNum = 0,
                             onHitAnimName = animName,
                             hrtCF = simulatedCFrame
                         })
                     end)
                 end
-                _G.SimAttackThread = nil  -- 退出循环后清理线程
             end)
         end
     else
         Settings.SimulatedAttackEnabled = false
-        if _G.SimAttackThread then
-            _G.SimAttackThread = nil
-        end
+        -- spawn 线程会检测到标志位，自动退出
+        _G.SimAttackThread = nil
     end
 end)
+
+-- 初始化开关状态
+if attackSwitch.Set then
+    attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
+end
+
 
 -- 初始化状态
 if attackSwitch.Set then
@@ -859,7 +865,7 @@ end)
 function SetupInDungeon()
     spawn(function()
         -- 等待 _G.KillauraKey 捕获
-        while not _G.KillauraKey or _G.KillauraKey == "Bd" do
+        while not _G.KillauraKey do
             print("[SetupInDungeon] 等待 _G.KillauraKey 捕获中...")
             task.wait(1)
         end
@@ -957,7 +963,6 @@ end
 
 -- 准备好玩家以后再执行
 spawn(function()
-    repeat task.wait() until player.Character and player:FindFirstChild('PlayerGui')
     SetupInDungeon()
 end)
 
