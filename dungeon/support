@@ -411,7 +411,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
 
                     pcall(function()
-                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
+                        TNetSent.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
                             hitNum = 0,
                             onHitAnimName = animName,
                             hrtCF = simulatedCFrame
