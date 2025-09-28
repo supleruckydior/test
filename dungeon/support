@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.2',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.3',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -969,6 +969,60 @@ features1:AddButton("出售蓝色装备", function()
         print("已批量发送 " .. #batchRefs .. " 个稀有度3装备的 ref")
     else
         warn("未找到稀有度为3的装备")
+    end
+end)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+local event = ReplicatedStorage:WaitForChild("TNetSent")
+features1:AddLabel('注意dupe会清空背包里所有物品，要保留的东西记得放在二楼仓库里')
+features1:AddSwitch("dupe", function(state)
+    if state then
+        print("[Loop] 循环开始")
+        if not _G.PacketLoop then
+            _G.PacketLoopRunning = true
+            _G.PacketLoop = task.spawn(function()
+                while _G.PacketLoopRunning do
+                    -- 发送 y
+                    pcall(function()
+                        event:FireServer("y", 100)
+                    end)
+                    task.wait(0.02)
+                    if not _G.PacketLoopRunning then break end
+
+                    -- 发送 l
+                    pcall(function()
+                        event:FireServer("l", 100)
+                    end)
+                    task.wait(0.02)
+                    if not _G.PacketLoopRunning then break end
+
+                    -- 遍历背包物品
+                    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+                    if #items > 0 then
+                        for _, item in ipairs(items) do
+                            if not _G.PacketLoopRunning then break end
+                            local refToSend = item.ref or 1052
+                            pcall(function()
+                                event:FireServer("B1", 135, { refToSend })
+                            end)
+                            task.wait(0.02)
+                        end
+                    else
+                        -- 背包为空，发默认值
+                        pcall(function()
+                            event:FireServer("B1", 135, { 1052 })
+                        end)
+                        task.wait(0.02)
+                    end
+                end
+                _G.PacketLoop = nil
+                print("[Loop] 已结束")
+            end)
+        end
+    else
+        print("[Loop] 循环已关闭")
+        _G.PacketLoopRunning = false
+        _G.PacketLoop = nil
     end
 end)
 
