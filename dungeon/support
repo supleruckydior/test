@@ -1152,9 +1152,8 @@ features1:AddSwitch("dupe", function(state)
                                 pcall(function()
                                     TNet.FireServer("Equipment_Sell", { refToSend })
                                 end)
-                                task.wait(0.05)
                             end
-                            task.wait(0.1)
+                            task.wait(2)
                             items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
                             print("剩余背包物品数量:", #items)
                         end
