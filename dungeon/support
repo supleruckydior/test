@@ -1171,5 +1171,23 @@ features1:AddSwitch("dupe", function(state)
         _G.PacketLoop = nil
     end
 end)
+features1:AddButton("出售背包全部装备", function()
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    if #items == 0 then
+        print("背包为空，无物品可出售")
+        return
+    end
+
+    print("开始出售全部装备，共 " .. #items .. " 件")
+    for _, item in ipairs(items) do
+        local refToSend = item.ref or 1052
+        pcall(function()
+            TNet.FireServer("Equipment_Sell", { refToSend })
+        end)
+        task.wait(0.05) -- 控制发送频率，避免阻塞
+    end
+
+    print("出售完成")
+end)
 
 
