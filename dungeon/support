@@ -397,13 +397,22 @@ end):Set(Settings.AutoAttackEnabled)
 
 -- ================= 模拟攻击开关 =================
 local function shiftKey(key)
-    local result = ""
-    for i = 1, #key do
-        local c = key:sub(i, i)
-        result = result .. string.char(c:byte() + 1)
+    if #key == 0 then return key end
+    local result = key:sub(1,1) -- 保留第一个字符不变
+    for i = 2, #key do
+        local c = key:sub(i,i)
+        local byte = c:byte()
+        if byte >= 65 and byte <= 90 then -- 大写 A-Z
+            result = result .. string.char(65 + (byte - 65 + 1) % 26)
+        elseif byte >= 97 and byte <= 122 then -- 小写 a-z
+            result = result .. string.char(97 + (byte - 97 + 1) % 26)
+        else
+            result = result .. c -- 非字母保持不变
+        end
     end
     return result
 end
+
 
 local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
@@ -416,6 +425,8 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                     task.wait(1)
                 end
                 print("[SimulatedAttack] 已捕获到 Key:", _G.KillauraKey)
+                local newKey = shiftKey(_G.KillauraKey) -- 这里把每个字母+1
+                print("[SimulatedAttack] 已捕获到 newKey:", newKey)
 
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.05)
@@ -423,8 +434,6 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                     local animName   = weaponOptions[weaponName] or "SwordShield1"
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
 
-                    local newKey = shiftKey(_G.KillauraKey) -- 这里把每个字母+1
-                print("[SimulatedAttack] 已捕获到 newKey:", newKey)
                     pcall(function()
                         TNet.FireServer(newKey, 1, Workspace:GetServerTimeNow(), 1, weaponName, {
                             hitNum = 0,
