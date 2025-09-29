@@ -396,14 +396,21 @@ end):Set(Settings.AutoAttackEnabled)
 
 
 -- ================= 模拟攻击开关 =================
+local function shiftKey(key)
+    local result = ""
+    for i = 1, #key do
+        local c = key:sub(i, i)
+        result = result .. string.char(c:byte() + 1)
+    end
+    return result
+end
+
 local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
     Settings.SimulatedAttackEnabled = state
     SaveSettings()
     if state then
-        -- 启动循环
         if not _G.SimAttackThread then
             _G.SimAttackThread = spawn(function()
-                -- 等待 _G.KillauraKey 捕获
                 while not _G.KillauraKey do
                     print("[SimulatedAttack] 等待 _G.KillauraKey 捕获中...")
                     task.wait(1)
@@ -414,12 +421,12 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                     task.wait(0.05)
                     local weaponName = Settings.SelectedWeapon
                     local animName   = weaponOptions[weaponName] or "SwordShield1"
-                    -- 模拟坐标
                     local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
 
-                    -- 攻击事件
+                    local newKey = shiftKey(_G.KillauraKey) -- 这里把每个字母+1
+
                     pcall(function()
-                        TNet.FireServer("Bv", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
+                        TNet.FireServer(newKey, 1, Workspace:GetServerTimeNow(), 1, weaponName, {
                             hitNum = 0,
                             onHitAnimName = animName,
                             hrtCF = simulatedCFrame
@@ -430,10 +437,10 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
         end
     else
         Settings.SimulatedAttackEnabled = false
-        -- spawn 线程会检测到标志位，自动退出
         _G.SimAttackThread = nil
     end
 end)
+
 
 -- 初始化开关状态
 if attackSwitch.Set then
