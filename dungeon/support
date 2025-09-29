@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.6',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.7',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -327,44 +327,50 @@ features:AddSwitch("killaura", function(state)
             return CFrame.new(predictedPos)
         end
 
-        local function getClosestEnemy(dt)
-            local closest, shortestDist = nil, math.huge
-            local playerPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or Vector3.new(0,0,0)
+local IgnoreList = {
+    ["84f0df6486bd4efa"] = true
+}
 
-            for _, room in ipairs(Workspace:GetChildren()) do
-                if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
-                    for _, obj in ipairs(room:GetChildren()) do
-                        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
-                            local root = obj.HumanoidRootPart
+local function getClosestEnemy(dt)
+    local closest, shortestDist = nil, math.huge
+    local playerPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or Vector3.new(0,0,0)
 
-                            local isBoss = false
-                            local typeAttr = obj:GetAttribute("Type")
-                            if typeAttr and string.find(string.lower(typeAttr), "boss") then
-                                isBoss = true
-                            end
+    for _, room in ipairs(Workspace:GetChildren()) do
+        if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+            for _, obj in ipairs(room:GetChildren()) do
+                if obj:IsA("Model") 
+                   and obj:FindFirstChild("HumanoidRootPart") 
+                   and not IgnoreList[obj.Name] then   -- 🔹跳过忽略目标
 
-                            local healthTextObj = root:FindFirstChild("Health") 
-                                and root.Health:FindFirstChild("Canvas") 
-                                and root.Health.Canvas:FindFirstChild("Health") 
-                                and root.Health.Canvas.Health:FindFirstChild("HealthText")
-                            local healthNum = healthTextObj and tonumber(healthTextObj.Text:match("%d+")) or 0
+                    local root = obj.HumanoidRootPart
+                    local isBoss = false
+                    local typeAttr = obj:GetAttribute("Type")
+                    if typeAttr and string.find(string.lower(typeAttr), "boss") then
+                        isBoss = true
+                    end
 
-                            if isBoss or (healthNum and healthNum > 0) then
-                                local dist = (root.Position - playerPos).Magnitude
-                                if dist < shortestDist then
-                                    shortestDist, closest = dist, obj
-                                end
-                            end
+                    local healthTextObj = root:FindFirstChild("Health") 
+                        and root.Health:FindFirstChild("Canvas") 
+                        and root.Health.Canvas:FindFirstChild("Health") 
+                        and root.Health.Canvas.Health:FindFirstChild("HealthText")
+                    local healthNum = healthTextObj and tonumber(healthTextObj.Text:match("%d+")) or 0
+
+                    if isBoss or (healthNum and healthNum > 0) then
+                        local dist = (root.Position - playerPos).Magnitude
+                        if dist < shortestDist then
+                            shortestDist, closest = dist, obj
                         end
                     end
                 end
             end
-
-            if closest then
-                return getPredictedCFrame(closest, dt), closest
-            end
-            return nil, nil
         end
+    end
+
+    if closest then
+        return getPredictedCFrame(closest, dt), closest
+    end
+    return nil, nil
+end
 
         -- 主循环
         if not _G.AutoAttackConnection then
@@ -936,7 +942,7 @@ function SetupInDungeon()
                     pcall(function()
                         TNet.FireServer('Dungeon_Leave')
                         task.wait(1)
-                        TeleportService:Teleport(113080689665370)
+                        TeleportService:Teleport(72607172956362)
                     end)
                 end
             end)
@@ -969,7 +975,7 @@ end)
 
 --================= 退出副本按钮 =================--
 features:AddButton('退出副本', function()
-    pcall(function() TeleportService:Teleport(113080689665370) end)
+    pcall(function() TeleportService:Teleport(72607172956362) end)
 end)
 
 features1:AddButton('附魔工具', function()
@@ -1104,37 +1110,33 @@ features1:AddSwitch("dupe", function(state)
             _G.PacketLoopRunning = true
             _G.PacketLoop = task.spawn(function()
                 while _G.PacketLoopRunning do
-                    -- 发送 y
-                    pcall(function()
-                        TNetSent:FireServer("y", 100)
-                    end)
-                    task.wait(0.02)
+                    
+                    -- 先发 y 100 次
+                    for i = 1, 100 do
+                        if not _G.PacketLoopRunning then break end
+                        pcall(function()
+                            TNetSent:FireServer("y", 100)
+                        end)
+                        task.wait(0.02)
+                    end
                     if not _G.PacketLoopRunning then break end
 
-                    -- 发送 l
+                    -- 然后发一次 Backpack_EquipBest
                     pcall(function()
-                        TNetSent:FireServer("l", 100)
+                        TNet.FireServer("Backpack_EquipBest")
                     end)
-                    task.wait(0.02)
-                    if not _G.PacketLoopRunning then break end
+                    task.wait(0.1)
 
-                    -- 遍历背包物品
+                    -- 如果背包超过700个物品，执行出售
                     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
-                    if #items > 0 then
+                    if #items > 700 then
                         for _, item in ipairs(items) do
                             if not _G.PacketLoopRunning then break end
                             local refToSend = item.ref or 1052
                             pcall(function()
-                                TNet.FireServer("Equipment_Sell", refToSend)
+                                TNet.FireServer("Equipment_Sell", { refToSend })
                             end)
-                            task.wait(0.02)
                         end
-                    else
-                        -- 背包为空，发默认值
-                        pcall(function()
-                            event:FireServer("B1", 135, { 1052 })
-                        end)
-                        task.wait(0.02)
                     end
                 end
                 _G.PacketLoop = nil
