@@ -1142,8 +1142,8 @@ features1:AddSwitch("dupe", function(state)
                     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
                     print("背包物品数量:", #items)
 
-                    -- 如果背包超过300个物品，连续出售直到清空
-                    if #items > 300 then
+                    -- 如果背包超过700个物品，连续出售直到清空
+                    if #items > 700 then
                         print("开始批量出售装备")
                         while #items > 0 and _G.PacketLoopRunning do
                             for _, item in ipairs(items) do
