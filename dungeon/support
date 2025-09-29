@@ -1146,6 +1146,7 @@ features1:AddSwitch("dupe", function(state)
 
                     -- 如果背包超过700个物品，执行出售
                     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+                    print("背包物品数量:", #items)
                     if #items > 700 then
                        print("已批量出售700个装备")
                         for _, item in ipairs(items) do
