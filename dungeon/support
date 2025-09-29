@@ -1184,7 +1184,6 @@ features1:AddButton("出售背包全部装备", function()
         pcall(function()
             TNet.FireServer("Equipment_Sell", { refToSend })
         end)
-        task.wait(0.05) -- 控制发送频率，避免阻塞
     end
 
     print("出售完成")
