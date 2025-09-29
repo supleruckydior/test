@@ -951,7 +951,7 @@ function SetupInDungeon()
                             pcall(function() 
                                 TNet.FireServer("Skill_Release", spell) 
                             end)
-                            task.wait(0.03)
+                            task.wait(0.3)
                         end
                     end
                     task.wait(0.1)
