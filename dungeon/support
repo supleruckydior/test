@@ -139,7 +139,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.5',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.6',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -413,7 +413,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
 
                     -- 攻击事件
                     pcall(function()
-                        TNet.FireServer("Be", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
+                        TNet.FireServer("Bv", 1, Workspace:GetServerTimeNow(), 1, weaponName, {
                             hitNum = 0,
                             onHitAnimName = animName,
                             hrtCF = simulatedCFrame
@@ -951,7 +951,7 @@ function SetupInDungeon()
                             pcall(function() 
                                 TNet.FireServer("Skill_Release", spell) 
                             end)
-                            task.wait(0.3)
+                            task.wait(0.04)
                         end
                     end
                     task.wait(0.1)
