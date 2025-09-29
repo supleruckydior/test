@@ -39,6 +39,7 @@ local TNet = require(ReplicatedFirst.Component.TNet)
 local Config = require(ReplicatedStorage.Config)
 local RunService = game:GetService("RunService")
 local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
+local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
 --================= 设置保存 =================--
 local SettingsFile = 'DungeonSettings_'..player.Name..'.json'
 local Settings = {
@@ -139,7 +140,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.8',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.7',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -1133,7 +1134,7 @@ features1:AddSwitch("dupe", function(state)
                         pcall(function()
                             TNetSent:FireServer("y", 100)
                         end)
-                        task.wait(0.02)
+                        task.wait(0.1)
                     end
                     if not _G.PacketLoopRunning then break end
 
@@ -1146,6 +1147,7 @@ features1:AddSwitch("dupe", function(state)
                     -- 如果背包超过700个物品，执行出售
                     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
                     if #items > 700 then
+                       print("已批量出售700个装备")
                         for _, item in ipairs(items) do
                             if not _G.PacketLoopRunning then break end
                             local refToSend = item.ref or 1052
