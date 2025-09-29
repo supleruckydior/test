@@ -1106,14 +1106,14 @@ features1:AddSwitch("dupe", function(state)
                 while _G.PacketLoopRunning do
                     -- 发送 y
                     pcall(function()
-                        event:FireServer("y", 100)
+                        TNetSent:FireServer("y", 100)
                     end)
                     task.wait(0.02)
                     if not _G.PacketLoopRunning then break end
 
                     -- 发送 l
                     pcall(function()
-                        event:FireServer("l", 100)
+                        TNetSent:FireServer("l", 100)
                     end)
                     task.wait(0.02)
                     if not _G.PacketLoopRunning then break end
