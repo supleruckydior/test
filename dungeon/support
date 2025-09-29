@@ -1065,6 +1065,35 @@ features1:AddButton("出售蓝色装备", function()
         warn("未找到稀有度为3的装备")
     end
 end)
+features1:AddButton("出售紫色以下全部", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) <= 3 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+                                TNet.FireServer("Equipment_Sell", batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度小于4装备的 ref")
+    else
+        warn("未找到稀有度小于4的装备")
+    end
+end)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
 features1:AddLabel('注意dupe会清空背包里所有物品，要保留的东西记得放在二楼仓库里')
