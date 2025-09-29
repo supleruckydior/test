@@ -405,7 +405,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                 print("[SimulatedAttack] 已捕获到 Key:", _G.KillauraKey)
 
                 while Settings.SimulatedAttackEnabled do
-                    task.wait(0.03)
+                    task.wait(0.05)
                     local weaponName = Settings.SelectedWeapon
                     local animName   = weaponOptions[weaponName] or "SwordShield1"
                     -- 模拟坐标
@@ -951,7 +951,7 @@ function SetupInDungeon()
                             pcall(function() 
                                 TNet.FireServer("Skill_Release", spell) 
                             end)
-                            task.wait(0.04)
+                            task.wait(0.08)
                         end
                     end
                     task.wait(0.1)
