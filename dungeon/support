@@ -980,8 +980,6 @@ features1:AddLabel('装备出售数量为1000')
 features1:AddButton("出售白色装备", function()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
-    local tnet = ReplicatedStorage:WaitForChild("TNetSent")
-
     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
     local refsToSend = {}
 
@@ -999,7 +997,7 @@ features1:AddButton("出售白色装备", function()
         end
 
         pcall(function()
-            tnet:FireServer("B1", 86, batchRefs)
+            TNet.FireServer("Equipment_Sell", batchRefs)
         end)
 
         print("已批量发送 " .. #batchRefs .. " 个稀有度1装备的 ref")
@@ -1011,7 +1009,6 @@ end)
 features1:AddButton("出售绿色装备", function()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
-    local tnet = ReplicatedStorage:WaitForChild("TNetSent")
 
     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
     local refsToSend = {}
@@ -1030,7 +1027,7 @@ features1:AddButton("出售绿色装备", function()
         end
 
         pcall(function()
-            tnet:FireServer("B1", 86, batchRefs)
+            TNet.FireServer("Equipment_Sell", batchRefs)
         end)
 
         print("已批量发送 " .. #batchRefs .. " 个稀有度2装备的 ref")
@@ -1042,7 +1039,6 @@ end)
 features1:AddButton("出售蓝色装备", function()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
-    local tnet = ReplicatedStorage:WaitForChild("TNetSent")
 
     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
     local refsToSend = {}
@@ -1061,7 +1057,7 @@ features1:AddButton("出售蓝色装备", function()
         end
 
         pcall(function()
-            tnet:FireServer("B1", 86, batchRefs)
+                                TNet.FireServer("Equipment_Sell", batchRefs)
         end)
 
         print("已批量发送 " .. #batchRefs .. " 个稀有度3装备的 ref")
@@ -1071,7 +1067,6 @@ features1:AddButton("出售蓝色装备", function()
 end)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
-local event = ReplicatedStorage:WaitForChild("TNetSent")
 features1:AddLabel('注意dupe会清空背包里所有物品，要保留的东西记得放在二楼仓库里')
 features1:AddSwitch("dupe", function(state)
     if state then
@@ -1101,7 +1096,7 @@ features1:AddSwitch("dupe", function(state)
                             if not _G.PacketLoopRunning then break end
                             local refToSend = item.ref or 1052
                             pcall(function()
-                                event:FireServer("B1", 135, { refToSend })
+                                TNet.FireServer("Equipment_Sell", refToSend)
                             end)
                             task.wait(0.02)
                         end
