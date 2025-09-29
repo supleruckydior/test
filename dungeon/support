@@ -140,7 +140,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.7',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.8',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -428,7 +428,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                 print("[SimulatedAttack] 已捕获到 Key:", _G.KillauraKey)
                 local newKey = shiftKey(_G.KillauraKey) -- 这里把每个字母+1
                 print("[SimulatedAttack] 已捕获到 newKey:", newKey)
-
+                if Workspace:FindFirstChild('Lobby') then return end
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.05)
                     local weaponName = Settings.SelectedWeapon
@@ -453,12 +453,6 @@ end)
 
 
 -- 初始化开关状态
-if attackSwitch.Set then
-    attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
-end
-
-
--- 初始化状态
 if attackSwitch.Set then
     attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
 end
@@ -1127,7 +1121,7 @@ features1:AddSwitch("dupe", function(state)
             _G.PacketLoopRunning = true
             _G.PacketLoop = task.spawn(function()
                 while _G.PacketLoopRunning do
-                    
+
                     -- 先发 y 100 次
                     for i = 1, 100 do
                         if not _G.PacketLoopRunning then break end
@@ -1138,25 +1132,35 @@ features1:AddSwitch("dupe", function(state)
                     end
                     if not _G.PacketLoopRunning then break end
 
-                    -- 然后发一次 Backpack_EquipBest
+                    -- 发一次 Backpack_EquipBest
                     pcall(function()
                         TNet.FireServer("Backpack_EquipBest")
                     end)
                     task.wait(0.1)
 
-                    -- 如果背包超过700个物品，执行出售
+                    -- 获取背包物品
                     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
                     print("背包物品数量:", #items)
+
+                    -- 如果背包超过300个物品，连续出售直到清空
                     if #items > 300 then
-                       print("已批量出售装备")
-                        for _, item in ipairs(items) do
-                            if not _G.PacketLoopRunning then break end
-                            local refToSend = item.ref or 1052
-                            pcall(function()
-                                TNet.FireServer("Equipment_Sell", { refToSend })
-                            end)
+                        print("开始批量出售装备")
+                        while #items > 0 and _G.PacketLoopRunning do
+                            for _, item in ipairs(items) do
+                                if not _G.PacketLoopRunning then break end
+                                local refToSend = item.ref or 1052
+                                pcall(function()
+                                    TNet.FireServer("Equipment_Sell", { refToSend })
+                                end)
+                                task.wait(0.05)
+                            end
+                            task.wait(0.1)
+                            items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+                            print("剩余背包物品数量:", #items)
                         end
+                        print("装备已清空")
                     end
+
                 end
                 _G.PacketLoop = nil
                 print("[Loop] 已结束")
@@ -1168,4 +1172,5 @@ features1:AddSwitch("dupe", function(state)
         _G.PacketLoop = nil
     end
 end)
+
 
