@@ -48,7 +48,7 @@ local Settings = {
     AutoSkillEnabled = false,
     HealthMonitorEnabled = true,
     RoundTeleportEnabled = true,
-    RoundTeleportThreshold = 55,
+    RoundTeleportThreshold = 56,
     AutoAttackEnabled = false,  -- 新增的功能
 }
 
@@ -68,7 +68,7 @@ end
 local DungeonOptions = {
     '1-1','1-2','1-3','2-1','2-2','2-3',
     '3-1','3-2','3-3','4-1','4-2','4-3',
-    'endless-1','endless-16','endless-31','endless-46','endless-61','',''
+    'endless-1','endless-16','endless-31','endless-53','endless-68','',''
 }
 
 local DungeonMap = {
@@ -77,8 +77,8 @@ local DungeonMap = {
     ['3-1']={1300003,1},['3-2']={1300003,2},['3-3']={1300003,3},
     ['4-1']={1300004,1},['4-2']={1300004,2},['4-3']={1300004,3},
     ['endless-1']={3200001,1},['endless-16']={3200001,16},
-    ['endless-31']={3200001,31},['endless-46']={3200001,46},
-    ['endless-61']={3200001,61}
+    ['endless-31']={3200001,31},['endless-53']={3200001,53},
+    ['endless-68']={3200001,68}
 }
 
 --================= 进入副本逻辑 =================--
@@ -140,7 +140,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.8',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v2.9',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -1111,6 +1111,7 @@ features1:AddButton("出售紫色以下全部", function()
         warn("未找到稀有度小于4的装备")
     end
 end)
+--[[
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
 features1:AddLabel('注意dupe会清空背包里所有物品，要保留的东西记得放在二楼仓库里')
@@ -1171,6 +1172,7 @@ features1:AddSwitch("dupe", function(state)
         _G.PacketLoop = nil
     end
 end)
+--]]
 features1:AddButton("出售背包全部装备", function()
     local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
     if #items == 0 then
