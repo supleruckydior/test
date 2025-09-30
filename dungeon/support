@@ -872,9 +872,12 @@ spawn(function()
 end)
 
 --================= 副本内监控 ===================
+local dungeonConnections = {}
+local skillLoop
+
 function SetupInDungeon()
     spawn(function()
-        -- 等待 _G.KillauraKey 捕获
+        -- 等待 Key
         while not _G.KillauraKey do
             print("[SetupInDungeon] 等待 _G.KillauraKey 捕获中...")
             task.wait(1)
@@ -882,85 +885,74 @@ function SetupInDungeon()
         print("[SetupInDungeon] 已捕获到 Key:", _G.KillauraKey)
 
         -- 如果在大厅，直接返回
-        if Workspace:FindFirstChild('Lobby') then return end
+        if Workspace:FindFirstChild("Lobby") then return end
 
-        local healthPath, roundPath
+        -- GUI 路径
+        local playerGui = player:WaitForChild("PlayerGui")
+        local mainGui = playerGui:WaitForChild("Main", 5)
+        if not mainGui then return end
 
-        -- 尝试获取血量和回合 UI
-        local success, mainGui = pcall(function()
-            return player:WaitForChild('PlayerGui'):WaitForChild('Main', 5)
-        end)
-        if success and mainGui then
-            local home = mainGui:FindFirstChild('HomePage')
-            if home then
-                -- 血量路径
-                local bottom = home:FindFirstChild('Bottom')
-                if bottom then
-                    local mainBottom = bottom:FindFirstChild('Main')
-                    if mainBottom then
-                        local health = mainBottom:FindFirstChild('Health')
-                        if health then
-                            local num = health:FindFirstChild('Num')
-                            if num then
-                                healthPath = num:FindFirstChild('Health')
-                            end
+        local home = mainGui:FindFirstChild("HomePage")
+        if not home then return end
+
+        local healthPath = home:FindFirstChild("Bottom")
+            and home.Bottom:FindFirstChild("Main")
+            and home.Bottom.Main:FindFirstChild("Health")
+            and home.Bottom.Main.Health:FindFirstChild("Num")
+            and home.Bottom.Main.Health.Num:FindFirstChild("Health")
+
+        local roundPath = home:FindFirstChild("EndlessTop")
+            and home.EndlessTop:FindFirstChild("Top")
+            and home.EndlessTop.Top:FindFirstChild("RoundTitle")
+
+        ------------------------------------------------
+        -- 自动吃药（监听）
+        ------------------------------------------------
+        if healthPath and not dungeonConnections["health"] then
+            dungeonConnections["health"] =
+                healthPath:GetPropertyChangedSignal("Text"):Connect(function()
+                    if not Settings.HealthMonitorEnabled then return end
+                    local cur, max = string.match(healthPath.Text, "(%d+)%/(%d+)")
+                    if cur and max then
+                        cur, max = tonumber(cur), tonumber(max)
+                        if max > 0 and cur / max < 0.63 then
+                            pcall(function() TNet.FireServer("Potion_TryHealth") end)
                         end
                     end
-                end
+                end)
+        end
 
-                -- 回合路径
-                local endlessTop = home:FindFirstChild('EndlessTop')
-                if endlessTop then
-                    local top = endlessTop:FindFirstChild('Top')
-                    if top then
-                        roundPath = top:FindFirstChild('RoundTitle')
+        ------------------------------------------------
+        -- 回合监听
+        ------------------------------------------------
+        if roundPath and not dungeonConnections["round"] then
+            dungeonConnections["round"] =
+                roundPath:GetPropertyChangedSignal("Text"):Connect(function()
+                    local roundNum = tonumber(string.match(roundPath.Text, "%d+")) or 0
+                    UpdateRoundLabel(roundNum)
+                    if Settings.RoundTeleportEnabled and roundNum >= RoundThresholdValue then
+                        pcall(function()
+                            TNet.FireServer("Dungeon_Leave")
+                            task.wait(1)
+                            TeleportService:Teleport(72607172956362)
+                        end)
                     end
-                end
-            end
+                end)
         end
 
-        -- 自动吃血药
-        if healthPath then
-            local onCooldown = false
-            healthPath:GetPropertyChangedSignal('Text'):Connect(function()
-                if not Settings.HealthMonitorEnabled then return end
-                local cur, max = string.match(healthPath.Text, '(%d+)%/(%d+)')
-                if cur and max then
-                    cur, max = tonumber(cur), tonumber(max)
-                    if max > 0 and cur/max < 0.63 and not onCooldown then
-                        onCooldown = true
-                        pcall(function() TNet.FireServer('Potion_TryHealth') end)
-                        task.delay(2, function() onCooldown = false end)
-                    end
-                end
-            end)
-        end
-
-        -- 回合监控
-        if roundPath then
-            roundPath:GetPropertyChangedSignal('Text'):Connect(function()
-                local roundNum = tonumber(string.match(roundPath.Text, '%d+')) or 0
-                UpdateRoundLabel(roundNum)
-                if Settings.RoundTeleportEnabled and roundNum >= RoundThresholdValue then
-                    print('[DEBUG] 达到回合阈值，退出副本')
-                    pcall(function()
-                        TNet.FireServer('Dungeon_Leave')
-                        task.wait(1)
-                        TeleportService:Teleport(72607172956362)
-                    end)
-                end
-            end)
-        end
-
-        -- 技能循环释放
-        if Settings.AutoSkillEnabled then
-            spawn(function()
-                while Settings.AutoSkillEnabled do
-                    if player.Character and player.PlayerGui and not Workspace:FindFirstChild("Lobby") then
+        ------------------------------------------------
+        -- 技能循环（动态控制）
+        ------------------------------------------------
+        if not skillLoop then
+            skillLoop = task.spawn(function()
+                while true do
+                    if Settings.AutoSkillEnabled
+                        and player.Character
+                        and player.PlayerGui
+                        and not Workspace:FindFirstChild("Lobby") then
                         for spell = 1, 5 do
-                            pcall(function() 
-                                TNet.FireServer("Skill_Release", spell) 
-                            end)
+                            if not Settings.AutoSkillEnabled then break end
+                            pcall(function() TNet.FireServer("Skill_Release", spell) end)
                             task.wait(0.08)
                         end
                     end
@@ -971,10 +963,13 @@ function SetupInDungeon()
     end)
 end
 
--- 准备好玩家以后再执行
+------------------------------------------------
+-- 外部调用
+------------------------------------------------
 spawn(function()
     SetupInDungeon()
 end)
+
 
 
 --================= 退出副本按钮 =================--
