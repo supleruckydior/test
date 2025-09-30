@@ -127,11 +127,11 @@ local function EnterDungeon(dungeonId, difficulty)
     task.wait(0.6)
 
     print('[DEBUG] 选择副本 ID:', dungeonId, '难度:', difficulty)
-    pcall(function() TNet.FireServer('Dungeon_Select', dungeonId, difficulty) end)
+    pcall(function() .FireServer('Dungeon_Select', dungeonId, difficulty) end)
     task.wait(0.1)
 
     print('[DEBUG] 开始副本')
-    pcall(function() TNet.FireServer('Dungeon_StartParty') end)
+    pcall(function() .FireServer('Dungeon_StartParty') end)
 
     task.delay(2, function()
         dungeonLock = false
@@ -218,19 +218,19 @@ local function sendWeaponOnHit()
             )
         }
     }
-    TNet.FireServer("Weapon_OnHit", unpack(args))
+    .FireServer("Weapon_OnHit", unpack(args))
     print("[DEBUG] Weapon_OnHit 发送成功")
 end
 
--- Hook TNetSent，只捕获客户端发出的特定事件
+-- Hook Sent，只捕获客户端发出的特定事件
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
 
-    if self == TNetSent and method == "FireServer" then
+    if self == Sent and method == "FireServer" then
         if type(args[1]) == "string" and type(args[3]) == "number" then
-            print("[DEBUG] 捕获 TNetSent:", args[1], args[3])
+            print("[DEBUG] 捕获 Sent:", args[1], args[3])
             _G.KillauraKey = args[1]          -- 更新 Key
             _G.KillauraReady = true           -- 可以启动逻辑
 
@@ -278,7 +278,7 @@ features:AddSwitch("killaura", function(state)
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local RunService = game:GetService("RunService")
 
-        local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
+        local Sent = ReplicatedStorage:WaitForChild("Sent")
 
         local cycleIndex, attackId = 1, 0
         local lastPositions = {}
@@ -309,7 +309,7 @@ features:AddSwitch("killaura", function(state)
                     hrtCF = cf
                 }
             }
-            TNetSent:FireServer(unpack(args))
+            Sent:FireServer(unpack(args))
 
             cycleIndex = cycleIndex + 1
             if cycleIndex > 1 then cycleIndex = 1 end
@@ -431,16 +431,9 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                 if Workspace:FindFirstChild('Lobby') then return end
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.05)
-                    local weaponName = Settings.SelectedWeapon
-                    local animName   = weaponOptions[weaponName] or "SwordShield1"
-                    local simulatedCFrame = CFrame.new(Vector3.new(10, 5, -20))
 
                     pcall(function()
-                        TNet.FireServer(newKey, 1, Workspace:GetServerTimeNow(), 1, weaponName, {
-                            hitNum = 0,
-                            onHitAnimName = animName,
-                            hrtCF = simulatedCFrame
-                        })
+                        TNet.FireServer(newKey)
                     end)
                 end
             end)
