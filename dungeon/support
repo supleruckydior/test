@@ -95,26 +95,32 @@ local function EnterDungeon(dungeonId, difficulty)
     repeat task.wait() until Workspace:FindFirstChild('Lobby')
     local lobby = Workspace:FindFirstChild('Lobby')
 
-    local function FindIdleTable()
+    local function FindIdleTables()
+        local idleTables = {}
         local lobbySection = Workspace.Lobby:FindFirstChild('\229\140\185\233\133\141\229\140\186')
-        if not lobbySection then return nil end
-        for i=4,#lobbySection:GetChildren() do
+        if not lobbySection then return idleTables end
+        for i = 4, #lobbySection:GetChildren() do
             local tableObj = lobbySection:GetChildren()[i]
             local match = tableObj:FindFirstChild('Match')
             if match and match:FindFirstChild('BillboardGui') then
                 local idle = match.BillboardGui:FindFirstChild('Idle')
-                if idle and idle.Visible then return match end
+                if idle and idle.Visible then
+                    table.insert(idleTables, match)
+                end
             end
         end
-        return nil
+        return idleTables
     end
 
-    local tableObj = FindIdleTable()
-    if not tableObj then
+    local idleTables = FindIdleTables()
+    if #idleTables == 0 then
         print('[DEBUG] 没有找到空闲桌子')
         dungeonLock = false
         return
     end
+
+    -- 随机选择一个空闲桌子
+    local tableObj = idleTables[math.random(1, #idleTables)]
 
     if not player.Character or not player.Character:FindFirstChild('HumanoidRootPart') then
         print('[DEBUG] 玩家角色或 HumanoidRootPart 未就绪')
