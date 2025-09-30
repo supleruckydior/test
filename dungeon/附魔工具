@@ -787,7 +787,7 @@ autoLockExistingAffixes(item)
                 print(string.format("🎯 继续优化，位置 %d 需要改进", nonTargetSlot))
             end
             
-            wait(0.05)
+            wait(0.08)
             performEnchant()
         else
             print("❌ 附魔失败或返回数据异常，重试...")
