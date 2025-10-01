@@ -146,7 +146,7 @@ local function EnterDungeon(dungeonId, difficulty)
 end
 
 --================= UI 初始化 =================--
-local window = library:AddWindow('DUNGEON LOOTIFY v2.9',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local window = library:AddWindow('DUNGEON LOOTIFY v3.0',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
 local features = window:AddTab('功能')
 local features1 = window:AddTab('杂项')
 -- 自动进入副本开关
@@ -174,7 +174,47 @@ end
 if dungeonDropdown.Set then
     dungeonDropdown:Set(Settings.SelectedDungeon)
 end
--- 武器配置选项
+-- ================= 副本检测到玩家自动退出开关 =================
+local autoExitSwitch = features1:AddSwitch("副本检测退出", function(state)
+    _G.AutoExitEnabled = state
+    Settings.AutoDungeonEnabled = state  -- 保存到 Settings
+    SaveSettings()                      -- 写入本地文件
+    if state then
+        if not _G.AutoExitThread then
+            _G.AutoExitThread = task.spawn(function()
+                while _G.AutoExitEnabled do
+                    task.wait(1)
+                    if Workspace:FindFirstChild('Lobby') then
+                        task.wait(1)
+                        continue
+                    end
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= player then
+                            print("[AutoExit] 检测到玩家:", p.Name, "正在退出副本")
+                            pcall(function()
+                               TeleportService:Teleport(72607172956362) -- 替换成实际离开副本事件
+                            end)
+                            task.wait(0.5)
+                            break
+                        end
+                    end
+                end
+                _G.AutoExitThread = nil
+            end)
+        end
+    else
+        _G.AutoExitEnabled = false
+        _G.AutoExitThread = nil
+    end
+end)
+
+-- 初始化开关状态
+if autoExitSwitch.Set then
+    autoExitSwitch:Set(Settings.AutoDungeonEnabled or false)
+end
+
+
+-- ================= 武器选择 =================
 local weaponOptions = {
     ["SwordShield"] = "SwordShield1",
     ["DuoSword"]    = "Duosword1",
