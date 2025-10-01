@@ -177,8 +177,8 @@ end
 -- ================= 副本检测到玩家自动退出开关 =================
 local autoExitSwitch = features:AddSwitch("副本玩家检测自动退出", function(state)
     _G.AutoExitEnabled = state
-    Settings.AutoDungeonEnabled = state  -- 保存到 Settings
-    SaveSettings()                      -- 写入本地文件
+    Settings.PlayerDetectionEnabled = state  -- 保存到 Settings
+    SaveSettings()                            -- 写入本地文件
     if state then
         if not _G.AutoExitThread then
             _G.AutoExitThread = task.spawn(function()
@@ -210,7 +210,7 @@ end)
 
 -- 初始化开关状态
 if autoExitSwitch.Set then
-    autoExitSwitch:Set(Settings.AutoDungeonEnabled or false)
+    autoExitSwitch:Set(Settings.PlayerDetectionEnabled or false)
 end
 
 
