@@ -175,7 +175,7 @@ if dungeonDropdown.Set then
     dungeonDropdown:Set(Settings.SelectedDungeon)
 end
 -- ================= 副本检测到玩家自动退出开关 =================
-local autoExitSwitch = features1:AddSwitch("副本检测退出", function(state)
+local autoExitSwitch = features:AddSwitch("副本玩家检测自动退出", function(state)
     _G.AutoExitEnabled = state
     Settings.AutoDungeonEnabled = state  -- 保存到 Settings
     SaveSettings()                      -- 写入本地文件
