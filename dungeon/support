@@ -201,10 +201,8 @@ local autoExitSwitch = features:AddSwitch("副本玩家检测自动退出", func
             _G.AutoExitThread = task.spawn(function()
                 while _G.AutoExitEnabled do
                     task.wait(1)
-                    if Workspace:FindFirstChild('Lobby') then
-                        task.wait(1)
-                        continue
-                    end
+                    if Workspace:FindFirstChild('Lobby') then return end
+                    if Workspace:FindFirstChild('TradeScene') then return end
                     for _, p in ipairs(Players:GetPlayers()) do
                         if p ~= player then
                             print("[AutoExit] 检测到玩家:", p.Name, "正在退出副本")
