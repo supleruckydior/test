@@ -151,7 +151,7 @@ local function EnterDungeon(dungeonId, difficulty)
 
     print('[DEBUG] 选择副本 ID:', dungeonId, '难度:', difficulty)
     pcall(function() TNet.FireServer('Dungeon_Select', dungeonId, difficulty) end)
-    task.wait(0.1)
+    task.wait(0.3)
 
     print('[DEBUG] 开始副本')
     pcall(function() TNet.FireServer('Dungeon_StartParty') end)
