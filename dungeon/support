@@ -1,12 +1,28 @@
 --================= 配置 =================--
-local TARGET_GAME_ID_1 = 113080689665370
-local TARGET_GAME_ID_2 = 120876398824321
-local TARGET_GAME_ID_3 = 72607172956362
-local TARGET_GAME_ID_4 = 116762881034051
-if game.PlaceId ~= TARGET_GAME_ID_1 and game.PlaceId ~= TARGET_GAME_ID_2 and game.PlaceId ~= TARGET_GAME_ID_3 and game.PlaceId ~= TARGET_GAME_ID_4 then
-    print("⚠️ wrong game")
+local ALLOWED_PLACE_IDS = {
+    113080689665370,
+    120876398824321,
+    72607172956362,
+    116762881034051,
+    124216767173297,
+}
+
+-- 检查当前 PlaceId 是否在列表里
+local function isAllowedPlace(id)
+    for _, allowed in ipairs(ALLOWED_PLACE_IDS) do
+        if id == allowed then
+            return true
+        end
+    end
+    return false
+end
+
+if not isAllowedPlace(game.PlaceId) then
+    warn("⚠️ wrong game, PlaceId = " .. game.PlaceId)
     return
 end
+
+
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
