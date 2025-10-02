@@ -2,7 +2,8 @@
 local TARGET_GAME_ID_1 = 113080689665370
 local TARGET_GAME_ID_2 = 120876398824321
 local TARGET_GAME_ID_3 = 72607172956362
-if game.PlaceId ~= TARGET_GAME_ID_1 and game.PlaceId ~= TARGET_GAME_ID_2 and game.PlaceId ~= TARGET_GAME_ID_3 then
+local TARGET_GAME_ID_4 = 116762881034051
+if game.PlaceId ~= TARGET_GAME_ID_1 and game.PlaceId ~= TARGET_GAME_ID_2 and game.PlaceId ~= TARGET_GAME_ID_3 and game.PlaceId ~= TARGET_GAME_ID_4 then
     print("⚠️ wrong game")
     return
 end
