@@ -492,6 +492,7 @@ local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
                 local newKey = shiftKey(_G.KillauraKey) -- 这里把每个字母+1
                 print("[SimulatedAttack] 已捕获到 newKey:", newKey)
                 if Workspace:FindFirstChild('Lobby') then return end
+                if Workspace:FindFirstChild('TradeScene') then return end
                 while Settings.SimulatedAttackEnabled do
                     task.wait(0.05)
                     pcall(function()
@@ -948,6 +949,7 @@ function SetupInDungeon()
 
         -- 如果在大厅，直接返回
         if Workspace:FindFirstChild("Lobby") then return end
+        if Workspace:FindFirstChild('TradeScene') then return end
 
         -- GUI 路径
         local playerGui = player:WaitForChild("PlayerGui")
@@ -1011,7 +1013,8 @@ function SetupInDungeon()
                     if Settings.AutoSkillEnabled
                         and player.Character
                         and player.PlayerGui
-                        and not Workspace:FindFirstChild("Lobby") then
+                        and not Workspace:FindFirstChild("Lobby")
+                        and not Workspace:FindFirstChild("TradeScene") then
                         for spell = 1, 5 do
                             if not Settings.AutoSkillEnabled then break end
                             pcall(function() TNet.FireServer("Skill_Release", spell) end)
