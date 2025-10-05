@@ -81,7 +81,18 @@ if currentGameId == TARGET_GAME_ID then
         end
         return obj
     end
-    setfpscap(10)
+    -- 持续监控并重置FPS
+local function PersistentFPSLock()
+    local targetFPS = 10
+    
+    while true do
+        setfpscap(targetFPS)
+        wait(0.5)  -- 每0.5秒重置一次
+    end
+end
+
+spawn(PersistentFPSLock)
+print("🔒 持续FPS锁定为10（每0.5秒重置）")
     -- 右上角提示（简单版）
     local function showTopRightNotice(text, lifetime)
         local pg = player:WaitForChild('PlayerGui')
