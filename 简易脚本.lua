@@ -81,7 +81,7 @@ if currentGameId == TARGET_GAME_ID then
         end
         return obj
     end
-
+    setfpscap(10)
     -- 右上角提示（简单版）
     local function showTopRightNotice(text, lifetime)
         local pg = player:WaitForChild('PlayerGui')
