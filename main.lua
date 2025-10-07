@@ -896,6 +896,7 @@ if currentGameId == TARGET_GAME_ID then
                             gamepassmission()
                             gamepassgiftget()
                             everydaygem()
+                            offlinereward()
                             dailyspin()
                             wait(1)
                         end
