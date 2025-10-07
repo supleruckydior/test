@@ -297,7 +297,7 @@ print("🔒 持续FPS锁定为10（每0.5秒重置）")
                             everydaygem()
                             offlinereward()
                             dailyspin()
-                            wait(1)
+                            wait(500)
                         end
                     end)
                 end
