@@ -898,7 +898,7 @@ if currentGameId == TARGET_GAME_ID then
                             everydaygem()
                             offlinereward()
                             dailyspin()
-                            wait(1)
+                            wait(500)
                         end
                     end)
                 end
