@@ -295,6 +295,7 @@ print("🔒 持续FPS锁定为10（每0.5秒重置）")
                             gamepassmission()
                             gamepassgiftget()
                             everydaygem()
+                            offlinereward()
                             dailyspin()
                             wait(1)
                         end
