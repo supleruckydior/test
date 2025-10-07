@@ -660,26 +660,6 @@ if currentGameId == TARGET_GAME_ID then
         end
         checkTimeAndRun()
         features4:Show()
-        local function getFormattedTime()
-            return os.date('%Y/%m/%d %H:%M:%S')
-        end
-        local function getLocalTimezone()
-            local offset = os.date('%z')
-            return string.format(
-                'UTC%s',
-                offset:sub(1, 3) .. ':' .. offset:sub(4, 5)
-            )
-        end
-        local function updateLabel()
-            timeLabel.Text = '當前時間：' .. getFormattedTime()
-            timezoneLabel.Text = '時區：' .. getLocalTimezone()
-        end
-        spawn(function()
-            while true do
-                updateLabel()
-                wait(1)
-            end
-        end)
         local AddLabelfeatures = features:AddLabel('重生點：重生點')
         AddLabelfeatures.Text = '重生點：'
             .. RespawPoint
@@ -897,6 +877,7 @@ if currentGameId == TARGET_GAME_ID then
                             gamepassgiftget()
                             everydaygem()
                             offlinereward()
+                            potionfull()
                             dailyspin()
                             wait(500)
                         end
@@ -1299,6 +1280,37 @@ if currentGameId == TARGET_GAME_ID then
         features2:AddButton('傳送', function()
             teleporttworld1()
         end)
+        features2:AddSwitch('大於75自動重新進入', function(state)
+
+    local AutoReenter = false
+    local AutoReenterThread
+
+    if state then
+        AutoReenter = true
+        AutoReenterThread = coroutine.create(function()
+
+            while AutoReenter do
+                local text = combatUI.Text
+                local progress = text:match("-(%d+)%/")
+                if progress then
+                    local num = tonumber(progress)
+                    if num and num >= 75 then
+                        teleporttworld1()
+                        task.wait(1)
+                    end
+                end
+                task.wait(1)
+            end
+        end)
+        coroutine.resume(AutoReenterThread)
+    else
+        AutoReenter = false
+        if AutoReenterThread then
+            coroutine.close(AutoReenterThread)
+        end
+    end
+end)
+
         local Autostart = features2:AddSwitch(
             '戰鬥結束後自動開始(世界戰鬥)',
             function(bool)
