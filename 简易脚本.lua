@@ -296,6 +296,7 @@ local Autocollmission = features1:AddSwitch(
                     gamepassmission()
                     gamepassgiftget()
                     potionfull()
+                    offlinereward()
                     wait(1)
                 end
             end)
