@@ -283,26 +283,35 @@ print("🔒 持续FPS锁定为10（每0.5秒重置）")
                 wait(60)
             end
         end)
-        local Autocollmission = features1:AddSwitch(
-            '自動任務領取(包括GamePass任務、獎勵)',
-            function(bool)
-                Autocollmissionbool = bool
-                if Autocollmissionbool then
-                    spawn(function()
-                        while Autocollmissionbool do
-                            mainmissionchack()
-                            everydaymission()
-                            gamepassmission()
-                            gamepassgiftget()
-                            everydaygem()
-                            offlinereward()
-                            dailyspin()
-                            wait(500)
-                        end
-                    end)
+local Autocollmission = features1:AddSwitch(
+    '自動任務領取(包括GamePass任務、獎勵)',
+    function(bool)
+        Autocollmissionbool = bool
+        if Autocollmissionbool then
+            -- 主任務循環（每60秒執行一次）
+            spawn(function()
+                while Autocollmissionbool do
+                    mainmissionchack()
+                    everydaymission()
+                    gamepassmission()
+                    gamepassgiftget()
+                    potionfull()
+                    wait(1)
                 end
-            end
-        )
+            end)
+
+            -- dailyspin 獨立循環（每500秒執行一次）
+            spawn(function()
+                while Autocollmissionbool do
+                    dailyspin()
+                    offlinereward()
+                    everydaygem()
+                    wait(500)
+                end
+            end)
+        end
+    end
+)
         Autocollmission:Set(true)
         local invest = features1:AddSwitch('自動執行投資', function(bool)
             investbool = bool
