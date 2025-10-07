@@ -197,6 +197,31 @@ function offlinereward()
     print("離線獎勵 FireServer() 已執行一次")
 end
 
+function potionfull()
+    local player = game:GetService("Players").LocalPlayer
+    local guiPath = player.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]
+        ["\228\184\187\232\167\146"]["\232\131\140\230\153\175"]
+        ["\229\143\179\228\190\167\231\149\140\233\157\162"]
+        ["\229\176\143\231\187\191\231\147\182"]["\229\189\162\232\177\161"]
+        ["\232\180\167\229\184\129"]["\232\180\167\229\184\129\230\149\176"]
+
+    if not guiPath or not guiPath.Text then return end
+
+    local text = guiPath.Text  -- 例："300/300"
+    local left, right = text:match("(%d+)%s*/%s*(%d+)")
+    if left and right then
+        if tonumber(left) == tonumber(right) then
+            local args = { 1 }
+            game:GetService("ReplicatedStorage")
+                :WaitForChild("\228\186\139\228\187\182")
+                :WaitForChild("\229\133\172\231\148\168")
+                :WaitForChild("\231\165\157\231\166\143")
+                :WaitForChild("\231\165\157\231\166\143")
+                :FireServer(unpack(args))
+        end
+    end
+end
+
 --[[
 -- 控制開關（單次執行）
     mainmissionchack()
