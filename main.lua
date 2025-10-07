@@ -2773,6 +2773,25 @@ end)
             event:Fire('打開煉丹爐')
         end
     end)
+features6:AddButton('每月鑰匙購買', function()
+    local Rep = game:GetService("ReplicatedStorage")
+    local remote = Rep:FindFirstChild("\228\186\139\228\187\182")
+        :FindFirstChild("\229\133\172\231\148\168")
+        :FindFirstChild("\232\138\130\230\151\165\230\180\187\229\138\168")
+        :FindFirstChild("\232\180\173\228\185\176")
+
+    for i = 1, 60 do
+        for arg = 4, 9 do
+            remote:FireServer(arg)
+        end
+    end
+
+    for i = 1, 30 do
+        for arg = 17, 22 do
+            remote:FireServer(arg)
+        end
+    end
+end)
 
     features7:AddLabel(' -- 語言配置/language config')
     features7:AddButton('刪除語言配置/language config delete', function()
