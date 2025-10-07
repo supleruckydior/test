@@ -196,7 +196,21 @@ function dailyspin()
         task.wait(300)
     end)
 end
-
+-- ========================================================================== --
+-- 離線獎勵自動執行 (每5分鐘)
+function offlinereward()
+    spawn(function()
+        while true do
+            game:GetService("ReplicatedStorage")
+                :WaitForChild("\228\186\139\228\187\182")
+                :WaitForChild("\229\133\172\231\148\168")
+                :WaitForChild("\231\166\187\231\186\191\229\165\150\229\138\177")
+                :WaitForChild("\233\162\134\229\165\150")
+                :FireServer()
+            task.wait(300) -- 每5分鐘執行一次 (300秒)
+        end
+    end)
+end
 --[[
 --控制開關    
     mainmissionchack()
@@ -205,4 +219,5 @@ end
     gamepassgiftget()
 	everydaygem()
 	dailyspin()
+	offlinereward()
 ]]
