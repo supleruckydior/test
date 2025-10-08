@@ -297,7 +297,7 @@ local Autocollmission = features1:AddSwitch(
                     gamepassgiftget()
                     potionfull()
                     offlinereward()
-                    wait(1)
+                    wait(20)
                 end
             end)
 
@@ -305,7 +305,6 @@ local Autocollmission = features1:AddSwitch(
             spawn(function()
                 while Autocollmissionbool do
                     dailyspin()
-                    offlinereward()
                     everydaygem()
                     wait(500)
                 end
