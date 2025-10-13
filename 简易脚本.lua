@@ -42,7 +42,7 @@ if currentGameId == TARGET_GAME_ID then
         AntiAFK:ClickButton2(Vector2.new())
         wait(2)
     end)
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.0', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.1', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -615,41 +615,46 @@ local Autocollmission = features1:AddSwitch(
             return tonumber(cleanedHerbText) or 0
         end
     end
--- 在函数外部先定义全局变量
-local Autoelixir = false
-local AutoelixirSwitch
+-- 创建炼丹控制器
+local elixirController = {
+    enabled = false
+}
 
-AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
-    Autoelixir = bool
-    if Autoelixir then
-        spawn(function()
-            while Autoelixir do
-                -- 检查草药数量
-                local currentHerbs = getHerbValue()
-                if currentHerbs < 5000 then
-                    print('[系统] 草药数量低于5000，停止自动炼丹')
-                    Autoelixir = false
-                    AutoelixirSwitch:Set(false) -- 更新开关状态
-                    break
-                end
-                
-                -- 执行炼丹
-                game:GetService('ReplicatedStorage')
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
-                    :FindFirstChild('\231\130\188\228\184\185')
-                    :FindFirstChild('\229\136\182\228\189\156')
-                    :FireServer()
-                wait(0.5)
-            end
-        end)
+-- 炼丹循环函数
+local function elixirLoop()
+    while elixirController.enabled do
+        -- 检查草药数量
+        local currentHerbs = getHerbValue()
+        if currentHerbs < 5000 then
+            print('[系统] 草药数量低于5000，停止自动炼丹')
+            elixirController.enabled = false
+            AutoelixirSwitch:Set(false) -- 更新开关状态
+            break
+        end
+        
+        -- 执行炼丹
+        game:GetService('ReplicatedStorage')
+            :FindFirstChild('\228\186\139\228\187\182')
+            :FindFirstChild('\229\133\172\231\148\168')
+            :FindFirstChild('\231\130\188\228\184\185')
+            :FindFirstChild('\229\136\182\228\189\156')
+            :FireServer()
+        wait(0.5)
+    end
+end
+
+-- 创建开关
+local AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
+    elixirController.enabled = bool
+    if elixirController.enabled then
+        task.spawn(elixirLoop)
     end
 end)
 
--- 启动即打开自动炼丹
+-- 安全自启动机制
 task.defer(function()
-    task.wait(3) -- 等待3秒让界面初始化完成
-    if not Autoelixir then
+    task.wait(3) -- 等待界面初始化
+    if not elixirController.enabled then
         AutoelixirSwitch:Set(true)
         print('[系统] 自动炼丹已启动')
     end
