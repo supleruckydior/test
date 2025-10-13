@@ -42,11 +42,30 @@ if currentGameId == TARGET_GAME_ID then
         AntiAFK:ClickButton2(Vector2.new())
         wait(2)
     end)
-    local window = library:AddWindow('Cultivation-Simulator  養成模擬器', {
-        main_color = Color3.fromRGB(41, 74, 122),
-        min_size = Vector2.new(530, 315),
-        can_resize = false,
-    })
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.0', {
+    main_color = Color3.fromRGB(41, 74, 122),
+    min_size = Vector2.new(530, 315),
+    can_resize = false,
+})
+
+-- 在创建窗口后立即设置低层级
+if window then
+    -- 获取主GUI对象并设置低ZIndex
+    local mainGui = window.gui or window.Instance
+    if mainGui then
+        mainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        -- 遍历所有子元素设置较低的ZIndex
+        local function setLowZIndex(obj)
+            if obj:IsA("GuiObject") then
+                obj.ZIndex = 10  -- 设置较低的层级
+            end
+            for _, child in pairs(obj:GetChildren()) do
+                setLowZIndex(child)
+            end
+        end
+        setLowZIndex(mainGui)
+    end
+end
     local features1 = window:AddTab('杂项')
     local features4 = window:AddTab('炼丹')
     local ws = game:GetService('Workspace')
@@ -94,37 +113,105 @@ end
 spawn(PersistentFPSLock)
 print("🔒 持续FPS锁定为10（每0.5秒重置）")
     -- 右上角提示（简单版）
-    local function showTopRightNotice(text, lifetime)
-        local pg = player:WaitForChild('PlayerGui')
-        local gui = pg:FindFirstChild('FarmNoticeGui')
-            or Instance.new('ScreenGui')
-        gui.Name = 'FarmNoticeGui'
-        gui.ResetOnSpawn = false
-        gui.Parent = pg
+local function showTopRightNotice(text, lifetime)
+    local pg = player:WaitForChild('PlayerGui')
+    local gui = pg:FindFirstChild('FarmNoticeGui') or Instance.new('ScreenGui')
+    gui.Name = 'FarmNoticeGui'
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Global  -- 使用全局层级
+    gui.Parent = pg
 
-        local label = gui:FindFirstChild('Notice') or Instance.new('TextLabel')
-        label.Name = 'Notice'
-        label.AnchorPoint = Vector2.new(1, 0)
-        label.Position = UDim2.new(1, -20, 0, 20)
-        label.Size = UDim2.new(0, 260, 0, 34)
-        label.BackgroundTransparency = 0.3 -- 不透明背景
-        label.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- 黑色背景
-        label.TextColor3 = Color3.fromRGB(255, 0, 0) -- 红色文字
-        label.TextScaled = true
-        label.TextWrapped = true
-        label.Font = Enum.Font.SourceSansSemibold
-        label.Text = text
-        label.Parent = gui
+    -- 创建大黑幕背景（全屏覆盖）
+    local background = Instance.new('Frame')
+    background.Name = 'Background'
+    background.Size = UDim2.new(1, 0, 1, 0)
+    background.Position = UDim2.new(0, 0, 0, 0)
+    background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    background.BackgroundTransparency = 0.1 -- 半透明黑幕
+    background.BorderSizePixel = 0
+    background.ZIndex = 100  -- 很高的层级确保覆盖
+    background.Parent = gui
 
-        task.delay(lifetime or 3, function()
-            if label then
-                label:Destroy()
-            end
-            if gui and #gui:GetChildren() == 0 then
+    -- 创建中央容器
+    local container = Instance.new('Frame')
+    container.Name = 'Container'
+    container.Size = UDim2.new(0.4, 0, 0.3, 0)
+    container.Position = UDim2.new(0.3, 0, 0.35, 0)
+    container.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    container.BorderSizePixel = 2
+    container.BorderColor3 = Color3.fromRGB(255, 0, 0)
+    container.ZIndex = 101  -- 比背景更高
+    container.Parent = gui
+
+    -- 创建标题文字
+    local title = Instance.new('TextLabel')
+    title.Name = 'Title'
+    title.Size = UDim2.new(1, 0, 0.4, 0)
+    title.Position = UDim2.new(0, 0, 0.1, 0)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(255, 0, 0)
+    title.TextScaled = true
+    title.Text = text or "收菜完成！"
+    title.Font = Enum.Font.SourceSansBold
+    title.ZIndex = 102
+    title.Parent = container
+
+    -- 创建按钮容器
+    local buttonContainer = Instance.new('Frame')
+    buttonContainer.Name = 'ButtonContainer'
+    buttonContainer.Size = UDim2.new(0.8, 0, 0.3, 0)
+    buttonContainer.Position = UDim2.new(0.1, 0, 0.55, 0)
+    buttonContainer.BackgroundTransparency = 1
+    buttonContainer.ZIndex = 102
+    buttonContainer.Parent = container
+
+    -- 创建确定按钮
+    local confirmButton = Instance.new('TextButton')
+    confirmButton.Name = 'ConfirmButton'
+    confirmButton.Size = UDim2.new(0.4, 0, 1, 0)
+    confirmButton.Position = UDim2.new(0.1, 0, 0, 0)
+    confirmButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    confirmButton.BorderSizePixel = 1
+    confirmButton.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmButton.Text = "确定"
+    confirmButton.TextScaled = true
+    confirmButton.ZIndex = 103
+    confirmButton.Parent = buttonContainer
+
+    -- 创建关闭按钮
+    local closeButton = Instance.new('TextButton')
+    closeButton.Name = 'CloseButton'
+    closeButton.Size = UDim2.new(0.4, 0, 1, 0)
+    closeButton.Position = UDim2.new(0.5, 0, 0, 0)
+    closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    closeButton.BorderSizePixel = 1
+    closeButton.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.Text = "关闭"
+    closeButton.TextScaled = true
+    closeButton.ZIndex = 103
+    closeButton.Parent = buttonContainer
+
+    -- 按钮点击事件
+    local function removeGUI()
+        if gui then
+            gui:Destroy()
+        end
+    end
+
+    confirmButton.MouseButton1Click:Connect(removeGUI)
+    closeButton.MouseButton1Click:Connect(removeGUI)
+
+    -- 可选：自动关闭功能
+    if lifetime and lifetime > 0 then
+        task.delay(lifetime, function()
+            if gui and gui.Parent then
                 gui:Destroy()
             end
         end)
     end
+end
     local donationFinished = false -- 初始为 false
     local herbBuyFinished = false -- 初始为 false
     local herbCollectFinished = false -- 初始为 false
