@@ -113,10 +113,41 @@ end
 spawn(PersistentFPSLock)
 print("🔒 持续FPS锁定为10（每0.5秒重置）")
     -- 右上角提示（简单版）
+    local function getHerbValue()
+        local herbText = '0'
+        pcall(function()
+            herbText =
+                GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
+        end)
+
+        local cleanedHerbText =
+            tostring(herbText):lower():gsub('%s+', ''):gsub(',', '')
+        if cleanedHerbText:find('k') then
+            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
+            return (tonumber(numStr) or 0) * 1000
+        elseif cleanedHerbText:find('m') then
+            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
+            return (tonumber(numStr) or 0) * 1000000
+        else
+            return tonumber(cleanedHerbText) or 0
+        end
+    end
 local function showTopRightNotice(text, lifetime)
     local coreGui = game:GetService("CoreGui")
+    local imgui = coreGui:FindFirstChild("imgui")
     
-    -- 首先强制关闭所有现有的FarmNoticeGui
+    -- 保存原始可见状态
+    local originalVisibility = {}
+    if imgui then
+        for _, window in pairs(imgui:GetChildren()) do
+            if window:IsA("GuiObject") then
+                originalVisibility[window] = window.Visible
+                window.Visible = false
+            end
+        end
+    end
+    
+    -- 创建黑幕（在CoreGui中）
     local existingGui = coreGui:FindFirstChild('FarmNoticeGui')
     if existingGui then
         existingGui:Destroy()
@@ -128,7 +159,7 @@ local function showTopRightNotice(text, lifetime)
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
     gui.DisplayOrder = 99999
     gui.IgnoreGuiInset = true
-    gui.Parent = coreGui  -- 关键：放在CoreGui中
+    gui.Parent = coreGui
 
     -- 创建全屏黑幕背景
     local background = Instance.new('Frame')
@@ -144,8 +175,8 @@ local function showTopRightNotice(text, lifetime)
     -- 创建中央容器
     local container = Instance.new('Frame')
     container.Name = 'Container'
-    container.Size = UDim2.new(0.4, 0, 0.3, 0)
-    container.Position = UDim2.new(0.3, 0, 0.35, 0)
+    container.Size = UDim2.new(0.4, 0, 0.4, 0)  -- 增加高度以容纳草药数量显示
+    container.Position = UDim2.new(0.3, 0, 0.3, 0)
     container.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     container.BorderSizePixel = 2
     container.BorderColor3 = Color3.fromRGB(255, 0, 0)
@@ -155,7 +186,7 @@ local function showTopRightNotice(text, lifetime)
     -- 创建标题文字
     local title = Instance.new('TextLabel')
     title.Name = 'Title'
-    title.Size = UDim2.new(1, 0, 0.4, 0)
+    title.Size = UDim2.new(1, 0, 0.3, 0)
     title.Position = UDim2.new(0, 0, 0.1, 0)
     title.BackgroundTransparency = 1
     title.TextColor3 = Color3.fromRGB(255, 0, 0)
@@ -167,11 +198,40 @@ local function showTopRightNotice(text, lifetime)
     title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     title.Parent = container
 
+    -- 创建草药数量显示
+    local herbLabel = Instance.new('TextLabel')
+    herbLabel.Name = 'HerbLabel'
+    herbLabel.Size = UDim2.new(1, 0, 0.2, 0)
+    herbLabel.Position = UDim2.new(0, 0, 0.4, 0)
+    herbLabel.BackgroundTransparency = 1
+    herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- 绿色显示数量
+    herbLabel.TextScaled = true
+    herbLabel.Font = Enum.Font.SourceSansBold
+    herbLabel.ZIndex = 100001
+    herbLabel.TextStrokeTransparency = 0.3
+    herbLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    herbLabel.Parent = container
+
+    -- 实时更新草药数量
+    local function updateHerbCount()
+        local currentHerbs = getHerbValue()
+        herbLabel.Text = "当前草药: " .. formatNumber(currentHerbs)
+    end
+
+    -- 初始显示草药数量
+    updateHerbCount()
+
+    -- 创建更新循环
+    local herbUpdateConnection
+    herbUpdateConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        updateHerbCount()
+    end)
+
     -- 创建按钮容器
     local buttonContainer = Instance.new('Frame')
     buttonContainer.Name = 'ButtonContainer'
-    buttonContainer.Size = UDim2.new(0.8, 0, 0.3, 0)
-    buttonContainer.Position = UDim2.new(0.1, 0, 0.55, 0)
+    buttonContainer.Size = UDim2.new(0.8, 0, 0.2, 0)
+    buttonContainer.Position = UDim2.new(0.1, 0, 0.7, 0)
     buttonContainer.BackgroundTransparency = 1
     buttonContainer.ZIndex = 100001
     buttonContainer.Parent = container
@@ -193,19 +253,43 @@ local function showTopRightNotice(text, lifetime)
 
     -- 按钮点击事件
     local function removeGUI()
+        -- 断开草药数量更新连接
+        if herbUpdateConnection then
+            herbUpdateConnection:Disconnect()
+            herbUpdateConnection = nil
+        end
+        
+        -- 恢复菜单显示
+        if imgui then
+            for window, visible in pairs(originalVisibility) do
+                if window and window.Parent then
+                    window.Visible = visible
+                end
+            end
+        end
         if gui then
             gui:Destroy()
         end
     end
+
     closeButton.MouseButton1Click:Connect(removeGUI)
 
     -- 可选：自动关闭功能
     if lifetime and lifetime > 0 then
         task.delay(lifetime, function()
-            if gui and gui.Parent then
-                gui:Destroy()
-            end
+            removeGUI()
         end)
+    end
+end
+
+-- 数字格式化函数（如果还没有的话）
+local function formatNumber(num)
+    if num >= 1000000 then
+        return string.format("%.1fM", num / 1000000)
+    elseif num >= 1000 then
+        return string.format("%.1fK", num / 1000)
+    else
+        return tostring(num)
     end
 end
     local donationFinished = false -- 初始为 false
@@ -602,25 +686,7 @@ local Autocollmission = features1:AddSwitch(
     end
     setupFeatures1Tab(features1)
     -- 获取草药数值
-    local function getHerbValue()
-        local herbText = '0'
-        pcall(function()
-            herbText =
-                GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
-        end)
 
-        local cleanedHerbText =
-            tostring(herbText):lower():gsub('%s+', ''):gsub(',', '')
-        if cleanedHerbText:find('k') then
-            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000
-        elseif cleanedHerbText:find('m') then
-            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000000
-        else
-            return tonumber(cleanedHerbText) or 0
-        end
-    end
 -- 创建炼丹控制器
 local elixirController = {
     enabled = false
