@@ -212,17 +212,21 @@ end
     local herbBuyFinished = false -- 初始为 false
     local herbCollectFinished = false -- 初始为 false
     local farmReady = false -- 初始为 false
-    local function checkAllTasksFinished()
-        if
-            donationFinished
-            and herbBuyFinished
-            and herbCollectFinished
-            and farmReady
-        then
-            showTopRightNotice('收菜完成！', 999)
-        end
-    end
+local hasShownCompletionNotice = false  -- 添加这个变量来跟踪是否已经显示过通知
 
+local function checkAllTasksFinished()
+    if
+        donationFinished
+        and herbBuyFinished
+        and herbCollectFinished
+        and farmReady
+        and not hasShownCompletionNotice  -- 添加这个检查
+    then
+        hasShownCompletionNotice = true  -- 标记为已显示
+        showTopRightNotice('收菜完成！', 999)
+        print('[系统] 所有任务完成，显示完成通知')
+    end
+end
     local function setupFeatures1Tab(features1)
         local timeLabel =
             features1:AddLabel('距離下自動獲取還有 0 秒')
