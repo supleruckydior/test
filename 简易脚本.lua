@@ -514,10 +514,41 @@ local Autocollmission = features1:AddSwitch(
         end)
     end
     setupFeatures1Tab(features1)
-    AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
-        Autoelixir = bool
-        if Autoelixir then
+    -- 获取草药数值
+    local function getHerbValue()
+        local herbText = '0'
+        pcall(function()
+            herbText =
+                GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
+        end)
+
+        local cleanedHerbText =
+            tostring(herbText):lower():gsub('%s+', ''):gsub(',', '')
+        if cleanedHerbText:find('k') then
+            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
+            return (tonumber(numStr) or 0) * 1000
+        elseif cleanedHerbText:find('m') then
+            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
+            return (tonumber(numStr) or 0) * 1000000
+        else
+            return tonumber(cleanedHerbText) or 0
+        end
+    end
+AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
+    Autoelixir = bool
+    if Autoelixir then
+        spawn(function()
             while Autoelixir do
+                -- 检查草药数量
+                local currentHerbs = getHerbValue()
+                if currentHerbs < 5000 then
+                    print('[系统] 草药数量低于5000，停止自动炼丹')
+                    Autoelixir = false
+                    AutoelixirSwitch:Set(false) -- 更新开关状态
+                    break
+                end
+                
+                -- 执行炼丹
                 game:GetService('ReplicatedStorage')
                     :FindFirstChild('\228\186\139\228\187\182')
                     :FindFirstChild('\229\133\172\231\148\168')
@@ -526,8 +557,18 @@ local Autocollmission = features1:AddSwitch(
                     :FireServer()
                 wait(0.5)
             end
-        end
-    end)
+        end)
+    end
+end)
+
+-- 启动即打开自动炼丹
+task.defer(function()
+    task.wait(3) -- 等待3秒让界面初始化完成
+    if not Autoelixir then
+        AutoelixirSwitch:Set(true)
+        print('[系统] 自动炼丹已启动')
+    end
+end)
     features4:AddButton('传送炼器', function()
         local RespawPointnum = RespawPoint:match('%d+') -- 获取重生点编号
         local player = game.Players.LocalPlayer
@@ -888,26 +929,6 @@ end)
     local Autoelixir = false
     local hasExecutedTrade = false -- 确保自动交易只执行一次
 
-    -- 获取草药数值
-    local function getHerbValue()
-        local herbText = '0'
-        pcall(function()
-            herbText =
-                GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
-        end)
-
-        local cleanedHerbText =
-            tostring(herbText):lower():gsub('%s+', ''):gsub(',', '')
-        if cleanedHerbText:find('k') then
-            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000
-        elseif cleanedHerbText:find('m') then
-            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000000
-        else
-            return tonumber(cleanedHerbText) or 0
-        end
-    end
 
     local function getOREValue()
         local OREText = '0'
