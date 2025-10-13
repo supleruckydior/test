@@ -114,10 +114,10 @@ spawn(PersistentFPSLock)
 print("🔒 持续FPS锁定为10（每0.5秒重置）")
     -- 右上角提示（简单版）
 local function showTopRightNotice(text, lifetime)
-    local pg = player:WaitForChild('PlayerGui')
+    local coreGui = game:GetService("CoreGui")
     
     -- 首先强制关闭所有现有的FarmNoticeGui
-    local existingGui = pg:FindFirstChild('FarmNoticeGui')
+    local existingGui = coreGui:FindFirstChild('FarmNoticeGui')
     if existingGui then
         existingGui:Destroy()
     end
@@ -126,9 +126,9 @@ local function showTopRightNotice(text, lifetime)
     gui.Name = 'FarmNoticeGui'
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    gui.DisplayOrder = 99999  -- 使用极高的DisplayOrder
-    gui.IgnoreGuiInset = true  -- 忽略GUI插入，确保全屏覆盖
-    gui.Parent = pg
+    gui.DisplayOrder = 99999
+    gui.IgnoreGuiInset = true
+    gui.Parent = coreGui  -- 关键：放在CoreGui中
 
     -- 创建全屏黑幕背景
     local background = Instance.new('Frame')
@@ -136,7 +136,7 @@ local function showTopRightNotice(text, lifetime)
     background.Size = UDim2.new(1, 0, 1, 0)
     background.Position = UDim2.new(0, 0, 0, 0)
     background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    background.BackgroundTransparency = 0.02  -- 几乎不透明
+    background.BackgroundTransparency = 0  -- 完全不透明
     background.BorderSizePixel = 0
     background.ZIndex = 99999
     background.Parent = gui
@@ -176,6 +176,7 @@ local function showTopRightNotice(text, lifetime)
     buttonContainer.ZIndex = 100001
     buttonContainer.Parent = container
 
+
     -- 创建关闭按钮
     local closeButton = Instance.new('TextButton')
     closeButton.Name = 'CloseButton'
@@ -196,7 +197,6 @@ local function showTopRightNotice(text, lifetime)
             gui:Destroy()
         end
     end
-
     closeButton.MouseButton1Click:Connect(removeGUI)
 
     -- 可选：自动关闭功能
