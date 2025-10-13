@@ -42,7 +42,7 @@ if currentGameId == TARGET_GAME_ID then
         AntiAFK:ClickButton2(Vector2.new())
         wait(2)
     end)
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.3', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.4', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -90,6 +90,11 @@ end
     local savemodetime = 0
     local savemodetime2 = 0
     local savemodebutton
+    local REPLICATED_STORAGE = game:GetService('ReplicatedStorage')
+    local ReplicatedStorage = game:GetService('ReplicatedStorage')
+    local Players = game:GetService('Players')
+    local player = Players.LocalPlayer
+    local GUI = player.PlayerGui:WaitForChild('GUI')
     local function deepWait(parent, path, eachTimeout)
         local obj = parent
         for _, name in ipairs(path) do
@@ -167,7 +172,7 @@ local function showTopRightNotice(text, lifetime)
     background.Size = UDim2.new(1, 0, 1, 0)
     background.Position = UDim2.new(0, 0, 0, 0)
     background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    background.BackgroundTransparency = 0  -- 完全不透明
+    background.BackgroundTransparency = 0.5 -- 半透明，防止全黑
     background.BorderSizePixel = 0
     background.ZIndex = 99999
     background.Parent = gui
@@ -175,7 +180,7 @@ local function showTopRightNotice(text, lifetime)
     -- 创建中央容器
     local container = Instance.new('Frame')
     container.Name = 'Container'
-    container.Size = UDim2.new(0.4, 0, 0.4, 0)  -- 增加高度以容纳草药数量显示
+    container.Size = UDim2.new(0.4, 0, 0.4, 0)
     container.Position = UDim2.new(0.3, 0, 0.3, 0)
     container.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     container.BorderSizePixel = 2
@@ -204,27 +209,46 @@ local function showTopRightNotice(text, lifetime)
     herbLabel.Size = UDim2.new(1, 0, 0.2, 0)
     herbLabel.Position = UDim2.new(0, 0, 0.4, 0)
     herbLabel.BackgroundTransparency = 1
-    herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- 绿色显示数量
+    herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
     herbLabel.TextScaled = true
     herbLabel.Font = Enum.Font.SourceSansBold
     herbLabel.ZIndex = 100001
     herbLabel.TextStrokeTransparency = 0.3
     herbLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    herbLabel.Text = "获取中..."
     herbLabel.Parent = container
 
-    -- 实时更新草药数量
+    -- 数字格式化函数（只保留K）
+    local function formatNumber(num)
+        if not num then return "N/A" end
+        if num >= 1000 then
+            return string.format("%.1fK", num / 1000):gsub("%.0K", "K")
+        else
+            return tostring(math.floor(num))
+        end
+    end
+
+    -- 安全获取草药数量
+    local function safeGetHerbValue()
+        local success, result = pcall(function()
+            return getHerbValue()
+        end)
+        return success and result or 0
+    end
+
+    -- 更新草药数量
     local function updateHerbCount()
-        local currentHerbs = getHerbValue()
+        local currentHerbs = safeGetHerbValue()
         herbLabel.Text = "当前草药: " .. formatNumber(currentHerbs)
     end
 
-    -- 初始显示草药数量
-    updateHerbCount()
-
-    -- 创建更新循环
-    local herbUpdateConnection
-    herbUpdateConnection = game:GetService("RunService").Heartbeat:Connect(function()
-        updateHerbCount()
+    -- 创建更新循环（每秒更新一次）
+    local updating = true
+    task.spawn(function()
+        while updating and gui and gui.Parent do
+            updateHerbCount()
+            task.wait(1)
+        end
     end)
 
     -- 创建按钮容器
@@ -236,12 +260,11 @@ local function showTopRightNotice(text, lifetime)
     buttonContainer.ZIndex = 100001
     buttonContainer.Parent = container
 
-
-    -- 创建关闭按钮
+    -- 关闭按钮
     local closeButton = Instance.new('TextButton')
     closeButton.Name = 'CloseButton'
-    closeButton.Size = UDim2.new(0.4, 0, 1, 0)
-    closeButton.Position = UDim2.new(0.5, 0, 0, 0)
+    closeButton.Size = UDim2.new(1, 0, 1, 0)
+    closeButton.Position = UDim2.new(0, 0, 0, 0)
     closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     closeButton.BorderSizePixel = 1
     closeButton.BorderColor3 = Color3.fromRGB(100, 100, 100)
@@ -251,18 +274,12 @@ local function showTopRightNotice(text, lifetime)
     closeButton.ZIndex = 100002
     closeButton.Parent = buttonContainer
 
-    -- 按钮点击事件
+    -- 关闭逻辑
     local function removeGUI()
-        -- 断开草药数量更新连接
-        if herbUpdateConnection then
-            herbUpdateConnection:Disconnect()
-            herbUpdateConnection = nil
-        end
-        
-        -- 恢复菜单显示
+        updating = false
         if imgui then
             for window, visible in pairs(originalVisibility) do
-                if window and window.Parent then
+                if window and window.Parent and window:IsA("GuiObject") then
                     window.Visible = visible
                 end
             end
@@ -274,24 +291,15 @@ local function showTopRightNotice(text, lifetime)
 
     closeButton.MouseButton1Click:Connect(removeGUI)
 
-    -- 可选：自动关闭功能
+    -- 自动关闭（如果有 lifetime）
     if lifetime and lifetime > 0 then
-        task.delay(lifetime, function()
-            removeGUI()
-        end)
+        task.delay(lifetime, removeGUI)
     end
+
+    -- 初次显示立即更新一次
+    updateHerbCount()
 end
 
--- 数字格式化函数（如果还没有的话）
-local function formatNumber(num)
-    if num >= 1000000 then
-        return string.format("%.1fM", num / 1000000)
-    elseif num >= 1000 then
-        return string.format("%.1fK", num / 1000)
-    else
-        return tostring(num)
-    end
-end
     local donationFinished = false -- 初始为 false
     local herbBuyFinished = false -- 初始为 false
     local herbCollectFinished = false -- 初始为 false
