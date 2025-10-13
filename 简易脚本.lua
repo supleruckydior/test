@@ -42,7 +42,7 @@ if currentGameId == TARGET_GAME_ID then
         AntiAFK:ClickButton2(Vector2.new())
         wait(2)
     end)
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.1', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.3', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
