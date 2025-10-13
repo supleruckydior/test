@@ -615,6 +615,10 @@ local Autocollmission = features1:AddSwitch(
             return tonumber(cleanedHerbText) or 0
         end
     end
+-- 在函数外部先定义全局变量
+local Autoelixir = false
+local AutoelixirSwitch
+
 AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
     Autoelixir = bool
     if Autoelixir then
@@ -747,8 +751,6 @@ end)
             DonationEvent:FireServer()
         end)
     end
-
-    -- 创建带保护机制的捐献循环
 
     -- 创建带保护机制的捐献循环
     local function donationLoop()
