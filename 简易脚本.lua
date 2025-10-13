@@ -126,7 +126,8 @@ local function showTopRightNotice(text, lifetime)
     gui.Name = 'FarmNoticeGui'
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    gui.DisplayOrder = 9999  -- 使用极高的DisplayOrder确保在最前面
+    gui.DisplayOrder = 99999  -- 使用极高的DisplayOrder
+    gui.IgnoreGuiInset = true  -- 忽略GUI插入，确保全屏覆盖
     gui.Parent = pg
 
     -- 创建全屏黑幕背景
@@ -135,9 +136,9 @@ local function showTopRightNotice(text, lifetime)
     background.Size = UDim2.new(1, 0, 1, 0)
     background.Position = UDim2.new(0, 0, 0, 0)
     background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    background.BackgroundTransparency = 0  -- 几乎不透明
+    background.BackgroundTransparency = 0.02  -- 几乎不透明
     background.BorderSizePixel = 0
-    background.ZIndex = 9999
+    background.ZIndex = 99999
     background.Parent = gui
 
     -- 创建中央容器
@@ -148,7 +149,7 @@ local function showTopRightNotice(text, lifetime)
     container.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     container.BorderSizePixel = 2
     container.BorderColor3 = Color3.fromRGB(255, 0, 0)
-    container.ZIndex = 10000
+    container.ZIndex = 100000
     container.Parent = gui
 
     -- 创建标题文字
@@ -161,8 +162,8 @@ local function showTopRightNotice(text, lifetime)
     title.TextScaled = true
     title.Text = text or "收菜完成！"
     title.Font = Enum.Font.SourceSansBold
-    title.ZIndex = 10001
-    title.TextStrokeTransparency = 0.5  -- 文字描边增强可读性
+    title.ZIndex = 100001
+    title.TextStrokeTransparency = 0.3
     title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     title.Parent = container
 
@@ -172,7 +173,7 @@ local function showTopRightNotice(text, lifetime)
     buttonContainer.Size = UDim2.new(0.8, 0, 0.3, 0)
     buttonContainer.Position = UDim2.new(0.1, 0, 0.55, 0)
     buttonContainer.BackgroundTransparency = 1
-    buttonContainer.ZIndex = 10001
+    buttonContainer.ZIndex = 100001
     buttonContainer.Parent = container
 
     -- 创建关闭按钮
@@ -186,7 +187,7 @@ local function showTopRightNotice(text, lifetime)
     closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeButton.Text = "关闭"
     closeButton.TextScaled = true
-    closeButton.ZIndex = 10002
+    closeButton.ZIndex = 100002
     closeButton.Parent = buttonContainer
 
     -- 按钮点击事件
@@ -195,6 +196,7 @@ local function showTopRightNotice(text, lifetime)
             gui:Destroy()
         end
     end
+
     closeButton.MouseButton1Click:Connect(removeGUI)
 
     -- 可选：自动关闭功能
