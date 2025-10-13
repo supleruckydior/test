@@ -315,7 +315,7 @@ local function checkAllTasksFinished()
         and not hasShownCompletionNotice  -- 添加这个检查
     then
         hasShownCompletionNotice = true  -- 标记为已显示
-        showTopRightNotice('收菜完成！', 999)
+        showTopRightNotice('收菜完成！', 99999)
         print('[系统] 所有任务完成，显示完成通知')
     end
 end
