@@ -42,7 +42,7 @@ if currentGameId == TARGET_GAME_ID then
         AntiAFK:ClickButton2(Vector2.new())
         wait(2)
     end)
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.4', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.5', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -137,6 +137,7 @@ print("🔒 持续FPS锁定为10（每0.5秒重置）")
             return tonumber(cleanedHerbText) or 0
         end
     end
+
 local function showTopRightNotice(text, lifetime)
     local coreGui = game:GetService("CoreGui")
     local imgui = coreGui:FindFirstChild("imgui")
@@ -172,7 +173,7 @@ local function showTopRightNotice(text, lifetime)
     background.Size = UDim2.new(1, 0, 1, 0)
     background.Position = UDim2.new(0, 0, 0, 0)
     background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    background.BackgroundTransparency = 0.5 -- 半透明，防止全黑
+    background.BackgroundTransparency = 0.5
     background.BorderSizePixel = 0
     background.ZIndex = 99999
     background.Parent = gui
@@ -209,7 +210,7 @@ local function showTopRightNotice(text, lifetime)
     herbLabel.Size = UDim2.new(1, 0, 0.2, 0)
     herbLabel.Position = UDim2.new(0, 0, 0.4, 0)
     herbLabel.BackgroundTransparency = 1
-    herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- 初始黄色
     herbLabel.TextScaled = true
     herbLabel.Font = Enum.Font.SourceSansBold
     herbLabel.ZIndex = 100001
@@ -236,10 +237,22 @@ local function showTopRightNotice(text, lifetime)
         return success and result or 0
     end
 
+    -- 标记是否已进入“炼药完成”状态
+    local isFinished = false
+
     -- 更新草药数量
     local function updateHerbCount()
+        if isFinished then return end -- 一旦完成，不再变化
         local currentHerbs = safeGetHerbValue()
-        herbLabel.Text = "当前草药: " .. formatNumber(currentHerbs)
+        
+        if currentHerbs < 5000 then
+            isFinished = true
+            herbLabel.Text = "炼药完成！！！"
+            herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- 绿色
+        else
+            herbLabel.Text = "当前草药: " .. formatNumber(currentHerbs)
+            herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- 黄色
+        end
     end
 
     -- 创建更新循环（每秒更新一次）
@@ -299,6 +312,7 @@ local function showTopRightNotice(text, lifetime)
     -- 初次显示立即更新一次
     updateHerbCount()
 end
+
 
     local donationFinished = false -- 初始为 false
     local herbBuyFinished = false -- 初始为 false
