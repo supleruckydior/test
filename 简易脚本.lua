@@ -191,7 +191,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.8', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.9', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -315,6 +315,111 @@ local function getRefreshCost()
         refreshCostText = game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
     end)
     return parseNumber(refreshCostText, 0)
+end
+
+-- ============================================
+-- 数据保存功能（使用Synapse文件系统，TSV格式适合EmEditor）
+-- ============================================
+-- 数据保存路径（Synapse工作目录）
+local DATA_FILE_PATH = "roblox_account_data.tsv"  -- TSV格式，EmEditor可以自动识别为表格
+local DATA_SAVE_INTERVAL = 3  -- 保存间隔（秒），3秒
+
+-- 保存数据到本地文件（TSV格式，适合EmEditor）
+local function saveDataToLocal()
+    pcall(function()
+        -- 检查Synapse文件函数是否可用
+        if not writefile or not readfile then
+            return
+        end
+        
+        local accountName = player.Name
+        local herbValue = getHerbValue()
+        local oreValue = getOREValue()
+        local updateTime = os.date('%Y-%m-%d %H:%M:%S')
+        
+        -- 读取现有数据
+        local accountData = {}  -- 使用字典格式，key为账号名
+        local fileExists = pcall(function()
+            return readfile(DATA_FILE_PATH)
+        end)
+        
+        if fileExists then
+            local fileContent = readfile(DATA_FILE_PATH)
+            if fileContent and fileContent ~= "" then
+                -- 解析TSV文件
+                local lines = {}
+                for line in fileContent:gmatch("[^\r\n]+") do
+                    table.insert(lines, line)
+                end
+                
+                -- 跳过标题行，读取数据
+                for i = 2, #lines do
+                    local parts = {}
+                    for part in lines[i]:gmatch("[^\t]+") do
+                        table.insert(parts, part)
+                    end
+                    if #parts >= 3 then
+                        local acc = parts[1]
+                        local herbs = tonumber(parts[2]) or 0
+                        local ore = tonumber(parts[3]) or 0
+                        local time = parts[4] or ""
+                        accountData[acc] = {
+                            herbs = herbs,
+                            ore = ore,
+                            updated_at = time
+                        }
+                    end
+                end
+            end
+        end
+        
+        -- 更新或添加当前账号数据
+        accountData[accountName] = {
+            herbs = herbValue,
+            ore = oreValue,
+            updated_at = updateTime
+        }
+        
+        -- 构建TSV内容
+        local tsvContent = "账号\t草药数量\t矿石数量\t更新时间\n"
+        
+        -- 按账号名排序（可选）
+        local sortedAccounts = {}
+        for account, _ in pairs(accountData) do
+            table.insert(sortedAccounts, account)
+        end
+        table.sort(sortedAccounts)
+        
+        -- 写入数据
+        for _, account in ipairs(sortedAccounts) do
+            local data = accountData[account]
+            tsvContent = tsvContent .. string.format("%s\t%d\t%d\t%s\n", 
+                account, 
+                data.herbs, 
+                data.ore, 
+                data.updated_at
+            )
+        end
+        
+        -- 保存到文件
+        writefile(DATA_FILE_PATH, tsvContent)
+    end)
+end
+
+-- 数据保存循环（在收菜完成后启动）
+local dataSaveStarted = false
+local function startDataSaveLoop()
+    if dataSaveStarted then
+        return
+    end
+    dataSaveStarted = true
+    
+    task.spawn(function()
+        while true do
+            saveDataToLocal()
+            task.wait(DATA_SAVE_INTERVAL)
+        end
+    end)
 end
 
 -- ============================================
@@ -488,6 +593,8 @@ local function checkAllTasksFinished()
         hasShownCompletionNotice = true
         showTopRightNotice('收菜完成！', 99999)
         print('[系统] 所有任务完成，显示完成通知')
+        -- 收菜完成后开始每3秒保存数据
+        startDataSaveLoop()
     end
 end
 
