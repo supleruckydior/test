@@ -73,7 +73,6 @@ if not GUI then
     return
 end
 
-print('[初始化] 游戏加载完成，GUI已就绪')
 
 -- ============================================
 -- 工具函数
@@ -127,7 +126,6 @@ end
 -- ============================================
 -- 加载外部脚本（带错误处理）
 -- ============================================
-print('[初始化] 开始加载外部脚本...')
 
 local library
 local success, err = pcall(function()
@@ -179,7 +177,6 @@ if not success then
     warn('[初始化警告] 加载JsonHandler失败:', err)
 end
 
-print('[初始化] 外部脚本加载完成')
 
 -- ============================================
 -- Anti-AFK 设置
@@ -194,7 +191,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.7', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.8', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -226,7 +223,6 @@ local features4 = window:AddTab('炼丹')
 -- ============================================
 -- 游戏数据初始化（带错误处理）
 -- ============================================
-print('[初始化] 等待游戏数据加载...')
 
 local RespawPointnum
 if RespawPoint then
@@ -263,7 +259,6 @@ if not success then
     warn('[初始化警告] 无法加载玩家值和特权，某些功能可能无法使用')
 end
 
-print('[初始化] 游戏数据加载完成')
 
 -- ============================================
 -- FPS 锁定
@@ -285,7 +280,7 @@ print("🔒 持续FPS锁定为10（每0.5秒重置）")
 local function getHerbValue()
     local herbText = '0'
     pcall(function()
-        herbText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
+        herbText = game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
     end)
     return parseNumber(herbText, 0)
 end
@@ -293,7 +288,7 @@ end
 local function getOREValue()
     local OREText = '0'
     pcall(function()
-        OREText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\231\159\191\231\159\179']['\229\128\188'].Text
+        OREText = game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\231\159\191\231\159\179']['\229\128\188'].Text
     end)
     return parseNumber(OREText, 0)
 end
@@ -301,7 +296,7 @@ end
 local function getDiamond()
     local diamondText = '0'
     pcall(function()
-        diamondText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
+        diamondText = game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
     end)
     return parseNumber(diamondText, 0)
 end
@@ -309,7 +304,7 @@ end
 local function getGuildCoin()
     local guildCoinText = '0'
     pcall(function()
-        guildCoinText = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text
+        guildCoinText = game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text
     end)
     return parseNumber(guildCoinText, 0)
 end
@@ -317,7 +312,7 @@ end
 local function getRefreshCost()
     local refreshCostText = '0'
     pcall(function()
-        refreshCostText = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
+        refreshCostText = game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
     end)
     return parseNumber(refreshCostText, 0)
 end
@@ -1063,24 +1058,25 @@ local function herbLoop()
             task.wait(1)
         else
             if not herbController.started then
-                print('[系统] 开始自动购买草药')
                 herbController.started = true
             end
 
             local money = getDiamond()
             local guilditemlist = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
 
+
             local function tryBuy(slotIndex)
                 local item = guilditemlist:GetChildren()[slotIndex]
                 if item and item:FindFirstChild('\230\140\137\233\146\174') then
                     local button = item['\230\140\137\233\146\174']
-                    if button['\229\186\147\229\173\152'].Text == '1 Left' and button['\229\144\141\231\167\176'].Text == 'Herb' then
+                    local stockText = button['\229\186\147\229\173\152'].Text
+                    local nameText = button['\229\144\141\231\167\176'].Text
+                    
+                    if stockText == '1 Left' and nameText == 'Herb' then
                         if money >= price then
                             ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\133\145\230\141\162']:FireServer(slotIndex - 2)
                             money = money - price
                             return true
-                        else
-                            warn('[草药购买] 货币不足，跳过槽位 ' .. slotIndex)
                         end
                     end
                 end
@@ -1123,7 +1119,6 @@ local function herbLoop()
                 end)
                 task.wait(1.5)
             else
-                print('[草药购买] 刷新条件不满足，结束购买任务')
                 if not herbBuyFinished then
                     herbBuyFinished = true
                     checkAllTasksFinished()
@@ -1140,9 +1135,6 @@ local Autoguildshop = features4:AddSwitch('自动购买草药', function(state)
     herbController.highCostMode = false
     if state then
         task.spawn(herbLoop)
-        print('[系统] 自动购买已启动')
-    else
-        print('[系统] 自动购买已停止')
     end
 end)
 
