@@ -1,9 +1,13 @@
 -- ============================================
--- 游戏初始化检查
+-- 游戏初始化检查（增强版）
 -- ============================================
+-- 等待游戏完全加载
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
+
+-- 额外等待确保游戏完全初始化
+task.wait(1)
 
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
@@ -25,14 +29,51 @@ local CoreGui = game:GetService('CoreGui')
 local VirtualUser = game:GetService('VirtualUser')
 
 -- ============================================
--- 玩家和GUI引用
+-- 玩家和GUI引用（增强等待机制）
 -- ============================================
+-- 等待玩家存在
 local player = Players.LocalPlayer
-while not player:FindFirstChild('PlayerGui') do
-    task.wait(1)
+if not player then
+    player = Players.PlayerAdded:Wait()
 end
+
+-- 等待玩家角色加载（如果存在）
+if player.Character then
+    player.Character:WaitForChild('HumanoidRootPart', 10)
+end
+
+-- 等待PlayerGui存在
+local maxWaitTime = 30 -- 最多等待30秒
+local startTime = os.clock()
+while not player:FindFirstChild('PlayerGui') do
+    if os.clock() - startTime > maxWaitTime then
+        warn('[初始化] 等待PlayerGui超时，继续执行...')
+        break
+    end
+    task.wait(0.5)
+end
+
 local playerGui = player.PlayerGui
-local GUI = playerGui:WaitForChild('GUI')
+
+-- 等待GUI存在，使用超时机制
+local GUI
+local success, result = pcall(function()
+    GUI = playerGui:WaitForChild('GUI', 10)
+end)
+
+if not success or not GUI then
+    warn('[初始化] 等待GUI超时，尝试重新等待...')
+    -- 再次尝试等待
+    task.wait(2)
+    GUI = playerGui:WaitForChild('GUI', 20)
+end
+
+if not GUI then
+    error('[初始化错误] 无法找到GUI，脚本无法继续执行')
+    return
+end
+
+print('[初始化] 游戏加载完成，GUI已就绪')
 
 -- ============================================
 -- 工具函数
@@ -84,32 +125,61 @@ local function formatNumber(num)
 end
 
 -- ============================================
--- 加载外部脚本
+-- 加载外部脚本（带错误处理）
 -- ============================================
-local library = loadstring(
-    game:HttpGet(
-        'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
-        true
-    )
-)()
+print('[初始化] 开始加载外部脚本...')
 
-local RespawPoint = loadstring(
-    game:HttpGet(
-        'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
-    )
-)()
+local library
+local success, err = pcall(function()
+    library = loadstring(
+        game:HttpGet(
+            'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
+            true
+        )
+    )()
+end)
+if not success then
+    warn('[初始化错误] 加载library失败:', err)
+    return
+end
 
-loadstring(
-    game:HttpGet(
-        'https://github.com/supleruckydior/test/raw/refs/heads/main/respawn.json'
-    )
-)()
+local RespawPoint
+success, err = pcall(function()
+    RespawPoint = loadstring(
+        game:HttpGet(
+            'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
+        )
+    )()
+end)
+if not success then
+    warn('[初始化错误] 加载RespawPoint失败:', err)
+    return
+end
 
-local JsonHandler = loadstring(
-    game:HttpGet(
-        'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/JSON%E6%A8%A1%E7%B5%84.lua'
-    )
-)()
+success, err = pcall(function()
+    loadstring(
+        game:HttpGet(
+            'https://github.com/supleruckydior/test/raw/refs/heads/main/respawn.json'
+        )
+    )()
+end)
+if not success then
+    warn('[初始化警告] 加载respawn.json失败:', err)
+end
+
+local JsonHandler
+success, err = pcall(function()
+    JsonHandler = loadstring(
+        game:HttpGet(
+            'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/JSON%E6%A8%A1%E7%B5%84.lua'
+        )
+    )()
+end)
+if not success then
+    warn('[初始化警告] 加载JsonHandler失败:', err)
+end
+
+print('[初始化] 外部脚本加载完成')
 
 -- ============================================
 -- Anti-AFK 设置
@@ -124,7 +194,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.6', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.7', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -154,16 +224,46 @@ local features1 = window:AddTab('杂项')
 local features4 = window:AddTab('炼丹')
 
 -- ============================================
--- 游戏数据初始化
+-- 游戏数据初始化（带错误处理）
 -- ============================================
-local RespawPointnum = RespawPoint:match('%d+')
-print('重生點編號：' .. RespawPointnum)
+print('[初始化] 等待游戏数据加载...')
 
-local reworld = Workspace:WaitForChild('主場景' .. RespawPointnum):WaitForChild('重生点')
-local TPX, TPY, TPZ = reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
+local RespawPointnum
+if RespawPoint then
+    RespawPointnum = RespawPoint:match('%d+')
+    if RespawPointnum then
+        print('重生點編號：' .. RespawPointnum)
+    else
+        warn('[初始化警告] 无法获取重生点编号')
+    end
+else
+    warn('[初始化警告] RespawPoint未加载')
+end
 
-local values = player:WaitForChild('值')
-local privileges = values:WaitForChild('特权')
+-- 等待关键对象加载
+local reworld
+local TPX, TPY, TPZ = 0, 0, 0
+if RespawPointnum then
+    local success, result = pcall(function()
+        reworld = Workspace:WaitForChild('主場景' .. RespawPointnum, 10):WaitForChild('重生点', 10)
+        TPX, TPY, TPZ = reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
+    end)
+    if not success then
+        warn('[初始化警告] 无法找到重生点，使用默认值')
+    end
+end
+
+local values
+local privileges
+local success, result = pcall(function()
+    values = player:WaitForChild('值', 15)
+    privileges = values:WaitForChild('特权', 10)
+end)
+if not success then
+    warn('[初始化警告] 无法加载玩家值和特权，某些功能可能无法使用')
+end
+
+print('[初始化] 游戏数据加载完成')
 
 -- ============================================
 -- FPS 锁定
@@ -198,24 +298,28 @@ local function getOREValue()
     return parseNumber(OREText, 0)
 end
 
-    local function getDiamond()
-        return parseNumber(
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
+local function getDiamond()
+    local diamondText = '0'
+    pcall(function()
+        diamondText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
+    end)
+    return parseNumber(diamondText, 0)
+end
 
 local function getGuildCoin()
-    return parseNumber(
-        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text,
-        0
-    )
+    local guildCoinText = '0'
+    pcall(function()
+        guildCoinText = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text
+    end)
+    return parseNumber(guildCoinText, 0)
 end
 
 local function getRefreshCost()
-    return parseNumber(
-        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text,
-        0
-    )
+    local refreshCostText = '0'
+    pcall(function()
+        refreshCostText = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
+    end)
+    return parseNumber(refreshCostText, 0)
 end
 
 -- ============================================
@@ -666,8 +770,14 @@ local function setupFeatures1Tab(features1)
         '解鎖自動煉製',
         function(bool)
             local Refiningbool = bool
-            privileges:WaitForChild('超级炼制').Value = false
-            privileges:WaitForChild('自动炼制').Value = Refiningbool
+            if privileges then
+                pcall(function()
+                    privileges:WaitForChild('超级炼制', 5).Value = false
+                    privileges:WaitForChild('自动炼制', 5).Value = Refiningbool
+                end)
+            else
+                warn('[警告] 特权对象未加载，无法设置自动炼制')
+            end
         end
     )
     Refining:Set(true)
