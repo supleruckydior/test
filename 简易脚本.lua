@@ -1,3 +1,6 @@
+-- ============================================
+-- 游戏初始化检查
+-- ============================================
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -5,59 +8,136 @@ end
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
 
-if currentGameId == TARGET_GAME_ID then
-    print('检测到目标游戏，正在执行脚本...')
+if currentGameId ~= TARGET_GAME_ID then
+    warn('当前游戏不是目标游戏，脚本未运行。')
+    return
+end
 
-    -- Wait for player and player GUI to exist
-    local player = game:GetService('Players').LocalPlayer
-    while not player:FindFirstChild('PlayerGui') do
-        task.wait(1)
+print('检测到目标游戏，正在执行脚本...')
+
+-- ============================================
+-- 服务引用（统一管理，避免重复获取）
+-- ============================================
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local Players = game:GetService('Players')
+local Workspace = game:GetService('Workspace')
+local CoreGui = game:GetService('CoreGui')
+local VirtualUser = game:GetService('VirtualUser')
+
+-- ============================================
+-- 玩家和GUI引用
+-- ============================================
+local player = Players.LocalPlayer
+while not player:FindFirstChild('PlayerGui') do
+    task.wait(1)
+end
+local playerGui = player.PlayerGui
+local GUI = playerGui:WaitForChild('GUI')
+
+-- ============================================
+-- 工具函数
+-- ============================================
+-- 深度等待子对象
+local function deepWait(parent, path, eachTimeout)
+    local obj = parent
+    for _, name in ipairs(path) do
+        obj = obj and obj:WaitForChild(name, eachTimeout or 5)
+        if not obj then
+            return nil
+        end
     end
-    local playerGui = player.PlayerGui
+    return obj
+end
 
-    local library = loadstring(
-        game:HttpGet(
-            'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
-            true
-        )
-    )()
-    local RespawPoint = loadstring(
-        game:HttpGet(
-            'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
-        )
-    )()
-    loadstring(
-        game:HttpGet(
-            'https://github.com/supleruckydior/test/raw/refs/heads/main/respawn.json'
-        )
-    )()
-    local JsonHandler = loadstring(
-        game:HttpGet(
-            'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/JSON%E6%A8%A1%E7%B5%84.lua'
-        )
-    )()
-    local AntiAFK = game:GetService('VirtualUser')
-    game.Players.LocalPlayer.Idled:Connect(function()
-        AntiAFK:CaptureController()
-        AntiAFK:ClickButton2(Vector2.new())
-        wait(2)
-    end)
+-- 统一的数值解析函数（替代重复的解析逻辑）
+local function parseNumber(text, default)
+    if not text then return default or 0 end
+    
+    local str = tostring(text):lower():gsub('%s+', ''):gsub(',', '')
+    local numStr = str:gsub('[^%d%.]', '')
+    
+    -- 检查多个小数点
+    local dotCount = select(2, numStr:gsub('%.', ''))
+    if dotCount > 1 then
+        warn('[数值异常] 非法格式:', text)
+        return default or 0
+    end
+    
+    local multiplier = 1
+    if str:find('k') then
+        multiplier = 1000
+    elseif str:find('m') then
+        multiplier = 1000000
+    end
+    
+    return (tonumber(numStr) or 0) * multiplier
+end
+
+-- 数字格式化函数
+local function formatNumber(num)
+    if not num then return "N/A" end
+    if num >= 1000 then
+        return string.format("%.1fK", num / 1000):gsub("%.0K", "K")
+    else
+        return tostring(math.floor(num))
+    end
+end
+
+-- ============================================
+-- 加载外部脚本
+-- ============================================
+local library = loadstring(
+    game:HttpGet(
+        'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
+        true
+    )
+)()
+
+local RespawPoint = loadstring(
+    game:HttpGet(
+        'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
+    )
+)()
+
+loadstring(
+    game:HttpGet(
+        'https://github.com/supleruckydior/test/raw/refs/heads/main/respawn.json'
+    )
+)()
+
+local JsonHandler = loadstring(
+    game:HttpGet(
+        'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/JSON%E6%A8%A1%E7%B5%84.lua'
+    )
+)()
+
+-- ============================================
+-- Anti-AFK 设置
+-- ============================================
+local AntiAFK = VirtualUser
+player.Idled:Connect(function()
+    AntiAFK:CaptureController()
+    AntiAFK:ClickButton2(Vector2.new())
+    task.wait(2)
+end)
+
+-- ============================================
+-- 创建主窗口
+-- ============================================
 local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.5', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
 })
 
--- 在创建窗口后立即设置低层级
+-- 设置窗口低层级
 if window then
-    -- 获取主GUI对象并设置低ZIndex
     local mainGui = window.gui or window.Instance
     if mainGui then
         mainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        -- 遍历所有子元素设置较低的ZIndex
         local function setLowZIndex(obj)
             if obj:IsA("GuiObject") then
-                obj.ZIndex = 10  -- 设置较低的层级
+                obj.ZIndex = 10
             end
             for _, child in pairs(obj:GetChildren()) do
                 setLowZIndex(child)
@@ -66,81 +146,83 @@ if window then
         setLowZIndex(mainGui)
     end
 end
-    local features1 = window:AddTab('杂项')
-    local features4 = window:AddTab('炼丹')
-    local ws = game:GetService('Workspace')
-    local Players = game.Players
-    local localPlayer = game.Players.LocalPlayer
-    local playerGui = player.PlayerGui
-    local RespawPointnum = RespawPoint:match('%d+')
-    print('重生點編號：' .. RespawPointnum)
-    local reworld = ws:waitForChild('主場景' .. RespawPointnum)
-        :waitForChild('重生点')
-    local TPX, TPY, TPZ =
-        reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
-    local Restart = false
-    local finishworldnum
-    local values = player:WaitForChild('值')
-    local privileges = values:WaitForChild('特权')
-    local gowordlevels = 74
-    local isDetectionEnabled = true
-    local timescheck = 0
-    local hasPrintedNoPlayer = false
-    local showone = false
-    local savemodetime = 0
-    local savemodetime2 = 0
-    local savemodebutton
-    local REPLICATED_STORAGE = game:GetService('ReplicatedStorage')
-    local ReplicatedStorage = game:GetService('ReplicatedStorage')
-    local Players = game:GetService('Players')
-    local player = Players.LocalPlayer
-    local GUI = player.PlayerGui:WaitForChild('GUI')
-    local function deepWait(parent, path, eachTimeout)
-        local obj = parent
-        for _, name in ipairs(path) do
-            obj = obj and obj:WaitForChild(name, eachTimeout or 5)
-            if not obj then
-                return nil
-            end
-        end
-        return obj
-    end
-    -- 持续监控并重置FPS
+
+-- ============================================
+-- 创建标签页
+-- ============================================
+local features1 = window:AddTab('杂项')
+local features4 = window:AddTab('炼丹')
+
+-- ============================================
+-- 游戏数据初始化
+-- ============================================
+local RespawPointnum = RespawPoint:match('%d+')
+print('重生點編號：' .. RespawPointnum)
+
+local reworld = Workspace:WaitForChild('主場景' .. RespawPointnum):WaitForChild('重生点')
+local TPX, TPY, TPZ = reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
+
+local values = player:WaitForChild('值')
+local privileges = values:WaitForChild('特权')
+
+-- ============================================
+-- FPS 锁定
+-- ============================================
 local function PersistentFPSLock()
     local targetFPS = 10
-    
     while true do
         setfpscap(targetFPS)
-        wait(0.5)  -- 每0.5秒重置一次
+        task.wait(0.5)
     end
 end
 
-spawn(PersistentFPSLock)
+task.spawn(PersistentFPSLock)
 print("🔒 持续FPS锁定为10（每0.5秒重置）")
-    -- 右上角提示（简单版）
-    local function getHerbValue()
-        local herbText = '0'
-        pcall(function()
-            herbText =
-                GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
-        end)
 
-        local cleanedHerbText =
-            tostring(herbText):lower():gsub('%s+', ''):gsub(',', '')
-        if cleanedHerbText:find('k') then
-            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000
-        elseif cleanedHerbText:find('m') then
-            local numStr = cleanedHerbText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000000
-        else
-            return tonumber(cleanedHerbText) or 0
-        end
+-- ============================================
+-- 数值获取函数（统一使用 parseNumber）
+-- ============================================
+local function getHerbValue()
+    local herbText = '0'
+    pcall(function()
+        herbText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
+    end)
+    return parseNumber(herbText, 0)
+end
+
+local function getOREValue()
+    local OREText = '0'
+    pcall(function()
+        OREText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\231\159\191\231\159\179']['\229\128\188'].Text
+    end)
+    return parseNumber(OREText, 0)
+end
+
+    local function getDiamond()
+        return parseNumber(
+            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
+        )
     end
 
+local function getGuildCoin()
+    return parseNumber(
+        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text,
+        0
+    )
+end
+
+local function getRefreshCost()
+    return parseNumber(
+        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text,
+        0
+    )
+end
+
+-- ============================================
+-- 通知系统
+-- ============================================
 local function showTopRightNotice(text, lifetime)
-    local coreGui = game:GetService("CoreGui")
-    local imgui = coreGui:FindFirstChild("imgui")
+    local imgui = CoreGui:FindFirstChild("imgui")
     
     -- 保存原始可见状态
     local originalVisibility = {}
@@ -153,21 +235,22 @@ local function showTopRightNotice(text, lifetime)
         end
     end
     
-    -- 创建黑幕（在CoreGui中）
-    local existingGui = coreGui:FindFirstChild('FarmNoticeGui')
+    -- 清理旧GUI
+    local existingGui = CoreGui:FindFirstChild('FarmNoticeGui')
     if existingGui then
         existingGui:Destroy()
     end
     
+    -- 创建新GUI
     local gui = Instance.new('ScreenGui')
     gui.Name = 'FarmNoticeGui'
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
     gui.DisplayOrder = 99999
     gui.IgnoreGuiInset = true
-    gui.Parent = coreGui
+    gui.Parent = CoreGui
 
-    -- 创建全屏黑幕背景
+    -- 背景
     local background = Instance.new('Frame')
     background.Name = 'Background'
     background.Size = UDim2.new(1, 0, 1, 0)
@@ -178,7 +261,7 @@ local function showTopRightNotice(text, lifetime)
     background.ZIndex = 99999
     background.Parent = gui
 
-    -- 创建中央容器
+    -- 容器
     local container = Instance.new('Frame')
     container.Name = 'Container'
     container.Size = UDim2.new(0.4, 0, 0.4, 0)
@@ -189,7 +272,7 @@ local function showTopRightNotice(text, lifetime)
     container.ZIndex = 100000
     container.Parent = gui
 
-    -- 创建标题文字
+    -- 标题
     local title = Instance.new('TextLabel')
     title.Name = 'Title'
     title.Size = UDim2.new(1, 0, 0.3, 0)
@@ -204,13 +287,13 @@ local function showTopRightNotice(text, lifetime)
     title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     title.Parent = container
 
-    -- 创建草药数量显示
+    -- 草药数量显示
     local herbLabel = Instance.new('TextLabel')
     herbLabel.Name = 'HerbLabel'
     herbLabel.Size = UDim2.new(1, 0, 0.2, 0)
     herbLabel.Position = UDim2.new(0, 0, 0.4, 0)
     herbLabel.BackgroundTransparency = 1
-    herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- 初始黄色
+    herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
     herbLabel.TextScaled = true
     herbLabel.Font = Enum.Font.SourceSansBold
     herbLabel.ZIndex = 100001
@@ -219,43 +302,24 @@ local function showTopRightNotice(text, lifetime)
     herbLabel.Text = "获取中..."
     herbLabel.Parent = container
 
-    -- 数字格式化函数（只保留K）
-    local function formatNumber(num)
-        if not num then return "N/A" end
-        if num >= 1000 then
-            return string.format("%.1fK", num / 1000):gsub("%.0K", "K")
-        else
-            return tostring(math.floor(num))
-        end
-    end
-
-    -- 安全获取草药数量
-    local function safeGetHerbValue()
-        local success, result = pcall(function()
-            return getHerbValue()
-        end)
-        return success and result or 0
-    end
-
-    -- 标记是否已进入“炼药完成”状态
-    local isFinished = false
-
     -- 更新草药数量
+    local isFinished = false
     local function updateHerbCount()
-        if isFinished then return end -- 一旦完成，不再变化
-        local currentHerbs = safeGetHerbValue()
+        if isFinished then return end
+        local success, currentHerbs = pcall(getHerbValue)
+        currentHerbs = success and currentHerbs or 0
         
         if currentHerbs < 5000 then
             isFinished = true
             herbLabel.Text = "炼药完成！！！"
-            herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- 绿色
+            herbLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
         else
             herbLabel.Text = "当前草药: " .. formatNumber(currentHerbs)
-            herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- 黄色
+            herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
         end
     end
 
-    -- 创建更新循环（每秒更新一次）
+    -- 更新循环
     local updating = true
     task.spawn(function()
         while updating and gui and gui.Parent do
@@ -264,7 +328,7 @@ local function showTopRightNotice(text, lifetime)
         end
     end)
 
-    -- 创建按钮容器
+    -- 按钮容器
     local buttonContainer = Instance.new('Frame')
     buttonContainer.Name = 'ButtonContainer'
     buttonContainer.Size = UDim2.new(0.8, 0, 0.2, 0)
@@ -304,440 +368,418 @@ local function showTopRightNotice(text, lifetime)
 
     closeButton.MouseButton1Click:Connect(removeGUI)
 
-    -- 自动关闭（如果有 lifetime）
     if lifetime and lifetime > 0 then
         task.delay(lifetime, removeGUI)
     end
 
-    -- 初次显示立即更新一次
     updateHerbCount()
 end
 
-
-    local donationFinished = false -- 初始为 false
-    local herbBuyFinished = false -- 初始为 false
-    local herbCollectFinished = false -- 初始为 false
-    local farmReady = false -- 初始为 false
-local hasShownCompletionNotice = false  -- 添加这个变量来跟踪是否已经显示过通知
+-- ============================================
+-- 任务完成状态管理
+-- ============================================
+local donationFinished = false
+local herbBuyFinished = false
+local herbCollectFinished = false
+local farmReady = false
+local hasShownCompletionNotice = false
 
 local function checkAllTasksFinished()
-    if
-        donationFinished
-        and herbBuyFinished
-        and herbCollectFinished
-        and farmReady
-        and not hasShownCompletionNotice  -- 添加这个检查
-    then
-        hasShownCompletionNotice = true  -- 标记为已显示
+    if donationFinished and herbBuyFinished and herbCollectFinished and farmReady and not hasShownCompletionNotice then
+        hasShownCompletionNotice = true
         showTopRightNotice('收菜完成！', 99999)
         print('[系统] 所有任务完成，显示完成通知')
     end
 end
-    local function setupFeatures1Tab(features1)
-        local timeLabel =
-            features1:AddLabel('距離下自動獲取還有 0 秒')
-        local playerGui = game.Players.LocalPlayer.PlayerGui
-        local Online_Gift = playerGui.GUI
-            :WaitForChild('二级界面')
-            :WaitForChild('节日活动商店')
-            :WaitForChild('背景')
-            :WaitForChild('右侧界面')
-            :WaitForChild('在线奖励')
-            :WaitForChild('列表')
-        local Gife_check = false
-        local countdownList = {}
-        local hasExecutedToday = false
-        local lastExecutedDay = os.date('%d')
 
-        local function convertToSeconds(timeText)
-            local minutes, seconds = string.match(timeText, '(%d+):(%d+)')
-            if minutes and seconds then
-                return (tonumber(minutes) * 60) + tonumber(seconds)
-            end
-            return nil
+-- ============================================
+-- 杂项标签页设置
+-- ============================================
+local function setupFeatures1Tab(features1)
+    local timeLabel = features1:AddLabel('距離下自動獲取還有 0 秒')
+    local Online_Gift = GUI
+        :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+        :WaitForChild('\232\138\130\230\151\165\230\180\187\229\138\168\229\149\134\229\186\151')
+        :WaitForChild('\232\131\140\230\153\175')
+        :WaitForChild('\229\143\179\228\190\167\231\149\140\233\157\162')
+        :WaitForChild('\229\156\168\231\186\191\229\165\150\229\138\177')
+        :WaitForChild('\229\136\151\232\161\168')
+    
+    local Gife_check = false
+    local countdownList = {}
+    local hasExecutedToday = false
+    local lastExecutedDay = os.date('%d')
+
+    local function convertToSeconds(timeText)
+        local minutes, seconds = string.match(timeText, '(%d+):(%d+)')
+        if minutes and seconds then
+            return (tonumber(minutes) * 60) + tonumber(seconds)
         end
-        local function GetOnlineGiftCountdown()
-            hasExecutedToday = true
-            local minTime = math.huge
-            for i = 1, 6 do
-                local rewardName = string.format('在线奖励%02d', i)
-                local rewardFolder = Online_Gift:FindFirstChild(rewardName)
-                if rewardFolder then
-                    local button = rewardFolder:FindFirstChild('按钮')
-                    local countdown = button
-                        and button:FindFirstChild('倒计时')
-                    if countdown then
-                        local countdownText = countdown.Text
-                        countdownList[rewardName] = countdownText
-                        if string.match(countdownText, 'CLAIMED!') then
-                        elseif string.match(countdownText, 'DONE') then
-                            minTime = math.min(minTime, 0)
-                        elseif string.match(countdownText, '%d+:%d+') then
-                            local totalSeconds = convertToSeconds(countdownText)
-                            if totalSeconds then
-                                minTime = math.min(minTime, totalSeconds)
-                            end
+        return nil
+    end
+
+    local function GetOnlineGiftCountdown()
+        hasExecutedToday = true
+        local minTime = math.huge
+        for i = 1, 6 do
+            local rewardName = string.format('在线奖励%02d', i)
+            local rewardFolder = Online_Gift:FindFirstChild(rewardName)
+            if rewardFolder then
+                local button = rewardFolder:FindFirstChild('按钮')
+                local countdown = button and button:FindFirstChild('倒计时')
+                if countdown then
+                    local countdownText = countdown.Text
+                    countdownList[rewardName] = countdownText
+                    if string.match(countdownText, 'DONE') then
+                        minTime = math.min(minTime, 0)
+                    elseif string.match(countdownText, '%d+:%d+') then
+                        local totalSeconds = convertToSeconds(countdownText)
+                        if totalSeconds then
+                            minTime = math.min(minTime, totalSeconds)
                         end
                     end
                 end
             end
-            return ((minTime < math.huge) and minTime) or nil
         end
-        local minCountdown = GetOnlineGiftCountdown()
-        local nowminCountdown = minCountdown
-        local function Online_Gift_start()
-            local newMinCountdown = GetOnlineGiftCountdown()
-            if newMinCountdown and (newMinCountdown == minCountdown) then
-                nowminCountdown = nowminCountdown - 1
-            else
-                minCountdown = newMinCountdown
-                nowminCountdown = minCountdown
-            end
-            if nowminCountdown and (nowminCountdown > 0) then
-                timeLabel.Text = string.format(
-                    '距離下自動獲取還有 %d 秒',
-                    nowminCountdown
-                )
-            elseif nowminCountdown and (nowminCountdown <= 0) then
-                timeLabel.Text = '倒計時結束，準備獲取獎勳'
-                for i = 1, 6 do
-                    local args = { [1] = i }
-                    game:GetService('ReplicatedStorage')
-                        :FindFirstChild('\228\186\139\228\187\182')
-                        :FindFirstChild('\229\133\172\231\148\168')
-                        :FindFirstChild(
-                            '\232\138\130\230\151\165\230\180\187\229\138\168'
-                        )
-                        :FindFirstChild(
-                            '\233\162\134\229\143\150\229\165\150\229\138\177'
-                        )
-                        :FireServer(unpack(args))
-                end
-            else
-                timeLabel.Text = '已全部領取'
-                Gife_check = false
-            end
-        end
-        local function Online_Gift_check()
-            while Gife_check do
-                Online_Gift_start()
-                wait(1)
-            end
-        end
-        local function ClaimOnlineRewards()
-            Gife_check = true
-            spawn(Online_Gift_check)
-        end
-        -- 创建按钮时引用函数
-        features1:AddButton('自動領取在線獎勳', ClaimOnlineRewards)
-        -- 启动时自动执行
-        task.defer(function()
-            ClaimOnlineRewards()
-        end)
-        local function CheckAllRewardsCompleted()
-            local allCompleted = true
-            GetOnlineGiftCountdown()
-            for i = 1, 6 do
-                local rewardName = string.format('在线奖励%02d', i)
-                local status = countdownList[rewardName]
-                if not status or not string.match(status, 'DONE') then
-                    allCompleted = false
-                    break
-                end
-            end
-            if allCompleted then
-                print('所有在線獎勳已完成！')
-                Gife_check = false
-            end
-        end
-        spawn(function()
-            while Gife_check and not hasExecutedToday do
-                CheckAllRewardsCompleted()
-                wait(60)
-            end
-        end)
-        spawn(function()
-            while true do
-                local currentUTCHour = tonumber(os.date('!*t').hour)
-                local currentUTCDate = os.date('!*t').day
-                local currentLocalHour = currentUTCHour + 8
-                if currentLocalHour >= 24 then
-                    currentLocalHour = currentLocalHour - 24
-                end
-                local currentLocalDate = currentUTCDate
-                if currentLocalHour == 0 then
-                    if lastExecutedDay ~= currentLocalDate then
-                        hasExecutedToday = false
-                        print('UTC+8 00:00，自動領取在線獎勳')
-                        Gife_check = true
-                        lastExecutedDay = currentLocalDate
-                    end
-                end
-                wait(60)
-            end
-        end)
-local Autocollmission = features1:AddSwitch(
-    '自動任務領取(包括GamePass任務、獎勵)',
-    function(bool)
-        Autocollmissionbool = bool
-        if Autocollmissionbool then
-            -- 主任務循環（每60秒執行一次）
-            spawn(function()
-                while Autocollmissionbool do
-                    mainmissionchack()
-                    everydaymission()
-                    gamepassmission()
-                    gamepassgiftget()
-                    potionfull()
-                    offlinereward()
-                    wait(20)
-                end
-            end)
+        return (minTime < math.huge) and minTime or nil
+    end
 
-            -- dailyspin 獨立循環（每500秒執行一次）
-            spawn(function()
-                while Autocollmissionbool do
-                    dailyspin()
-                    everydaygem()
-                    wait(500)
-                end
-            end)
+    local minCountdown = GetOnlineGiftCountdown()
+    local nowminCountdown = minCountdown
+
+    local function Online_Gift_start()
+        local newMinCountdown = GetOnlineGiftCountdown()
+        if newMinCountdown and (newMinCountdown == minCountdown) then
+            nowminCountdown = nowminCountdown - 1
+        else
+            minCountdown = newMinCountdown
+            nowminCountdown = minCountdown
+        end
+        
+        if nowminCountdown and (nowminCountdown > 0) then
+            timeLabel.Text = string.format('距離下自動獲取還有 %d 秒', nowminCountdown)
+        elseif nowminCountdown and (nowminCountdown <= 0) then
+            timeLabel.Text = '倒計時結束，準備獲取獎勳'
+            local event = ReplicatedStorage
+                :FindFirstChild('\228\186\139\228\187\182')
+                :FindFirstChild('\229\133\172\231\148\168')
+                :FindFirstChild('\232\138\130\230\151\165\230\180\187\229\138\168')
+                :FindFirstChild('\233\162\134\229\143\150\229\165\150\229\138\177')
+            
+            for i = 1, 6 do
+                event:FireServer(i)
+            end
+        else
+            timeLabel.Text = '已全部領取'
+            Gife_check = false
         end
     end
-)
-        Autocollmission:Set(true)
-        local invest = features1:AddSwitch('自動執行投資', function(bool)
-            investbool = bool
-            if investbool then
-                spawn(function()
-                    while investbool do
-                        for i = 1, 3 do
-                            local args = { i }
-                            game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\149\134\229\186\151']['\233\147\182\232\161\140']['\233\162\134\229\143\150\231\144\134\232\180\162']
-                                :FireServer(unpack(args))
-                        end
-                        wait(5)
-                        for i = 1, 3 do
-                            local args = { i }
-                            game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\149\134\229\186\151']['\233\147\182\232\161\140']['\232\180\173\228\185\176\231\144\134\232\180\162']
-                                :FireServer(unpack(args))
-                        end
-                        wait(600)
+
+    local function Online_Gift_check()
+        while Gife_check do
+            Online_Gift_start()
+            task.wait(1)
+        end
+    end
+
+    local function ClaimOnlineRewards()
+        Gife_check = true
+        task.spawn(Online_Gift_check)
+    end
+
+    features1:AddButton('自動領取在線獎勳', ClaimOnlineRewards)
+    task.defer(ClaimOnlineRewards)
+
+    local function CheckAllRewardsCompleted()
+        local allCompleted = true
+        GetOnlineGiftCountdown()
+        for i = 1, 6 do
+            local rewardName = string.format('在线奖励%02d', i)
+            local status = countdownList[rewardName]
+            if not status or not string.match(status, 'DONE') then
+                allCompleted = false
+                break
+            end
+        end
+        if allCompleted then
+            print('所有在線獎勳已完成！')
+            Gife_check = false
+        end
+    end
+
+    task.spawn(function()
+        while Gife_check and not hasExecutedToday do
+            CheckAllRewardsCompleted()
+            task.wait(60)
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            local currentUTCHour = tonumber(os.date('!*t').hour)
+            local currentUTCDate = os.date('!*t').day
+            local currentLocalHour = currentUTCHour + 8
+            if currentLocalHour >= 24 then
+                currentLocalHour = currentLocalHour - 24
+            end
+            local currentLocalDate = currentUTCDate
+            if currentLocalHour == 0 then
+                if lastExecutedDay ~= currentLocalDate then
+                    hasExecutedToday = false
+                    print('UTC+8 00:00，自動領取在線獎勳')
+                    Gife_check = true
+                    lastExecutedDay = currentLocalDate
+                end
+            end
+            task.wait(60)
+        end
+    end)
+
+    -- 自动任务领取
+    local Autocollmission = features1:AddSwitch(
+        '自動任務領取(包括GamePass任務、獎勵)',
+        function(bool)
+            Autocollmissionbool = bool
+            if Autocollmissionbool then
+                task.spawn(function()
+                    while Autocollmissionbool do
+                        mainmissionchack()
+                        everydaymission()
+                        gamepassmission()
+                        gamepassgiftget()
+                        potionfull()
+                        offlinereward()
+                        task.wait(20)
+                    end
+                end)
+
+                task.spawn(function()
+                    while Autocollmissionbool do
+                        dailyspin()
+                        everydaygem()
+                        task.wait(500)
                     end
                 end)
             end
-        end)
-        invest:Set(true)
-        local function openFarm5()
-            pcall(function()
-                game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\134\156\231\148\176']['\229\134\156\231\148\176UI']['\229\177\158\230\128\167\229\140\186\229\159\159']
-                    :FireServer(5)
+        end
+    )
+    Autocollmission:Set(true)
+
+    -- 自动投资
+    local invest = features1:AddSwitch('自動執行投資', function(bool)
+        investbool = bool
+        if investbool then
+            task.spawn(function()
+                while investbool do
+                    local investEvent = ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\149\134\229\186\151']['\233\147\182\232\161\140']['\233\162\134\229\143\150\231\144\134\232\180\162']
+                    local upgradeEvent = ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\149\134\229\186\151']['\233\147\182\232\161\140']['\232\180\173\228\185\176\231\144\134\232\180\162']
+                    
+                    for i = 1, 3 do
+                        investEvent:FireServer(i)
+                    end
+                    task.wait(5)
+                    for i = 1, 3 do
+                        upgradeEvent:FireServer(i)
+                    end
+                    task.wait(600)
+                end
             end)
-            task.wait(0.5) -- 给UI一点时间打开
         end
+    end)
+    invest:Set(true)
 
-        -- 读取你指定路径上的数字文本
-        local function readFarm5Number()
-            local root = player:WaitForChild('PlayerGui'):WaitForChild('GUI')
-
-            local label = deepWait(root, {
-                '\228\186\140\231\186\167\231\149\140\233\157\162',
-                '\229\134\156\231\148\176',
-                '\232\131\140\230\153\175',
-                '\229\177\158\230\128\167\229\140\186\229\159\159',
-                '\230\148\182\233\155\134\230\140\137\233\146\174',
-                '\230\149\176\233\135\143\229\140\186',
-                '\230\149\176\233\135\143',
-            }, 5)
-
-            if not label or not label:IsA('TextLabel') then
-                return nil
-            end
-            -- 这里按你的描述就是“一个数字”，直接 tonumber
-            return tonumber(label.Text) or 0
-        end
-
-        -- 等待直到该数字 < 100；若 >=100 就每3秒再查一次
-        local function waitFarm5Below100(maxMinutes)
-            local deadline = os.clock() + (maxMinutes or 10) * 60 -- 最多等10分钟（可改）
-            while os.clock() < deadline do
-                local n = readFarm5Number()
-                if n == nil then
-                    warn('[农田5] 读取数字失败，3秒后重试')
-                    task.wait(3)
-                elseif n < 100 then
-                    farmReady = true
-                    print('[农田5] 数值 < 100，标记 farmReady = true')
-                    checkAllTasksFinished()
-                    return true
-                else
-                    -- 未小于100，3秒后再查
-                    task.wait(3)
-                end
-            end
-            warn('[农田5] 等待超时（超过上限仍 >=100）')
-            return false
-        end
-        local AutoCollectherbs = features1:AddSwitch(
-            '自動採草藥',
-            function(bool)
-                AutoCollectherbsbool = bool
-                if AutoCollectherbsbool then
-                    spawn(function()
-                        while AutoCollectherbsbool do
-                            for i = 1, 6 do
-                                local args = { [1] = i, [2] = nil }
-                                game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\134\156\231\148\176']['\233\135\135\233\155\134']
-                                    :FireServer(unpack(args))
-                                wait(0.1)
-                            end
-
-                            -- 🌿 一轮收集完成
-                            herbCollectFinished = true
-                            print(
-                                '[系统] 草药收集一轮完成，检查农田 5 状态…'
-                            )
-                            openFarm5()
-                            waitFarm5Below100()
-
-                            wait(60) -- 等下一轮
-                        end
-                    end)
-                end
-            end
-        )
-
-        AutoCollectherbs:Set(true)
-        features1:AddLabel(' - - 通行證解鎖')
-        local Refining = features1:AddSwitch(
-            '解鎖自動煉製',
-            function(bool)
-                local Refiningbool = bool
-                privileges:WaitForChild('超级炼制').Value = false
-                privileges:WaitForChild('自动炼制').Value = Refiningbool
-            end
-        )
-        Refining:Set(true)
-        local showAll = features1:AddSwitch('顯示所有貨幣', function(bool)
-            ShowAllbool = bool
-            if ShowAllbool then
-                while ShowAllbool do
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\230\180\187\229\138\168\231\137\169\229\147\129'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\159\191\231\159\179'].Visible =
-                        false
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\172\166\231\159\179\231\178\137\230\156\171'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\173\137\231\186\167'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\180\171\233\146\187'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\232\141\137\232\141\175'].Visible =
-                        false
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\135\145\229\184\129'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179'].Visible =
-                        true
-                    wait(0.3)
-                end
-            end
+    -- 农田5相关函数
+    local function openFarm5()
+        pcall(function()
+            ReplicatedStorage['\228\186\139\228\187\182']['\229\134\156\231\148\176']['\229\134\156\231\148\176UI']['\229\177\158\230\128\167\229\140\186\229\159\159']:FireServer(5)
         end)
-        showAll:Set(false)
-        -- 方案一：函数复用模式（推荐）
-        local function RemoveRewardUI()
-            local rewardUI = playerGui.GUI:WaitForChild('二级界面')
-
-            -- 定义需要删除的子对象名称
-            local rewardUINames = {
-                '展示奖励界面',
-                '离线奖励',
-                '版本说明',
-                '7日奖励',
-            }
-            local success = false
-
-            -- 遍历所有需要删除的子对象
-            for _, name in ipairs(rewardUINames) do
-                local child = rewardUI:FindFirstChild(name)
-                if child then
-                    child:Destroy()
-                    print('成功删除: ' .. name)
-                    success = true
-                else
-                    print('未找到: ' .. name)
-                end
-            end
-
-            -- 返回是否成功删除了至少一个子对象
-            return success
-        end
-
-        -- 创建按钮并立即执行
-        features1:AddButton('刪除顯示獲得的獎勵(所有的)', function()
-            RemoveRewardUI()
-        end)
-
-        -- 启动时延迟执行
-        task.defer(function()
-            RemoveRewardUI()
-        end)
-        features1:AddButton('兌換遊戲禮品碼', function()
-            local gamecode = {
-                'ilovethisgame',
-                'welcome',
-                '30klikes',
-                '40klikes',
-                'halloween',
-                'artistkapouki',
-                '45klikes',
-                '60klikes',
-            }
-            for i = 1, #gamecode do
-                print(gamecode[i])
-                local args = { [1] = gamecode[i] }
-                game:GetService('ReplicatedStorage')
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
-                    :FindFirstChild('\230\191\128\230\180\187\231\160\129')
-                    :FindFirstChild(
-                        '\231\142\169\229\174\182\229\133\145\230\141\162\230\191\128\230\180\187\231\160\129'
-                    )
-                    :FireServer(unpack(args))
-            end
-        end)
+        task.wait(0.5)
     end
-    setupFeatures1Tab(features1)
-    -- 获取草药数值
 
--- 创建炼丹控制器
+    local function readFarm5Number()
+        local root = player:WaitForChild('PlayerGui'):WaitForChild('GUI')
+        local label = deepWait(root, {
+            '\228\186\140\231\186\167\231\149\140\233\157\162',
+            '\229\134\156\231\148\176',
+            '\232\131\140\230\153\175',
+            '\229\177\158\230\128\167\229\140\186\229\159\159',
+            '\230\148\182\233\155\134\230\140\137\233\146\174',
+            '\230\149\176\233\135\143\229\140\186',
+            '\230\149\176\233\135\143',
+        }, 5)
+
+        if not label or not label:IsA('TextLabel') then
+            return nil
+        end
+        return tonumber(label.Text) or 0
+    end
+
+    local function waitFarm5Below100(maxMinutes)
+        local deadline = os.clock() + (maxMinutes or 10) * 60
+        while os.clock() < deadline do
+            local n = readFarm5Number()
+            if n == nil then
+                warn('[农田5] 读取数字失败，3秒后重试')
+                task.wait(3)
+            elseif n < 100 then
+                farmReady = true
+                print('[农田5] 数值 < 100，标记 farmReady = true')
+                checkAllTasksFinished()
+                return true
+            else
+                task.wait(3)
+            end
+        end
+        warn('[农田5] 等待超时（超过上限仍 >=100）')
+        return false
+    end
+
+    -- 自动采集草药
+    local AutoCollectherbs = features1:AddSwitch(
+        '自動採草藥',
+        function(bool)
+            AutoCollectherbsbool = bool
+            if AutoCollectherbsbool then
+                task.spawn(function()
+                    while AutoCollectherbsbool do
+                        local collectEvent = ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\134\156\231\148\176']['\233\135\135\233\155\134']
+                        for i = 1, 6 do
+                            collectEvent:FireServer(i, nil)
+                            task.wait(0.1)
+                        end
+
+                        herbCollectFinished = true
+                        print('[系统] 草药收集一轮完成，检查农田 5 状态…')
+                        openFarm5()
+                        waitFarm5Below100()
+                        task.wait(60)
+                    end
+                end)
+            end
+        end
+    )
+    AutoCollectherbs:Set(true)
+
+    -- 解锁自动炼制
+    features1:AddLabel(' - - 通行證解鎖')
+    local Refining = features1:AddSwitch(
+        '解鎖自動煉製',
+        function(bool)
+            local Refiningbool = bool
+            privileges:WaitForChild('超级炼制').Value = false
+            privileges:WaitForChild('自动炼制').Value = Refiningbool
+        end
+    )
+    Refining:Set(true)
+
+    -- 显示所有货币
+    local showAll = features1:AddSwitch('顯示所有貨幣', function(bool)
+        ShowAllbool = bool
+        if ShowAllbool then
+            task.spawn(function()
+                while ShowAllbool do
+                    local currencyUI = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']
+                    currencyUI['\230\180\187\229\138\168\231\137\169\229\147\129'].Visible = true
+                    currencyUI['\231\159\191\231\159\179'].Visible = false
+                    currencyUI['\231\172\166\231\159\179\231\178\137\230\156\171'].Visible = true
+                    currencyUI['\231\173\137\231\186\167'].Visible = true
+                    currencyUI['\231\180\171\233\146\187'].Visible = true
+                    currencyUI['\232\141\137\232\141\175'].Visible = false
+                    currencyUI['\233\135\145\229\184\129'].Visible = true
+                    currencyUI['\233\146\187\231\159\179'].Visible = true
+                    task.wait(0.3)
+                end
+            end)
+        end
+    end)
+    showAll:Set(false)
+
+    -- 删除奖励UI
+    local function RemoveRewardUI()
+        local rewardUI = playerGui.GUI:WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+        local rewardUINames = {
+            '展示奖励界面',
+            '离线奖励',
+            '版本说明',
+            '7日奖励',
+        }
+        local success = false
+
+        for _, name in ipairs(rewardUINames) do
+            local child = rewardUI:FindFirstChild(name)
+            if child then
+                child:Destroy()
+                print('成功删除: ' .. name)
+                success = true
+            else
+                print('未找到: ' .. name)
+            end
+        end
+
+        return success
+    end
+
+    features1:AddButton('刪除顯示獲得的獎勵(所有的)', RemoveRewardUI)
+    task.defer(RemoveRewardUI)
+
+    -- 兑换游戏礼品码
+    features1:AddButton('兌換遊戲禮品碼', function()
+        local gamecode = {
+            'ilovethisgame',
+            'welcome',
+            '30klikes',
+            '40klikes',
+            'halloween',
+            'artistkapouki',
+            '45klikes',
+            '60klikes',
+        }
+        local redeemEvent = ReplicatedStorage
+            :FindFirstChild('\228\186\139\228\187\182')
+            :FindFirstChild('\229\133\172\231\148\168')
+            :FindFirstChild('\231\142\169\229\174\182\231\160\129')
+            :FindFirstChild('\231\142\169\229\174\182\229\133\145\230\141\162\231\142\169\229\174\182\231\160\129')
+        
+        for i = 1, #gamecode do
+            print(gamecode[i])
+            redeemEvent:FireServer(gamecode[i])
+        end
+    end)
+end
+
+setupFeatures1Tab(features1)
+
+-- ============================================
+-- 炼丹标签页设置
+-- ============================================
+-- 炼丹控制器
 local elixirController = {
     enabled = false
 }
 
--- 炼丹循环函数
 local function elixirLoop()
     while elixirController.enabled do
-        -- 检查草药数量
         local currentHerbs = getHerbValue()
         if currentHerbs < 5000 then
             print('[系统] 草药数量低于5000，停止自动炼丹')
             elixirController.enabled = false
-            AutoelixirSwitch:Set(false) -- 更新开关状态
+            AutoelixirSwitch:Set(false)
             break
         end
         
-        -- 执行炼丹
-        game:GetService('ReplicatedStorage')
+        local elixirEvent = ReplicatedStorage
             :FindFirstChild('\228\186\139\228\187\182')
             :FindFirstChild('\229\133\172\231\148\168')
             :FindFirstChild('\231\130\188\228\184\185')
             :FindFirstChild('\229\136\182\228\189\156')
-            :FireServer()
-        wait(0.5)
+        
+        if elixirEvent then
+            elixirEvent:FireServer()
+        end
+        task.wait(0.5)
     end
 end
 
--- 创建开关
 local AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
     elixirController.enabled = bool
     if elixirController.enabled then
@@ -745,272 +787,196 @@ local AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
     end
 end)
 
--- 安全自启动机制
 task.defer(function()
-    task.wait(3) -- 等待界面初始化
+    task.wait(3)
     if not elixirController.enabled then
         AutoelixirSwitch:Set(true)
         print('[系统] 自动炼丹已启动')
     end
 end)
-    features4:AddButton('传送炼器', function()
-        local RespawPointnum = RespawPoint:match('%d+') -- 获取重生点编号
-        local player = game.Players.LocalPlayer
-        local character = player.Character
 
-        if not character then
-            player.CharacterAdded:Wait()
-            character = player.Character
-        end
+-- 传送炼器
+features4:AddButton('传送炼器', function()
+    local RespawPointnum = RespawPoint:match('%d+')
+    local character = player.Character
 
-        local humanoidRootPart = character:WaitForChild('HumanoidRootPart')
-        local forgePath =
-            workspace['\228\184\187\229\160\180\230\153\175' .. RespawPointnum]['\229\187\186\233\128\160\231\137\169']['035\231\130\188\229\153\168\229\143\176']
+    if not character then
+        player.CharacterAdded:Wait()
+        character = player.Character
+    end
 
-        if forgePath then
-            humanoidRootPart.CFrame = forgePath:GetPivot()
-        end
-    end)
+    local humanoidRootPart = character:WaitForChild('HumanoidRootPart')
+    local forgePath = Workspace['\228\184\187\229\160\180\230\153\175' .. RespawPointnum]['\229\187\186\233\128\160\231\137\169']['035\231\130\188\229\153\168\229\143\176']
 
-    local playerGui = game.Players.LocalPlayer.PlayerGui
-    local Guidename = playerGui.GUI
-        :WaitForChild('二级界面')
-        :WaitForChild('公会')
-        :WaitForChild('背景')
-        :WaitForChild('右侧界面')
-        :WaitForChild('主页')
-        :WaitForChild('介绍')
-        :waitForChild('名称')
-        :waitForChild('文本')
-        :waitForChild('文本').Text
-    local Donatetimes = playerGui.GUI
-        :WaitForChild('二级界面')
-        :WaitForChild('公会')
+    if forgePath then
+        humanoidRootPart.CFrame = forgePath:GetPivot()
+    end
+end)
+
+-- 公会相关
+local Guidename = GUI
+    :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+    :WaitForChild('\229\133\172\228\188\154')
+    :WaitForChild('背景')
+    :WaitForChild('右侧界面')
+    :WaitForChild('主页')
+    :WaitForChild('介绍')
+    :WaitForChild('名称')
+    :WaitForChild('文本')
+    :WaitForChild('文本').Text
+
+local Donatetimes = GUI
+    :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+    :WaitForChild('\229\133\172\228\188\154')
+    :WaitForChild('捐献')
+    :WaitForChild('背景')
+    :WaitForChild('按钮')
+    :WaitForChild('确定按钮')
+    :WaitForChild('次数').Text
+
+local Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
+local Guildname = features4:AddLabel(
+    '公會名稱：未獲取點擊更新公會 剩餘貢獻次數： ' .. Donatetimesnumber
+)
+
+features4:AddButton('更新公會', function()
+    Donatetimes = GUI
+        :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+        :WaitForChild('\229\133\172\228\188\154')
         :WaitForChild('捐献')
         :WaitForChild('背景')
         :WaitForChild('按钮')
         :WaitForChild('确定按钮')
         :WaitForChild('次数').Text
-    local Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
-    local Guildname = features4:AddLabel(
-        '公會名稱：未獲取點擊更新公會'
-            .. ' 剩餘貢獻次數： '
-            .. Donatetimesnumber
-    )
-    features4:AddButton('更新公會', function()
-        Donatetimes = playerGui.GUI
-            :WaitForChild('二级界面')
-            :WaitForChild('公会')
-            :WaitForChild('捐献')
-            :WaitForChild('背景')
-            :WaitForChild('按钮')
-            :WaitForChild('确定按钮')
-            :WaitForChild('次数').Text
-        Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
-        local replicatedStorage = game:GetService('ReplicatedStorage')
-        local event = replicatedStorage:FindFirstChild('打开公会', true)
+    Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
+    local event = ReplicatedStorage:FindFirstChild('打开公会', true)
+    if event then
         event:Fire('打开公会')
-        Guildname.Text = '公會名稱：'
-            .. Guidename
-            .. ' 剩餘貢獻次數： '
-            .. Donatetimesnumber
+    end
+    Guildname.Text = '公會名稱：' .. Guidename .. ' 剩餘貢獻次數： ' .. Donatetimesnumber
+end)
+
+local DonationUI = GUI:WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162'):WaitForChild('\229\133\172\228\188\154')
+local DonateButton = DonationUI:WaitForChild('捐献')
+    :WaitForChild('背景')
+    :WaitForChild('按钮')
+    :WaitForChild('确定按钮')
+
+local DonationEvent = ReplicatedStorage
+    :WaitForChild('\228\186\139\228\187\182')
+    :WaitForChild('\229\133\172\231\148\168')
+    :WaitForChild('\229\133\172\228\188\154')
+    :WaitForChild('\230\141\144\231\140\174')
+
+-- 捐献控制器
+local donationController = {
+    enabled = false,
+    interval = 0.5,
+    maxAttempts = 3,
+    currentAttempts = 0,
+}
+
+local function updateGuildDisplay()
+    local counterText = DonateButton:WaitForChild('次数').Text
+    local remaining = tonumber(counterText:match('%d+')) or 0
+    Guildname.Text = ('公會名稱：%s 剩餘貢獻次數：%d'):format(Guidename, remaining)
+    return remaining
+end
+
+local function executeDonation()
+    pcall(function()
+        DonationEvent:FireServer()
     end)
-    local DonationUI =
-        playerGui.GUI:WaitForChild('二级界面'):WaitForChild('公会')
-    local DonateButton = DonationUI:WaitForChild('捐献')
-        :WaitForChild('背景')
-        :WaitForChild('按钮')
-        :WaitForChild('确定按钮')
-    local DonationEvent = game:GetService('ReplicatedStorage')
-        :WaitForChild('\228\186\139\228\187\182')
-        :WaitForChild('\229\133\172\231\148\168')
-        :WaitForChild('\229\133\172\228\188\154')
-        :WaitForChild('\230\141\144\231\140\174')
+end
 
-    -- 创建独立控制模块
-    local donationController = {
-        enabled = false,
-        interval = 0.5,
-        maxAttempts = 3,
-        currentAttempts = 0,
-    }
+local function donationLoop()
+    while donationController.enabled do
+        local success, remaining = pcall(updateGuildDisplay)
 
-    local function updateGuildDisplay()
-        local counterText = DonateButton:WaitForChild('次数').Text
-        local remaining = tonumber(counterText:match('%d+')) or 0
-        Guildname.Text = ('公會名稱：%s 剩餘貢獻次數：%d'):format(
-            Guidename,
-            remaining
-        )
-        return remaining
-    end
-
-    local function executeDonation()
-        pcall(function()
-            DonationEvent:FireServer()
-        end)
-    end
-
-    -- 创建带保护机制的捐献循环
-    local function donationLoop()
-        while donationController.enabled do
-            local success, remaining = pcall(updateGuildDisplay)
-
-            if success and remaining > 0 then
-                executeDonation()
-                donationController.currentAttempts = 0
-            else
-                donationController.currentAttempts += 1
-            end
-
-            if
-                donationController.currentAttempts
-                >= donationController.maxAttempts
-            then
-                warn('连续失败次数过多，自动停止')
-                donationController.enabled = false
-            end
-
-            -- 如果捐献次数为 0，标记完成
-            if success and remaining == 0 then
-                donationController.enabled = false
-                donationFinished = true
-                checkAllTasksFinished()
-                print('[系统] 公会捐献已完成，准备购买草药')
-            end
-
-            task.wait(donationController.interval)
+        if success and remaining > 0 then
+            executeDonation()
+            donationController.currentAttempts = 0
+        else
+            donationController.currentAttempts += 1
         end
+
+        if donationController.currentAttempts >= donationController.maxAttempts then
+            warn('连续失败次数过多，自动停止')
+            donationController.enabled = false
+        end
+
+        if success and remaining == 0 then
+            donationController.enabled = false
+            donationFinished = true
+            checkAllTasksFinished()
+            print('[系统] 公会捐献已完成，准备购买草药')
+        end
+
+        task.wait(donationController.interval)
     end
+end
 
-    -- 初始化开关并设置自动启动
-    local AutoDonateSwitch = features4:AddSwitch(
-        '自動捐献',
-        function(isActive)
-            donationController.enabled = isActive
-            if isActive then
-                task.spawn(donationLoop)
-            end
-        end
-    )
+local AutoDonateSwitch = features4:AddSwitch('自動捐献', function(isActive)
+    donationController.enabled = isActive
+    if isActive then
+        task.spawn(donationLoop)
+    end
+end)
 
-    -- 安全自启动机制
-    task.defer(function()
-        task.wait(3) -- 等待界面初始化
-        if not donationController.enabled then
-            AutoDonateSwitch:Set(true)
-        end
+task.defer(function()
+    task.wait(3)
+    if not donationController.enabled then
+        AutoDonateSwitch:Set(true)
+    end
+end)
+
+-- 草药购买控制器
+local herbController = {
+    enabled = false,
+    interval = 0.2,
+    maxAttempts = 5,
+    currentAttempts = 0,
+    highCostMode = false,
+}
+
+local function toggleGuildUI(state)
+    pcall(function()
+            GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = state
     end)
+end
 
-    local herbController = {
-        enabled = false,
-        interval = 0.2,
-        maxAttempts = 5,
-        currentAttempts = 0,
-        highCostMode = false,
-    }
+local price = 400
 
-    -- 字符串处理辅助函数
-    local function countSubstring(str, pattern)
-        return select(2, str:gsub(pattern, ''))
-    end
-
-    -- 安全数值转换器
-    local function parseNumber(text)
-        local str = tostring(text):lower():gsub('%s+', ''):gsub(',', '')
-        local numStr = str:gsub('[^%d%.]', '')
-
-        if countSubstring(numStr, '%.') > 1 then
-            warn('[数值异常] 非法格式:', text)
-            return 0
-        end
-
-        local multiplier = 1
-        if str:find('k') then
-            multiplier = 1000
-        elseif str:find('m') then
-            multiplier = 1000000
-        end
-
-        return (tonumber(numStr) or 0) * multiplier
-    end
-
-    -- 数值获取函数
-    local function getDiamond()
-        return parseNumber(
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
-
-    local function getGuildCoin()
-        return parseNumber(
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
-
-    local function getRefreshCost()
-        return parseNumber(
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
-
-    -- 界面控制函数
-    local function toggleGuildUI(state)
-        pcall(function()
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible =
-                state
-        end)
-    end
-    local price = 400 -- 固定价格
-
-    -- 购买逻辑主循环
-
-    local function herbLoop()
-        while herbController.enabled do
-            -- 等待捐献完成
-            if not donationFinished then
-                task.wait(1)
-                continue -- 跳过本轮，直到捐献完成
-            end
-
-            -- 第一次开始买草药时提示
+local function herbLoop()
+    while herbController.enabled do
+        if not donationFinished then
+            task.wait(1)
+        else
             if not herbController.started then
                 print('[系统] 开始自动购买草药')
                 herbController.started = true
             end
 
-            local boughtAny = false
             local money = getDiamond()
-            local guilditemlist =
-                game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
+            local guilditemlist = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
 
             local function tryBuy(slotIndex)
                 local item = guilditemlist:GetChildren()[slotIndex]
                 if item and item:FindFirstChild('\230\140\137\233\146\174') then
                     local button = item['\230\140\137\233\146\174']
-                    if
-                        button['\229\186\147\229\173\152'].Text == '1 Left'
-                        and button['\229\144\141\231\167\176'].Text
-                            == 'Herb'
-                    then
+                    if button['\229\186\147\229\173\152'].Text == '1 Left' and button['\229\144\141\231\167\176'].Text == 'Herb' then
                         if money >= price then
-                            game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\133\145\230\141\162']
-                                :FireServer(slotIndex - 2)
+                            ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\133\145\230\141\162']:FireServer(slotIndex - 2)
                             money = money - price
-                            boughtAny = true
                             return true
                         else
-                            warn(
-                                '[草药购买] 货币不足，跳过槽位 '
-                                    .. slotIndex
-                            )
+                            warn('[草药购买] 货币不足，跳过槽位 ' .. slotIndex)
                         end
                     end
                 end
                 return false
             end
 
-            -- 遍历所有槽位
             for i = 1, 18 do
                 if not herbController.enabled then
                     break
@@ -1022,12 +988,9 @@ end)
             local diamond = getDiamond()
             local guildCoin = getGuildCoin()
 
-            -- 高成本模式
             if refreshCost > 7000 then
                 if not herbController.highCostMode then
-                    print(
-                        '[系统] 进入高成本模式，结束草药购买任务'
-                    )
+                    print('[系统] 进入高成本模式，结束草药购买任务')
                     herbController.highCostMode = true
                     if not herbBuyFinished then
                         herbBuyFinished = true
@@ -1042,56 +1005,45 @@ end)
                 herbController.highCostMode = false
             end
 
-            -- 正常刷新
-            if
-                diamond > refreshCost
-                and guildCoin >= 400
-                and diamond >= 18000
-            then
+            if diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
                 pcall(function()
-                    game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\229\133\172\228\188\154']
-                        :Fire()
+                    ReplicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\229\133\172\228\188\154']:Fire()
                     task.wait(0.5)
-                    game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151']
-                        :FireServer()
+                    ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151']:FireServer()
                 end)
                 task.wait(1.5)
             else
-                print(
-                    '[草药购买] 刷新条件不满足，结束购买任务'
-                )
+                print('[草药购买] 刷新条件不满足，结束购买任务')
                 if not herbBuyFinished then
                     herbBuyFinished = true
                     checkAllTasksFinished()
                 end
-                herbController.enabled = false -- 停止循环
+                herbController.enabled = false
                 task.wait(30)
             end
-        end -- 关闭 while
-    end -- 关闭 function
-
-    -- 界面控件
-    local Autoguildshop = features4:AddSwitch(
-        '自动购买草药',
-        function(state)
-            herbController.enabled = state
-            herbController.highCostMode = false -- 重置状态
-            if state then
-                task.spawn(herbLoop)
-                print('[系统] 自动购买已启动')
-            else
-                print('[系统] 自动购买已停止')
-            end
         end
-    )
+    end
+end
 
-    -- 安全自启动机制（添加在自动捐献代码下方）
-    task.defer(function()
-        task.wait(3) -- 等待界面初始化
-        if not herbController.enabled then
-            Autoguildshop:Set(true)
-        end
-    end)
+local Autoguildshop = features4:AddSwitch('自动购买草药', function(state)
+    herbController.enabled = state
+    herbController.highCostMode = false
+    if state then
+        task.spawn(herbLoop)
+        print('[系统] 自动购买已启动')
+    else
+        print('[系统] 自动购买已停止')
+    end
+end)
+
+task.defer(function()
+    task.wait(3)
+    if not herbController.enabled then
+        Autoguildshop:Set(true)
+    end
+end)
+
+-- 简易丹药摆放
 features4:AddButton('简易丹药摆放', function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/简易自动交易.lua"))()
 end)
@@ -1100,182 +1052,117 @@ end)
 features4:AddButton('交易所有人', function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/自动交易1.json"))()
 end)
-    -- 共用事件路径
-    local REPLICATED_STORAGE = game:GetService('ReplicatedStorage')
-    local ReplicatedStorage = game:GetService('ReplicatedStorage')
-    local Players = game:GetService('Players')
-    local player = Players.LocalPlayer
-    local GUI = player.PlayerGui:WaitForChild('GUI')
 
-    -- 全局控制变量
-    local Autoelixir = false
-    local hasExecutedTrade = false -- 确保自动交易只执行一次
+-- ============================================
+-- 智能监控系统
+-- ============================================
+local Autoelixir = false
+local hasExecutedTrade = false
 
-
-    local function getOREValue()
-        local OREText = '0'
+local function startElixirLoop()
+    Autoelixir = true
+    while Autoelixir do
         pcall(function()
-            OREText =
-                game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\231\159\191\231\159\179']['\229\128\188'].Text
+            local elixirEvent = ReplicatedStorage
+                :FindFirstChild('\228\186\139\228\187\182')
+                :FindFirstChild('\229\133\172\231\148\168')
+                :FindFirstChild('\231\130\188\228\184\185')
+                :FindFirstChild('\229\136\182\228\189\156')
+            if elixirEvent then
+                elixirEvent:FireServer()
+            end
         end)
-
-        local cleanedOREText =
-            tostring(OREText):lower():gsub('%s+', ''):gsub(',', '')
-        if cleanedOREText:find('k') then
-            local numStr = cleanedOREText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000
-        elseif cleanedOREText:find('m') then
-            local numStr = cleanedOREText:gsub('[^%d%.]', '')
-            return (tonumber(numStr) or 0) * 1000000
-        else
-            return tonumber(cleanedOREText) or 0
-        end
+        task.wait(0.2)
     end
-
-    -- 炼丹循环
-    local function startElixirLoop()
-        Autoelixir = true
-        while Autoelixir do
-            pcall(function()
-                local elixirEvent = ReplicatedStorage
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
-                    :FindFirstChild('\231\130\188\228\184\185')
-                    :FindFirstChild('\229\136\182\228\189\156')
-                if elixirEvent then
-                    elixirEvent:FireServer()
-                end
-            end)
-            wait(0.2)
-        end
-    end
-
-    -- 智能监控
-    local herbprint = false
-    local lowcontrol = false
-
-    local function smartMonitor()
-        while true do
-            local currentHerbs = getHerbValue()
-            local playerName = game.Players.LocalPlayer.Name
-
-            -- When herbs > 250k, execute trade script (once)
-            if currentHerbs > 250000 and not hasExecutedTrade then
-                herbprint = true
-                lowcontrol = true -- Set lowcontrol flag when reaching high herbs
-
-                
-                    hasExecutedTrade = true
-                    print(
-                        playerName
-                            .. ' --- 自动交易脚本激活! ('
-                            .. currentHerbs
-                            .. '草药)'
-                    )
-
-                -- Start elixir loop if not already running
-                if not Autoelixir then
-                    coroutine.wrap(startElixirLoop)()
-                end
-
-            -- When herbs < 1000 AND we previously had high herbs (lowcontrol)
-            elseif currentHerbs < 5000 and lowcontrol then
-                Autoelixir = false
-                hasExecutedTrade = false
-                herbprint = false
-                lowcontrol = false -- Reset the control flag
-                print(
-                    playerName
-                        .. ' --- 系统重置! (剩余'
-                        .. currentHerbs
-                        .. '草药)'
-                )
-            end
-            if herbprint and hasExecutedTrade then
-                print(playerName .. ' --- ' .. currentHerbs .. '草药')
-            end
-            -- Regular status print when in high herb mode
-
-            wait(5)
-        end
-    end
-
-    -- 初始化检查
-    local farm5Level = 0
-    local elixirLevel = 0
-
-    -- 获取农田5等级
-    pcall(function()
-        farm5Level = tonumber(
-            GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
-                '%d+'
-            )
-        ) or 0
-    end)
-    GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176'].Visible =
-        false
-
-    -- 获取炼丹炉等级
-    pcall(function()
-        local elixirUI = ReplicatedStorage
-            :FindFirstChild('\228\186\139\228\187\182', true)
-            :FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
-        if elixirUI then
-            elixirUI['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']:Fire()
-            wait(0.5)
-            elixirLevel = tonumber(
-                GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
-                    '%d+'
-                )
-            ) or 0
-        end
-        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible =
-            false
-    end)
-
-    -- 主逻辑
-    if farm5Level >= 80 and elixirLevel >= 80 then
-        print('===== 系统启动 =====')
-        print('农田5等级:', farm5Level)
-        print('炼丹炉等级:', elixirLevel)
-        print('初始草药量:', getHerbValue())
-        print('==================')
-        coroutine.wrap(smartMonitor)()
-    else
-        print('条件不满足：需要农田5和炼丹炉等级≥80')
-    end
- 
-    local Players = game:GetService('Players')
-    local ReplicatedStorage = game:GetService('ReplicatedStorage')
-    local LocalPlayer = Players.LocalPlayer
-
-    -- Function to safely check and fire
-    local function CheckAndFire()
-        -- Your original GUI path (fully preserved)
-        local gui =
-            LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
-
-        -- Check if exists and is invisible
-        if gui and gui.Visible == false then
-            -- Your original RemoteEvent path (fully preserved)
-            local remote = ReplicatedStorage
-                :WaitForChild('\228\186\139\228\187\182')
-                :WaitForChild('\229\133\172\231\148\168')
-                :WaitForChild('\231\130\188\228\184\185')
-                :WaitForChild(
-                    '\228\191\174\230\148\185\232\135\170\229\138\168\229\130\168\229\173\152'
-                )
-            if remote then
-                remote:FireServer()
-                print('RemoteEvent fired successfully!')
-            else
-                warn('RemoteEvent not found!')
-            end
-        end
-    end
-    -- Run once immediately
-    CheckAndFire()
-
-else
-    warn('当前游戏不是目标游戏，脚本未运行。')
 end
+
+local herbprint = false
+local lowcontrol = false
+
+local function smartMonitor()
+    while true do
+        local currentHerbs = getHerbValue()
+        local playerName = player.Name
+
+        if currentHerbs > 250000 and not hasExecutedTrade then
+            herbprint = true
+            lowcontrol = true
+            hasExecutedTrade = true
+            print(playerName .. ' --- 自动交易脚本激活! (' .. currentHerbs .. '草药)')
+
+            if not Autoelixir then
+                task.spawn(startElixirLoop)
+            end
+        elseif currentHerbs < 5000 and lowcontrol then
+            Autoelixir = false
+            hasExecutedTrade = false
+            herbprint = false
+            lowcontrol = false
+            print(playerName .. ' --- 系统重置! (剩余' .. currentHerbs .. '草药)')
+        end
+        
+        if herbprint and hasExecutedTrade then
+            print(playerName .. ' --- ' .. currentHerbs .. '草药')
+        end
+
+        task.wait(5)
+    end
+end
+
+-- 初始化检查
+local farm5Level = 0
+local elixirLevel = 0
+
+pcall(function()
+    farm5Level = tonumber(
+        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
+    ) or 0
+end)
+GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176'].Visible = false
+
+pcall(function()
+    local elixirUI = ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182', true):FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
+    if elixirUI then
+        elixirUI['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']:Fire()
+        task.wait(0.5)
+        elixirLevel = tonumber(
+            GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
+        ) or 0
+    end
+    GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible = false
+end)
+
+if farm5Level >= 80 and elixirLevel >= 80 then
+    print('===== 系统启动 =====')
+    print('农田5等级:', farm5Level)
+    print('炼丹炉等级:', elixirLevel)
+    print('初始草药量:', getHerbValue())
+    print('==================')
+    task.spawn(smartMonitor)
+else
+    print('条件不满足：需要农田5和炼丹炉等级≥80')
+end
+
+-- ============================================
+-- 自动出售检查
+-- ============================================
+local function CheckAndFire()
+    local gui = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
+    
+    if gui and gui.Visible == false then
+        local remote = ReplicatedStorage
+            :WaitForChild('\228\186\139\228\187\182')
+            :WaitForChild('\229\133\172\231\148\168')
+            :WaitForChild('\231\130\188\228\184\185')
+            :WaitForChild('\228\191\174\230\148\185\232\135\170\229\138\168\229\130\168\229\173\152')
+        
+        if remote then
+            remote:FireServer()
+            print('RemoteEvent fired successfully!')
+        else
+            warn('RemoteEvent not found!')
+        end
+    end
+end
+
+CheckAndFire()
