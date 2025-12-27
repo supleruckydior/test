@@ -124,7 +124,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.5', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.6', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
