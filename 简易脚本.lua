@@ -43,7 +43,7 @@ if player.Character then
 end
 
 -- 等待PlayerGui存在
-local maxWaitTime = 30 -- 最多等待30秒
+local maxWaitTime = 300 -- 最多等待30秒
 local startTime = os.clock()
 while not player:FindFirstChild('PlayerGui') do
     if os.clock() - startTime > maxWaitTime then
