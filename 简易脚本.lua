@@ -317,6 +317,39 @@ local function getRefreshCost()
     return parseNumber(refreshCostText, 0)
 end
 
+-- 获取公会名称的函数（与Guidename使用相同的路径）
+local function getGuildName()
+    local guildNameText = ''
+    pcall(function()
+        local guildUI = GUI:FindFirstChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+        if guildUI then
+            local guildTab = guildUI:FindFirstChild('\229\133\172\228\188\154')
+            if guildTab then
+                local bg = guildTab:FindFirstChild('背景')
+                if bg then
+                    local rightPanel = bg:FindFirstChild('右侧界面')
+                    if rightPanel then
+                        local homePage = rightPanel:FindFirstChild('主页')
+                        if homePage then
+                            local intro = homePage:FindFirstChild('介绍')
+                            if intro then
+                                local nameFrame = intro:FindFirstChild('名称')
+                                if nameFrame then
+                                    local textLabel = nameFrame:FindFirstChild('文本')
+                                    if textLabel then
+                                        guildNameText = textLabel.Text or ''
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return guildNameText or ''
+end
+
 -- ============================================
 -- 数据保存功能（使用Synapse文件系统，TSV格式适合EmEditor）
 -- ============================================
@@ -336,6 +369,11 @@ local function saveDataToLocal()
         local herbValue = getHerbValue()
         local oreValue = getOREValue()
         local updateTime = os.date('%Y-%m-%d %H:%M:%S')
+        local guildNameValue = getGuildName()  -- 获取公会名称
+        -- 调试信息（可选）
+        if guildNameValue == '' then
+            print('[数据保存] 警告: 无法获取公会名称，将保存为空字符串')
+        end
         
         -- 读取现有数据
         local accountData = {}  -- 使用字典格式，key为账号名
@@ -363,10 +401,12 @@ local function saveDataToLocal()
                         local herbs = tonumber(parts[2]) or 0
                         local ore = tonumber(parts[3]) or 0
                         local time = parts[4] or ""
+                        local guildName = parts[5] or ""  -- 读取公会名称（如果有）
                         accountData[acc] = {
                             herbs = herbs,
                             ore = ore,
-                            updated_at = time
+                            updated_at = time,
+                            guild_name = guildName
                         }
                     end
                 end
@@ -377,11 +417,12 @@ local function saveDataToLocal()
         accountData[accountName] = {
             herbs = herbValue,
             ore = oreValue,
-            updated_at = updateTime
+            updated_at = updateTime,
+            guild_name = guildNameValue  -- 使用getGuildName()获取的值
         }
         
         -- 构建TSV内容
-        local tsvContent = "账号\t草药数量\t矿石数量\t更新时间\n"
+        local tsvContent = "账号\t草药数量\t矿石数量\t更新时间\t公会名字\n"
         
         -- 按账号名排序（可选）
         local sortedAccounts = {}
@@ -393,11 +434,16 @@ local function saveDataToLocal()
         -- 写入数据
         for _, account in ipairs(sortedAccounts) do
             local data = accountData[account]
-            tsvContent = tsvContent .. string.format("%s\t%d\t%d\t%s\n", 
+            -- 确保所有数据都有guild_name字段（如果没有则设为空字符串）
+            if not data.guild_name then
+                data.guild_name = ""
+            end
+            tsvContent = tsvContent .. string.format("%s\t%d\t%d\t%s\t%s\n", 
                 account, 
                 data.herbs, 
                 data.ore, 
-                data.updated_at
+                data.updated_at,
+                data.guild_name
             )
         end
         
