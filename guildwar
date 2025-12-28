@@ -408,7 +408,7 @@ local function MoveToTarget(targetModel)
         -- 说明角色可能已经死亡并重生到了新位置（通常在出生点），这时需要重新计算路径
         if currentTime - lastCheckTime > 0.5 and not isRecalculating then  -- 每0.5秒检查一次
             local positionChange = (currentPos - lastCheckPosition).Magnitude
-            if positionChange > 100 then
+            if positionChange > 60 then
                 warn(string.format("检测到位置突然大变化 (%.1f 单位)，角色可能已死亡并重生", positionChange))
                 
                 -- 重置移动计时器（死亡后重新开始计时）
