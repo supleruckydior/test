@@ -191,7 +191,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.1', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.2', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -317,8 +317,19 @@ local function getRefreshCost()
     return parseNumber(refreshCostText, 0)
 end
 
--- 获取公会名称的函数（先打开公会UI刷新数据，获取名字后关闭）
-local function getGuildName()
+-- 公会名称缓存（只获取一次，避免反复开关UI）
+local guildNameCache = {
+    value = '',
+    hasFetched = false  -- 标记是否已经获取过
+}
+
+-- 获取公会名称的函数（只获取一次，之后使用缓存）
+local function getGuildName(forceRefresh)
+    -- 如果已经获取过且不强制刷新，直接返回缓存值
+    if guildNameCache.hasFetched and not forceRefresh then
+        return guildNameCache.value
+    end
+    
     local guildNameText = ''
     local wasUIOpen = false  -- 记录UI原本是否打开
     
@@ -350,8 +361,12 @@ local function getGuildName()
                 GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = false
             end)
         end
+        
+        -- 更新缓存
+        guildNameCache.value = guildNameText or ''
+        guildNameCache.hasFetched = true
     end)
-    return guildNameText or ''
+    return guildNameCache.value
 end
 
 -- ============================================
