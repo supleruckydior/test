@@ -117,7 +117,11 @@ if not crystalExists and (guild1Visible or guild2to16Visible) then
 		unlockAbility:FireServer(i)
 		task.wait(0.2)
 	end
-	
+	local args = {
+        [1] = "4"
+    }
+    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\230\138\128\232\131\189"):FindFirstChild("\232\163\133\229\164\135\230\138\128\232\131\189"):FireServer(unpack(args))
+    task.wait(0.2)
 	-- 执行一键操作
 	oneClickAbility:FireServer()
 	petOneClick:FireServer()

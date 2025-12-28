@@ -1,14 +1,64 @@
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
-wait(2)
 
--- 服务
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
 
 local LocalPlayer = Players.LocalPlayer
+
+-- 检查GUI可见性（需要在MoveToTarget之前定义）
+local function CheckGUIVisibility()
+    local success, result = pcall(function()
+        return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
+    end)
+    if not success then
+        -- GUI路径不存在，返回false（不shutdown）
+        return false
+    end
+    return result == true
+end
+
+-- 初始等待期间也要检查GUI（使用Heartbeat每帧检查）
+local initGuiCheckConnection
+initGuiCheckConnection = RunService.Heartbeat:Connect(function()
+    if CheckGUIVisibility() then
+        if initGuiCheckConnection then
+            initGuiCheckConnection:Disconnect()
+        end
+        print("初始化等待期间检测到GUI可见 - 关闭游戏")
+        game:Shutdown()
+    end
+end)
+
+local initStartTime = tick()
+while tick() - initStartTime < 2 do
+    wait(0.1)
+end
+
+if initGuiCheckConnection then
+    initGuiCheckConnection:Disconnect()
+end
+
+-- 再次检查GUI（防止在断开连接后GUI才变为可见）
+if CheckGUIVisibility() then
+    print("初始化后检测到GUI可见 - 关闭游戏")
+    game:Shutdown()
+    return
+end
+
+-- 等待角色加载
+local Character = LocalPlayer.Character
+if not Character then
+    Character = LocalPlayer.CharacterAdded:Wait()
+end
+
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid")
+Humanoid.PlatformStand = false
+-- 增加移动速度
+Humanoid.WalkSpeed = 64
 
 -- 检查水晶是否存在
 local function CheckCrystalExists()
@@ -17,23 +67,12 @@ local function CheckCrystalExists()
     end)
 end
 
--- 检查GUI可见性 (优化版)
-local function CheckGUIVisibility()
-    local success, result = pcall(function()
-        return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
-    end)
-    return success and result
-end
-
--- 函数：在目标位置周围搜索可到达的点（无视高度）
-local function findReachablePosition(targetPos, startPos, Character)
-    print("在目标位置周围搜索可到达的点...")
+-- 函数：在目标位置周围搜索可到达的点
+local function findReachablePosition(targetPos, startPos)
+    local searchRadius = 20
+    local searchHeightRange = 50
+    local searchStep = 5  -- 可以增加到10以加快搜索，但会降低精度
     
-    local searchRadius = 20  -- 搜索半径
-    local searchHeightRange = 50  -- 高度搜索范围
-    local searchStep = 5  -- 搜索步长
-    
-    -- 尝试不同高度和位置
     for heightOffset = -searchHeightRange, searchHeightRange, 10 do
         for radius = 0, searchRadius, searchStep do
             for angle = 0, 360, 45 do
@@ -47,12 +86,11 @@ local function findReachablePosition(targetPos, startPos, Character)
                     targetPos.Z + offsetZ
                 )
                 
-                -- 尝试计算路径
                 local testPath = PathfindingService:CreatePath({
                     AgentRadius = 1,
                     AgentHeight = 3,
                     AgentCanJump = true,
-                    WaypointSpacing = 8,
+                    WaypointSpacing = 3,
                 })
                 
                 local success, err = pcall(function()
@@ -66,8 +104,6 @@ local function findReachablePosition(targetPos, startPos, Character)
                        status == Enum.PathStatus.ClosestOutOfRange then
                         local waypoints = testPath:GetWaypoints()
                         if #waypoints > 0 then
-                            print(string.format("找到可到达位置: %s (高度偏移: %.1f, 半径: %.1f)", 
-                                tostring(testPos), heightOffset, radius))
                             return testPos, testPath
                         end
                     end
@@ -79,29 +115,29 @@ local function findReachablePosition(targetPos, startPos, Character)
     return nil, nil
 end
 
--- 使用PathfindingService移动到目标位置
-local function MoveToTargetUsingPathfinding()
-    local Character = LocalPlayer.Character
-    if not Character then
-        Character = LocalPlayer.CharacterAdded:Wait()
-    end
-    
-    local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-    local Humanoid = Character:WaitForChild("Humanoid")
-    
-    Humanoid.PlatformStand = false
-    Humanoid.WalkSpeed = 32
-    
-    -- 获取目标位置
-    local targetModel
-    local success, err = pcall(function()
-        targetModel = workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"]
-    end)
-    
-    if not success or not targetModel then
-        warn("无法访问目标路径")
+-- 路径寻找函数
+local function MoveToTarget(targetModel)
+    if not targetModel then
+        print("MoveToTarget: targetModel为空")
         return false
     end
+    
+    -- 确保角色仍然有效
+    local currentChar = LocalPlayer.Character
+    if not currentChar or not currentChar.Parent then
+        print("MoveToTarget: 角色无效")
+        return false
+    end
+    
+    local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
+    local currentHumanoid = currentChar:FindFirstChild("Humanoid")
+    if not currentHRP or not currentHumanoid then
+        print("MoveToTarget: 角色组件缺失")
+        return false
+    end
+    
+    -- 确保移动速度为高速
+    currentHumanoid.WalkSpeed = 64
     
     -- 获取目标位置
     local targetPosition
@@ -111,14 +147,16 @@ local function MoveToTargetUsingPathfinding()
     elseif targetModel:IsA("BasePart") then
         targetPosition = targetModel.Position
     else
-        warn("目标对象类型不支持:", targetModel.ClassName)
+        print("MoveToTarget: 目标类型不支持")
         return false
     end
+    
+    print("目标位置:", targetPosition)
     
     -- 使用 Raycast 找到目标位置下方的地面
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {Character}
+    raycastParams.FilterDescendantsInstances = {currentChar}
     
     local rayOrigin = Vector3.new(targetPosition.X, targetPosition.Y + 100, targetPosition.Z)
     local rayDirection = Vector3.new(0, -300, 0)
@@ -126,161 +164,278 @@ local function MoveToTargetUsingPathfinding()
     
     local finalTargetPosition
     if rayResult and rayResult.Instance then
-        finalTargetPosition = rayResult.Position + Vector3.new(0, HumanoidRootPart.Size.Y/2 + 1, 0)
+        finalTargetPosition = rayResult.Position + Vector3.new(0, currentHRP.Size.Y/2 + 1, 0)
     else
-        finalTargetPosition = Vector3.new(targetPosition.X, HumanoidRootPart.Position.Y, targetPosition.Z)
+        finalTargetPosition = Vector3.new(targetPosition.X, currentHRP.Position.Y, targetPosition.Z)
     end
     
-    local startPos = HumanoidRootPart.Position
+    local startPos = currentHRP.Position
     local endPos = finalTargetPosition
     
-    -- 创建 PathfindingService 路径对象
+    -- 创建路径对象（增大路径点间距以提高移动速度）
     local path = PathfindingService:CreatePath({
         AgentRadius = 1,
         AgentHeight = 3,
         AgentCanJump = true,
-        WaypointSpacing = 8,
+        WaypointSpacing = 5,  -- 从3增加到5，减少路径点数量
         Costs = {
             Water = 1,
         }
     })
     
     -- 计算路径
+    print("开始计算路径，起始位置:", startPos, "目标位置:", endPos)
     local pathFound, noPathMessage = pcall(function()
         path:ComputeAsync(startPos, endPos)
     end)
     
     if not pathFound then
-        warn("路径计算失败: " .. tostring(noPathMessage))
-        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, Character)
+        print("路径计算异常:", tostring(noPathMessage))
+        print("尝试在周围搜索可到达的点...")
+        local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
         if reachablePos and reachablePath then
             endPos = reachablePos
             path = reachablePath
+            print("找到可到达的替代位置")
         else
-            warn("无法找到任何可到达的路径")
+            print("无法找到任何可到达的路径")
             return false
         end
     end
     
-    -- 检查路径状态
     local pathStatus = path.Status
+    print("路径状态:", pathStatus)
     
     if pathStatus == Enum.PathStatus.NoPath then
-        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, Character)
+        print("无法找到路径，尝试在周围搜索...")
+        local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
         if reachablePos and reachablePath then
             endPos = reachablePos
             path = reachablePath
             pathStatus = reachablePath.Status
+            print("找到可到达的替代位置")
         else
-            warn("无法找到任何可到达的路径")
-            return false
-        end
-    elseif pathStatus == Enum.PathStatus.FailStartNotEmpty then
-        local adjustedStart = startPos + Vector3.new(0, 5, 0)
-        local testPath = PathfindingService:CreatePath({
-            AgentRadius = 1,
-            AgentHeight = 3,
-            AgentCanJump = true,
-            WaypointSpacing = 8,
-        })
-        local success = pcall(function()
-            testPath:ComputeAsync(adjustedStart, endPos)
-        end)
-        if success and testPath.Status ~= Enum.PathStatus.NoPath then
-            startPos = adjustedStart
-            path = testPath
-            pathStatus = testPath.Status
-        else
-            warn("无法找到路径")
-            return false
-        end
-    elseif pathStatus == Enum.PathStatus.FailFinishNotEmpty then
-        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, Character)
-        if reachablePos and reachablePath then
-            endPos = reachablePos
-            path = reachablePath
-            pathStatus = reachablePath.Status
-        else
-            warn("无法找到任何可到达的路径")
+            print("无法找到任何可到达的路径")
             return false
         end
     end
     
     -- 获取路径点
     local waypoints = path:GetWaypoints()
-    
+    print("路径点数量:", #waypoints)
     if #waypoints == 0 then
-        warn("路径点为空")
+        print("路径点为空")
         return false
     end
     
-    -- 沿着路径移动
-    local currentWaypointIndex = 1
-    local isMoving = false
-    local stuckCheckTime = 0
-    local lastPosition = HumanoidRootPart.Position
-    
     -- 跳过第一个路径点（起始位置）
+    local currentWaypointIndex = 1
     if #waypoints > 1 then
         currentWaypointIndex = 2
     end
     
+    local isMoving = false
+    local stuckCheckTime = 0
+    local lastPosition = currentHRP.Position
+    local moveComplete = false
+    local moveConnection
+    local lastCheckPosition = currentHRP.Position  -- 用于死亡检测
+    local lastCheckTime = tick()  -- 用于死亡检测
+    local isRecalculating = false  -- 防止重复重新计算
+    local moveStartTimeTable = {value = nil}  -- 用于存储移动开始时间的引用，以便死亡时重置
+    
     local function moveToNextWaypoint()
+        -- 确保角色仍然有效（重新获取引用以确保最新）
+        local currentChar = LocalPlayer.Character
+        if not currentChar or not currentChar.Parent then
+            print("移动中角色失效")
+            moveComplete = true
+            if moveConnection then
+                moveConnection:Disconnect()
+            end
+            return false
+        end
+        
+        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
+        local currentHumanoid = currentChar:FindFirstChild("Humanoid")
+        
+        if not currentHRP or not currentHumanoid then
+            print("移动中角色组件缺失")
+            moveComplete = true
+            if moveConnection then
+                moveConnection:Disconnect()
+            end
+            return false
+        end
+        
         if currentWaypointIndex > #waypoints then
+            print("已到达所有路径点")
+            moveComplete = true
+            if moveConnection then
+                moveConnection:Disconnect()
+            end
             return false
         end
         
         local waypoint = waypoints[currentWaypointIndex]
         local targetPos = waypoint.Position
         
+        print(string.format("移动到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
+        
         -- 如果是跳跃点，设置跳跃
         if waypoint.Action == Enum.PathWaypointAction.Jump then
-            Humanoid.Jump = true
+            currentHumanoid.Jump = true
         end
         
         -- 移动到目标位置
-        Humanoid:MoveTo(targetPos)
+        -- 确保移动速度设置为高速
+        if currentHumanoid.WalkSpeed < 64 then
+            currentHumanoid.WalkSpeed = 64
+        end
+        currentHumanoid:MoveTo(targetPos)
         isMoving = true
         stuckCheckTime = tick()
-        lastPosition = HumanoidRootPart.Position
+        lastPosition = currentHRP.Position
         
         return true
     end
     
-    -- 移动循环
-    local connection
-    local startMoveTime = tick()
-    local moveCompleted = false
+    -- 重新计算路径的函数（用于死亡后重新找路）
+    local function recalculatePathForMove()
+        print("重新计算路径...")
+        task.wait(0.5)  -- 等待角色完全加载
+        
+        local currentChar = LocalPlayer.Character
+        if not currentChar or not currentChar.Parent then
+            return nil, nil
+        end
+        
+        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
+        local currentHumanoid = currentChar:FindFirstChild("Humanoid")
+        if not currentHRP or not currentHumanoid then
+            return nil, nil
+        end
+        
+        currentHumanoid.WalkSpeed = 64
+        
+        local newStartPos = currentHRP.Position
+        print("新的起始位置:", newStartPos)
+        
+        local newPath = PathfindingService:CreatePath({
+            AgentRadius = 1,
+            AgentHeight = 3,
+            AgentCanJump = true,
+            WaypointSpacing = 5,
+            Costs = { Water = 1 }
+        })
+        
+        local pathFound = pcall(function()
+            newPath:ComputeAsync(newStartPos, endPos)
+        end)
+        
+        if not pathFound then
+            local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
+            if reachablePos and reachablePath then
+                endPos = reachablePos
+                newPath = reachablePath
+            else
+                return nil, nil
+            end
+        end
+        
+        local newPathStatus = newPath.Status
+        if newPathStatus == Enum.PathStatus.NoPath then
+            local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
+            if reachablePos and reachablePath then
+                endPos = reachablePos
+                newPath = reachablePath
+                newPathStatus = reachablePath.Status
+            else
+                return nil, nil
+            end
+        end
+        
+        local newWaypoints = newPath:GetWaypoints()
+        if #newWaypoints == 0 then
+            return nil, nil
+        end
+        
+        print("重新计算路径完成，共 " .. #newWaypoints .. " 个路径点")
+        return newPath, newWaypoints
+    end
     
-    connection = RunService.Heartbeat:Connect(function()
-        -- 检查GUI（在移动过程中也要检查）
+    -- 创建移动循环
+    moveConnection = RunService.Heartbeat:Connect(function()
+        -- 检查GUI可见性（在移动循环中也要检查）
         if CheckGUIVisibility() then
-            print("移动期间检测到GUI可见 - 关闭游戏")
-            if connection then
-                connection:Disconnect()
+            print("移动循环中检测到GUI可见 - 停止移动并关闭游戏")
+            moveComplete = true
+            if moveConnection then
+                moveConnection:Disconnect()
             end
             game:Shutdown()
             return
         end
         
-        if currentWaypointIndex > #waypoints then
-            moveCompleted = true
-            if connection then
-                connection:Disconnect()
+        -- 检查角色是否仍然有效（重新获取引用以确保最新）
+        local currentChar = LocalPlayer.Character
+        if not currentChar or not currentChar.Parent then
+            print("移动循环中角色失效，停止移动")
+            moveComplete = true
+            if moveConnection then
+                moveConnection:Disconnect()
             end
             return
         end
         
+        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
+        if not currentHRP then
+            return  -- 等待HumanoidRootPart加载
+        end
+        
+        if moveComplete or currentWaypointIndex > #waypoints then
+            if moveConnection then
+                moveConnection:Disconnect()
+            end
+            return
+        end
+        
+        local currentPos = currentHRP.Position
+        local currentTime = tick()
+        
+        -- 死亡检测：如果位置突然发生大变化（超过100单位），说明角色死亡并重生
+        -- 判断逻辑：每0.5秒检查一次位置变化，如果当前位置和上次记录位置的直线距离超过100单位，
+        -- 说明角色可能已经死亡并重生到了新位置（通常在出生点），这时需要重新计算路径
+        if currentTime - lastCheckTime > 0.5 and not isRecalculating then  -- 每0.5秒检查一次
+            local positionChange = (currentPos - lastCheckPosition).Magnitude
+            if positionChange > 100 then
+                warn(string.format("检测到位置突然大变化 (%.1f 单位)，角色可能已死亡并重生", positionChange))
+                
+                -- 重置移动计时器（死亡后重新开始计时）
+                if moveStartTimeTable.value then
+                    moveStartTimeTable.value = tick()
+                    print("检测到死亡，重置移动计时器")
+                end
+                
+                -- 重置位置检查
+                lastCheckPosition = currentPos
+                lastCheckTime = currentTime
+                
+                -- 不中断移动，继续执行
+            else
+                lastCheckPosition = currentPos
+                lastCheckTime = currentTime
+            end
+        end
+        
         local waypoint = waypoints[currentWaypointIndex]
         local targetPos = waypoint.Position
-        local currentPos = HumanoidRootPart.Position
         local distanceToWaypoint = (currentPos - targetPos).Magnitude
         
-        -- 卡住检测
-        if isMoving and tick() - stuckCheckTime > 3 then
+        -- 卡住检测（减少检测时间以提高响应速度）
+        if isMoving and tick() - stuckCheckTime > 2 then
             local movedDistance = (currentPos - lastPosition).Magnitude
             if movedDistance < 2 then
-                warn(string.format("路径点 %d 可能卡住，跳过", currentWaypointIndex))
                 currentWaypointIndex = currentWaypointIndex + 1
                 if currentWaypointIndex <= #waypoints then
                     moveToNextWaypoint()
@@ -291,56 +446,155 @@ local function MoveToTargetUsingPathfinding()
             lastPosition = currentPos
         end
         
-        -- 检查是否到达当前路径点
-        if distanceToWaypoint < 8 then
+        -- 检查是否到达当前路径点（减少判断距离以提高速度）
+        if distanceToWaypoint < 4 then
             currentWaypointIndex = currentWaypointIndex + 1
             
-            -- 移动到下一个路径点
             if currentWaypointIndex <= #waypoints then
                 moveToNextWaypoint()
             else
-                moveCompleted = true
-                if connection then
-                    connection:Disconnect()
+                moveComplete = true
+                if moveConnection then
+                    moveConnection:Disconnect()
                 end
             end
         end
-        
-        -- 超时保护（30秒后停止）
-        if tick() - startMoveTime > 30 then
-            warn("移动超时，已停止")
-            if connection then
-                connection:Disconnect()
-            end
-            moveCompleted = true
-        end
     end)
     
-    -- 开始移动
-    if moveToNextWaypoint() then
-        -- 等待移动完成或超时
-        local waitTime = 0
-        while not moveCompleted and waitTime < 30 do
-            wait(0.1)
-            waitTime = waitTime + 0.1
+        -- 开始移动
+        print("开始移动到第一个路径点")
+        if moveToNextWaypoint() then
+            -- 等待移动完成（最多150秒）
+            print("移动中，等待完成...")
+            local MAX_MOVE_TIME = 150  -- 移动超时时间（秒）
+            moveStartTimeTable.value = tick()  -- 设置移动开始时间，让Heartbeat回调可以重置
+            
+            -- 使用Heartbeat每帧检查GUI，确保第一时间退出
+            local waitGuiCheckConnection
+            waitGuiCheckConnection = RunService.Heartbeat:Connect(function()
+                if CheckGUIVisibility() then
+                    if waitGuiCheckConnection then
+                        waitGuiCheckConnection:Disconnect()
+                    end
+                    print("等待移动完成时检测到GUI可见 - 停止移动并关闭游戏")
+                    moveComplete = true
+                    if moveConnection then
+                        moveConnection:Disconnect()
+                    end
+                    game:Shutdown()
+                end
+            end)
+            
+            while not moveComplete and tick() - moveStartTimeTable.value < MAX_MOVE_TIME do
+                wait(0.1)
+                
+                -- 检查角色是否仍然有效
+                local currentChar = LocalPlayer.Character
+                if not currentChar or not currentChar.Parent then
+                    print("角色已消失，停止移动")
+                    moveComplete = true
+                    break
+                end
+            end
+            
+            if waitGuiCheckConnection then
+                waitGuiCheckConnection:Disconnect()
+            end
+        if moveConnection then
+            moveConnection:Disconnect()
         end
-        
-        if connection then
-            connection:Disconnect()
+        if moveComplete then
+            print("移动完成")
+        else
+            print("移动超时")
         end
-        
-        return moveCompleted
+        return moveComplete
     else
-        if connection then
-            connection:Disconnect()
+        print("无法开始移动")
+    end
+    
+    if moveConnection then
+        moveConnection:Disconnect()
+    end
+    return false
+end
+
+-- 执行路径寻找操作（替代原来的传送操作）
+local function ExecutePathfindingOperation()
+    -- 检查GUI可见性
+    if CheckGUIVisibility() then
+        print("执行路径寻找前检测到GUI可见 - 关闭游戏")
+        game:Shutdown()
+        return
+    end
+    
+    local success, targetModel = pcall(function()
+        return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"]
+    end)
+    
+    if success and targetModel then
+        print("找到目标水晶，开始路径寻找...")
+        -- 如果移动失败（可能是死亡导致），重试一次
+        local moveSuccess = MoveToTarget(targetModel)
+        if not moveSuccess then
+            -- 等待一下，可能是角色死亡需要重生（使用Heartbeat每帧检查GUI）
+            local waitStartTime = tick()
+            local retryGuiCheckConnection
+            retryGuiCheckConnection = RunService.Heartbeat:Connect(function()
+                if CheckGUIVisibility() then
+                    if retryGuiCheckConnection then
+                        retryGuiCheckConnection:Disconnect()
+                    end
+                    print("重试等待期间检测到GUI可见 - 关闭游戏")
+                    game:Shutdown()
+                end
+            end)
+            
+            while tick() - waitStartTime < 2 do
+                wait(0.1)
+            end
+            
+            if retryGuiCheckConnection then
+                retryGuiCheckConnection:Disconnect()
+            end
+            
+            -- 再次检查GUI（防止在断开连接后GUI才变为可见）
+            if CheckGUIVisibility() then
+                print("重试前检测到GUI可见 - 关闭游戏")
+                game:Shutdown()
+                return
+            end
+            
+            -- 重新获取目标并重试
+            local success2, targetModel2 = pcall(function()
+                return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"]
+            end)
+            if success2 and targetModel2 then
+                print("重试路径寻找...")
+                moveSuccess = MoveToTarget(targetModel2)
+            end
         end
-        return false
+        if moveSuccess then
+            print("路径寻找完成")
+        else
+            print("路径寻找失败")
+        end
+    else
+        print("未找到目标水晶")
     end
 end
 
 -- 主循环
 while true do
-    -- 首先检查水晶是否存在
+    -- 快速检查GUI可见性
+    local guiVisible = CheckGUIVisibility()
+    if guiVisible then
+        print("检测到GUI可见 - 关闭游戏")
+        game:Shutdown()
+        return
+    end
+    
+    -- 检查水晶是否存在
     local crystalSuccess, crystalExists = CheckCrystalExists()
     
     if crystalSuccess and crystalExists then
@@ -351,22 +605,51 @@ while true do
             return
         end
         
-        -- 使用PathfindingService移动到目标位置
-        MoveToTargetUsingPathfinding()
+        -- 执行路径寻找操作（替代传送）
+        ExecutePathfindingOperation()
         
-        -- 10秒冷却周期（持续检查GUI）
+        -- 10秒冷却周期（持续检查GUI，使用Heartbeat每帧检查以确保第一时间退出）
         local startTime = tick()
-        while tick() - startTime < 10 do
+        local guiCheckConnection
+        guiCheckConnection = RunService.Heartbeat:Connect(function()
             if CheckGUIVisibility() then
+                if guiCheckConnection then
+                    guiCheckConnection:Disconnect()
+                end
                 print("冷却期间检测到GUI可见 - 关闭游戏")
                 game:Shutdown()
-                return
             end
-            wait(0.25) -- 每0.25秒检查一次
+        end)
+        
+        -- 等待10秒或GUI可见（GUI检查由上面的Heartbeat处理）
+        while tick() - startTime < 10 do
+            wait(0.1)
+        end
+        
+        if guiCheckConnection then
+            guiCheckConnection:Disconnect()
         end
     else
-        -- 水晶不存在时只简单等待1秒
-        wait(1)
+        -- 水晶不存在时短暂等待（但仍持续检查GUI，使用Heartbeat每帧检查以确保第一时间退出）
+        local startTime = tick()
+        local guiCheckConnection
+        guiCheckConnection = RunService.Heartbeat:Connect(function()
+            if CheckGUIVisibility() then
+                if guiCheckConnection then
+                    guiCheckConnection:Disconnect()
+                end
+                print("等待期间检测到GUI可见 - 关闭游戏")
+                game:Shutdown()
+            end
+        end)
+        
+        -- 等待1秒或GUI可见（GUI检查由上面的Heartbeat处理）
+        while tick() - startTime < 1 do
+            wait(0.1)
+        end
+        
+        if guiCheckConnection then
+            guiCheckConnection:Disconnect()
+        end
     end
 end
-
