@@ -191,7 +191,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.0', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.1', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -324,12 +324,9 @@ local function getGuildName()
     
     pcall(function()
         -- 检查UI是否已经打开
-        local guildUI = GUI:FindFirstChild('\228\186\140\231\186\167\231\149\140\233\157\162')
-        if guildUI then
-            local guildTab = guildUI:FindFirstChild('\229\133\172\228\188\154')
-            if guildTab then
-                wasUIOpen = guildTab.Visible
-            end
+        local guildTab = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']
+        if guildTab then
+            wasUIOpen = guildTab.Visible
         end
         
         -- 如果UI未打开，则打开它来刷新数据
@@ -341,31 +338,10 @@ local function getGuildName()
             task.wait(0.5)
         end
         
-        -- 使用与Guidename相同的路径获取公会名称
-        local guildUI = GUI:FindFirstChild('\228\186\140\231\186\167\231\149\140\233\157\162')
-        if guildUI then
-            local guildTab = guildUI:FindFirstChild('\229\133\172\228\188\154')
-            if guildTab then
-                local bg = guildTab:FindFirstChild('背景')
-                if bg then
-                    local rightPanel = bg:FindFirstChild('右侧界面')
-                    if rightPanel then
-                        local homePage = rightPanel:FindFirstChild('主页')
-                        if homePage then
-                            local intro = homePage:FindFirstChild('介绍')
-                            if intro then
-                                local nameFrame = intro:FindFirstChild('名称')
-                                if nameFrame then
-                                    local textLabel = nameFrame:FindFirstChild('文本')
-                                    if textLabel then
-                                        guildNameText = textLabel.Text or ''
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+        -- 使用完整路径直接获取公会名称
+        local textLabel = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"]
+        if textLabel then
+            guildNameText = textLabel.Text or ''
         end
         
         -- 如果原本UI是关闭的，则关闭它
