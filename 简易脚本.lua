@@ -191,7 +191,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v1.9', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.0', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -317,11 +317,31 @@ local function getRefreshCost()
     return parseNumber(refreshCostText, 0)
 end
 
--- 获取公会名称的函数（与Guidename使用相同的路径，但使用FindFirstChild避免阻塞）
+-- 获取公会名称的函数（先打开公会UI刷新数据，获取名字后关闭）
 local function getGuildName()
     local guildNameText = ''
+    local wasUIOpen = false  -- 记录UI原本是否打开
+    
     pcall(function()
-        -- 使用与Guidename相同的路径，但使用FindFirstChild避免在保存时阻塞
+        -- 检查UI是否已经打开
+        local guildUI = GUI:FindFirstChild('\228\186\140\231\186\167\231\149\140\233\157\162')
+        if guildUI then
+            local guildTab = guildUI:FindFirstChild('\229\133\172\228\188\154')
+            if guildTab then
+                wasUIOpen = guildTab.Visible
+            end
+        end
+        
+        -- 如果UI未打开，则打开它来刷新数据
+        if not wasUIOpen then
+            pcall(function()
+                GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = true
+            end)
+            -- 等待UI打开和数据刷新
+            task.wait(0.5)
+        end
+        
+        -- 使用与Guidename相同的路径获取公会名称
         local guildUI = GUI:FindFirstChild('\228\186\140\231\186\167\231\149\140\233\157\162')
         if guildUI then
             local guildTab = guildUI:FindFirstChild('\229\133\172\228\188\154')
@@ -346,6 +366,13 @@ local function getGuildName()
                     end
                 end
             end
+        end
+        
+        -- 如果原本UI是关闭的，则关闭它
+        if not wasUIOpen then
+            pcall(function()
+                GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = false
+            end)
         end
     end)
     return guildNameText or ''
