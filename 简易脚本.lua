@@ -317,10 +317,11 @@ local function getRefreshCost()
     return parseNumber(refreshCostText, 0)
 end
 
--- 获取公会名称的函数（与Guidename使用相同的路径）
+-- 获取公会名称的函数（与Guidename使用相同的路径，但使用FindFirstChild避免阻塞）
 local function getGuildName()
     local guildNameText = ''
     pcall(function()
+        -- 使用与Guidename相同的路径，但使用FindFirstChild避免在保存时阻塞
         local guildUI = GUI:FindFirstChild('\228\186\140\231\186\167\231\149\140\233\157\162')
         if guildUI then
             local guildTab = guildUI:FindFirstChild('\229\133\172\228\188\154')
