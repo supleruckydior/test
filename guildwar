@@ -3,38 +3,18 @@ if not game:IsLoaded() then
 end
 wait(2)
 
+-- 服务
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local PathfindingService = game:GetService("PathfindingService")
+
+local LocalPlayer = Players.LocalPlayer
+
 -- 检查水晶是否存在
 local function CheckCrystalExists()
     return pcall(function()
         return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"] ~= nil
     end)
-end
-
--- 执行传送操作
-local function ExecuteTeleportOperation()
-    -- 记录初始位置
-    local initialPosition = game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position
-    
-    -- 第一次传送
-    local targetPositioninit = Vector3.new(201.054626, 500, 499)
-    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(targetPositioninit)
-    wait(2)
-    
-    -- 使用技能
-    local args = {
-        [1] = 1,
-        [2] = game:GetService("Players").LocalPlayer.Character,
-    }
-    game:GetService("ReplicatedStorage"):FindFirstChild("\228\186\139\228\187\182"):FindFirstChild("\229\133\172\231\148\168"):FindFirstChild("\230\138\128\232\131\189"):FindFirstChild("\228\189\191\231\148\168\230\138\128\232\131\189"):FireServer(unpack(args))
-    wait(0.8)
-    
-    -- 第二次传送
-    local targetPosition = Vector3.new(-506.054626, 19.4736, -513.346)
-    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(targetPosition)
-    wait(0.3)
-    
-    -- 传送回初始点
-    game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(initialPosition)
 end
 
 -- 检查GUI可见性 (优化版)
@@ -43,6 +23,319 @@ local function CheckGUIVisibility()
         return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
     end)
     return success and result
+end
+
+-- 函数：在目标位置周围搜索可到达的点（无视高度）
+local function findReachablePosition(targetPos, startPos, Character)
+    print("在目标位置周围搜索可到达的点...")
+    
+    local searchRadius = 20  -- 搜索半径
+    local searchHeightRange = 50  -- 高度搜索范围
+    local searchStep = 5  -- 搜索步长
+    
+    -- 尝试不同高度和位置
+    for heightOffset = -searchHeightRange, searchHeightRange, 10 do
+        for radius = 0, searchRadius, searchStep do
+            for angle = 0, 360, 45 do
+                local rad = math.rad(angle)
+                local offsetX = math.cos(rad) * radius
+                local offsetZ = math.sin(rad) * radius
+                
+                local testPos = Vector3.new(
+                    targetPos.X + offsetX,
+                    targetPos.Y + heightOffset,
+                    targetPos.Z + offsetZ
+                )
+                
+                -- 尝试计算路径
+                local testPath = PathfindingService:CreatePath({
+                    AgentRadius = 1,
+                    AgentHeight = 3,
+                    AgentCanJump = true,
+                    WaypointSpacing = 8,
+                })
+                
+                local success, err = pcall(function()
+                    testPath:ComputeAsync(startPos, testPos)
+                end)
+                
+                if success then
+                    local status = testPath.Status
+                    if status == Enum.PathStatus.Success or 
+                       status == Enum.PathStatus.ClosestNoPath or
+                       status == Enum.PathStatus.ClosestOutOfRange then
+                        local waypoints = testPath:GetWaypoints()
+                        if #waypoints > 0 then
+                            print(string.format("找到可到达位置: %s (高度偏移: %.1f, 半径: %.1f)", 
+                                tostring(testPos), heightOffset, radius))
+                            return testPos, testPath
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil, nil
+end
+
+-- 使用PathfindingService移动到目标位置
+local function MoveToTargetUsingPathfinding()
+    local Character = LocalPlayer.Character
+    if not Character then
+        Character = LocalPlayer.CharacterAdded:Wait()
+    end
+    
+    local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+    local Humanoid = Character:WaitForChild("Humanoid")
+    
+    Humanoid.PlatformStand = false
+    Humanoid.WalkSpeed = 32
+    
+    -- 获取目标位置
+    local targetModel
+    local success, err = pcall(function()
+        targetModel = workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"]
+    end)
+    
+    if not success or not targetModel then
+        warn("无法访问目标路径")
+        return false
+    end
+    
+    -- 获取目标位置
+    local targetPosition
+    if targetModel:IsA("Model") then
+        local pivotCFrame = targetModel:GetPivot()
+        targetPosition = pivotCFrame.Position
+    elseif targetModel:IsA("BasePart") then
+        targetPosition = targetModel.Position
+    else
+        warn("目标对象类型不支持:", targetModel.ClassName)
+        return false
+    end
+    
+    -- 使用 Raycast 找到目标位置下方的地面
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {Character}
+    
+    local rayOrigin = Vector3.new(targetPosition.X, targetPosition.Y + 100, targetPosition.Z)
+    local rayDirection = Vector3.new(0, -300, 0)
+    local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    
+    local finalTargetPosition
+    if rayResult and rayResult.Instance then
+        finalTargetPosition = rayResult.Position + Vector3.new(0, HumanoidRootPart.Size.Y/2 + 1, 0)
+    else
+        finalTargetPosition = Vector3.new(targetPosition.X, HumanoidRootPart.Position.Y, targetPosition.Z)
+    end
+    
+    local startPos = HumanoidRootPart.Position
+    local endPos = finalTargetPosition
+    
+    -- 创建 PathfindingService 路径对象
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 1,
+        AgentHeight = 3,
+        AgentCanJump = true,
+        WaypointSpacing = 8,
+        Costs = {
+            Water = 1,
+        }
+    })
+    
+    -- 计算路径
+    local pathFound, noPathMessage = pcall(function()
+        path:ComputeAsync(startPos, endPos)
+    end)
+    
+    if not pathFound then
+        warn("路径计算失败: " .. tostring(noPathMessage))
+        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, Character)
+        if reachablePos and reachablePath then
+            endPos = reachablePos
+            path = reachablePath
+        else
+            warn("无法找到任何可到达的路径")
+            return false
+        end
+    end
+    
+    -- 检查路径状态
+    local pathStatus = path.Status
+    
+    if pathStatus == Enum.PathStatus.NoPath then
+        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, Character)
+        if reachablePos and reachablePath then
+            endPos = reachablePos
+            path = reachablePath
+            pathStatus = reachablePath.Status
+        else
+            warn("无法找到任何可到达的路径")
+            return false
+        end
+    elseif pathStatus == Enum.PathStatus.FailStartNotEmpty then
+        local adjustedStart = startPos + Vector3.new(0, 5, 0)
+        local testPath = PathfindingService:CreatePath({
+            AgentRadius = 1,
+            AgentHeight = 3,
+            AgentCanJump = true,
+            WaypointSpacing = 8,
+        })
+        local success = pcall(function()
+            testPath:ComputeAsync(adjustedStart, endPos)
+        end)
+        if success and testPath.Status ~= Enum.PathStatus.NoPath then
+            startPos = adjustedStart
+            path = testPath
+            pathStatus = testPath.Status
+        else
+            warn("无法找到路径")
+            return false
+        end
+    elseif pathStatus == Enum.PathStatus.FailFinishNotEmpty then
+        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, Character)
+        if reachablePos and reachablePath then
+            endPos = reachablePos
+            path = reachablePath
+            pathStatus = reachablePath.Status
+        else
+            warn("无法找到任何可到达的路径")
+            return false
+        end
+    end
+    
+    -- 获取路径点
+    local waypoints = path:GetWaypoints()
+    
+    if #waypoints == 0 then
+        warn("路径点为空")
+        return false
+    end
+    
+    -- 沿着路径移动
+    local currentWaypointIndex = 1
+    local isMoving = false
+    local stuckCheckTime = 0
+    local lastPosition = HumanoidRootPart.Position
+    
+    -- 跳过第一个路径点（起始位置）
+    if #waypoints > 1 then
+        currentWaypointIndex = 2
+    end
+    
+    local function moveToNextWaypoint()
+        if currentWaypointIndex > #waypoints then
+            return false
+        end
+        
+        local waypoint = waypoints[currentWaypointIndex]
+        local targetPos = waypoint.Position
+        
+        -- 如果是跳跃点，设置跳跃
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            Humanoid.Jump = true
+        end
+        
+        -- 移动到目标位置
+        Humanoid:MoveTo(targetPos)
+        isMoving = true
+        stuckCheckTime = tick()
+        lastPosition = HumanoidRootPart.Position
+        
+        return true
+    end
+    
+    -- 移动循环
+    local connection
+    local startMoveTime = tick()
+    local moveCompleted = false
+    
+    connection = RunService.Heartbeat:Connect(function()
+        -- 检查GUI（在移动过程中也要检查）
+        if CheckGUIVisibility() then
+            print("移动期间检测到GUI可见 - 关闭游戏")
+            if connection then
+                connection:Disconnect()
+            end
+            game:Shutdown()
+            return
+        end
+        
+        if currentWaypointIndex > #waypoints then
+            moveCompleted = true
+            if connection then
+                connection:Disconnect()
+            end
+            return
+        end
+        
+        local waypoint = waypoints[currentWaypointIndex]
+        local targetPos = waypoint.Position
+        local currentPos = HumanoidRootPart.Position
+        local distanceToWaypoint = (currentPos - targetPos).Magnitude
+        
+        -- 卡住检测
+        if isMoving and tick() - stuckCheckTime > 3 then
+            local movedDistance = (currentPos - lastPosition).Magnitude
+            if movedDistance < 2 then
+                warn(string.format("路径点 %d 可能卡住，跳过", currentWaypointIndex))
+                currentWaypointIndex = currentWaypointIndex + 1
+                if currentWaypointIndex <= #waypoints then
+                    moveToNextWaypoint()
+                end
+                return
+            end
+            stuckCheckTime = tick()
+            lastPosition = currentPos
+        end
+        
+        -- 检查是否到达当前路径点
+        if distanceToWaypoint < 8 then
+            currentWaypointIndex = currentWaypointIndex + 1
+            
+            -- 移动到下一个路径点
+            if currentWaypointIndex <= #waypoints then
+                moveToNextWaypoint()
+            else
+                moveCompleted = true
+                if connection then
+                    connection:Disconnect()
+                end
+            end
+        end
+        
+        -- 超时保护（30秒后停止）
+        if tick() - startMoveTime > 30 then
+            warn("移动超时，已停止")
+            if connection then
+                connection:Disconnect()
+            end
+            moveCompleted = true
+        end
+    end)
+    
+    -- 开始移动
+    if moveToNextWaypoint() then
+        -- 等待移动完成或超时
+        local waitTime = 0
+        while not moveCompleted and waitTime < 30 do
+            wait(0.1)
+            waitTime = waitTime + 0.1
+        end
+        
+        if connection then
+            connection:Disconnect()
+        end
+        
+        return moveCompleted
+    else
+        if connection then
+            connection:Disconnect()
+        end
+        return false
+    end
 end
 
 -- 主循环
@@ -58,8 +351,8 @@ while true do
             return
         end
         
-        -- 执行传送操作
-        ExecuteTeleportOperation()
+        -- 使用PathfindingService移动到目标位置
+        MoveToTargetUsingPathfinding()
         
         -- 10秒冷却周期（持续检查GUI）
         local startTime = tick()
@@ -76,3 +369,4 @@ while true do
         wait(1)
     end
 end
+
