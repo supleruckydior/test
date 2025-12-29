@@ -377,12 +377,20 @@ local DATA_FILE_PATH = "roblox_account_data.tsv"  -- TSV格式，EmEditor可以�
 local DATA_SAVE_INTERVAL = 3  -- 保存间隔（秒），3秒
 
 -- 保存数据到本地文件（TSV格式，适合EmEditor）
+local isSaving = false  -- 写入锁，防止并发写入
 local function saveDataToLocal()
-    pcall(function()
+    -- 防止并发写入
+    if isSaving then
+        return
+    end
+    
+    local success, err = pcall(function()
         -- 检查Synapse文件函数是否可用
         if not writefile or not readfile then
             return
         end
+        
+        isSaving = true  -- 设置写入锁
         
         local accountName = player.Name
         local herbValue = getHerbValue()
@@ -396,40 +404,58 @@ local function saveDataToLocal()
         
         -- 读取现有数据
         local accountData = {}  -- 使用字典格式，key为账号名
-        local fileExists = pcall(function()
-            return readfile(DATA_FILE_PATH)
+        local fileContent = nil
+        local fileExists = isfile(DATA_FILE_PATH)
+        local readSuccess, readResult = pcall(function()
+            if fileExists then
+                return readfile(DATA_FILE_PATH)
+            end
+            return nil
         end)
         
-        if fileExists then
-            local fileContent = readfile(DATA_FILE_PATH)
-            if fileContent and fileContent ~= "" then
-                -- 解析TSV文件
-                local lines = {}
-                for line in fileContent:gmatch("[^\r\n]+") do
-                    table.insert(lines, line)
+        local oldDataCount = 0  -- 记录读取到的旧数据数量
+        
+        if readSuccess and readResult and readResult ~= "" then
+            fileContent = readResult
+            -- 检查文件大小，如果太大可能有问题
+            if #fileContent > 10 * 1024 * 1024 then  -- 10MB限制
+                warn('[数据保存] 警告: 文件过大 (' .. #fileContent .. ' 字节)，可能无法完整读取')
+            end
+            
+            -- 解析TSV文件
+            local lines = {}
+            for line in fileContent:gmatch("[^\r\n]+") do
+                table.insert(lines, line)
+            end
+            
+            -- 跳过标题行，读取数据
+            for i = 2, #lines do
+                local parts = {}
+                for part in lines[i]:gmatch("[^\t]+") do
+                    table.insert(parts, part)
                 end
-                
-                -- 跳过标题行，读取数据
-                for i = 2, #lines do
-                    local parts = {}
-                    for part in lines[i]:gmatch("[^\t]+") do
-                        table.insert(parts, part)
-                    end
-                    if #parts >= 3 then
-                        local acc = parts[1]
-                        local herbs = tonumber(parts[2]) or 0
-                        local ore = tonumber(parts[3]) or 0
-                        local time = parts[4] or ""
-                        local guildName = parts[5] or ""  -- 读取公会名称（如果有）
-                        accountData[acc] = {
-                            herbs = herbs,
-                            ore = ore,
-                            updated_at = time,
-                            guild_name = guildName
-                        }
-                    end
+                if #parts >= 3 then
+                    local acc = parts[1]
+                    local herbs = tonumber(parts[2]) or 0
+                    local ore = tonumber(parts[3]) or 0
+                    local time = parts[4] or ""
+                    local guildName = parts[5] or ""  -- 读取公会名称（如果有）
+                    accountData[acc] = {
+                        herbs = herbs,
+                        ore = ore,
+                        updated_at = time,
+                        guild_name = guildName
+                    }
+                    oldDataCount = oldDataCount + 1
                 end
             end
+            
+            print('[数据保存] 成功读取', oldDataCount, '条旧数据')
+        elseif fileExists then
+            -- 文件存在但读取失败，这是严重问题
+            warn('[数据保存] 错误: 文件存在但读取失败，将保留原文件不覆盖')
+            isSaving = false
+            return  -- 不继续写入，避免清空文件
         end
         
         -- 更新或添加当前账号数据
@@ -440,15 +466,15 @@ local function saveDataToLocal()
             guild_name = guildNameValue  -- 使用getGuildName()获取的值
         }
         
-        -- 构建TSV内容
-        local tsvContent = "账号\t草药数量\t矿石数量\t更新时间\t公会名字\n"
-        
         -- 按账号名排序（可选）
         local sortedAccounts = {}
         for account, _ in pairs(accountData) do
             table.insert(sortedAccounts, account)
         end
         table.sort(sortedAccounts)
+        
+        -- 使用table.concat提高性能，避免字符串拼接问题
+        local tsvLines = {"账号\t草药数量\t矿石数量\t更新时间\t公会名字"}
         
         -- 写入数据
         for _, account in ipairs(sortedAccounts) do
@@ -457,18 +483,73 @@ local function saveDataToLocal()
             if not data.guild_name then
                 data.guild_name = ""
             end
-            tsvContent = tsvContent .. string.format("%s\t%d\t%d\t%s\t%s\n", 
+            table.insert(tsvLines, string.format("%s\t%d\t%d\t%s\t%s", 
                 account, 
                 data.herbs, 
                 data.ore, 
                 data.updated_at,
                 data.guild_name
-            )
+            ))
         end
         
-        -- 保存到文件
-        writefile(DATA_FILE_PATH, tsvContent)
+        -- 检查数据完整性：如果文件存在但读取到的数据为空，说明可能有问题
+        if fileExists and oldDataCount == 0 and #sortedAccounts == 1 then
+            -- 只有当前账号的数据，但文件存在，说明读取失败
+            warn('[数据保存] 警告: 文件存在但未读取到旧数据，可能文件格式有问题。跳过本次保存以避免数据丢失')
+            isSaving = false
+            return
+        end
+        
+        -- 使用table.concat构建完整内容，性能更好
+        local tsvContent = table.concat(tsvLines, "\n") .. "\n"
+        
+        -- 检查内容大小
+        if #tsvContent > 10 * 1024 * 1024 then  -- 10MB限制
+            warn('[数据保存] 警告: 要写入的内容过大 (' .. #tsvContent .. ' 字节)，可能写入失败')
+        end
+        
+        -- 保存到文件，检查写入是否成功
+        local writeSuccess, writeErr = pcall(function()
+            writefile(DATA_FILE_PATH, tsvContent)
+        end)
+        
+        if not writeSuccess then
+            warn('[数据保存] 写入文件失败:', writeErr)
+            -- 如果写入失败，不更新isSaving，让下次重试
+            isSaving = false
+            return
+        end
+        
+        -- 验证写入是否成功（可选，读取文件检查）
+        local verifySuccess, verifyContent = pcall(function()
+            if isfile(DATA_FILE_PATH) then
+                return readfile(DATA_FILE_PATH)
+            end
+            return nil
+        end)
+        
+        if verifySuccess and verifyContent and verifyContent ~= "" then
+            -- 写入成功，验证数据完整性
+            local verifyLines = {}
+            for line in verifyContent:gmatch("[^\r\n]+") do
+                table.insert(verifyLines, line)
+            end
+            local verifyDataCount = #verifyLines - 1  -- 减去标题行
+            if verifyDataCount == #sortedAccounts then
+                print('[数据保存] 数据已保存，账号数:', #sortedAccounts, '(旧数据:', oldDataCount, '条)')
+            else
+                warn('[数据保存] 警告: 验证时发现数据数量不匹配，期望:', #sortedAccounts, '实际:', verifyDataCount)
+            end
+        else
+            warn('[数据保存] 警告: 写入后验证失败，文件可能为空。如果原文件存在，建议手动检查')
+        end
     end)
+    
+    isSaving = false  -- 释放写入锁
+    
+    if not success then
+        warn('[数据保存] 保存数据时发生错误:', err)
+    end
 end
 
 -- 数据保存循环（在收菜完成后启动）
