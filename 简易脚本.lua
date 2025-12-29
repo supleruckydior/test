@@ -7,7 +7,7 @@ if not game:IsLoaded() then
 end
 
 -- 额外等待确保游戏完全初始化
-task.wait(1)
+task.wait(3)
 
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
