@@ -63,13 +63,97 @@ Humanoid.WalkSpeed = 64
 -- 检查水晶是否存在
 local function CheckCrystalExists()
     return pcall(function()
-        return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"] ~= nil
+        local crystals = workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]:GetChildren()
+        return #crystals > 0
     end)
 end
 
+-- 缓存的可用水晶
+local cachedCrystal = nil
+
+-- 查找可用的水晶（能成功计算路径的水晶）
+local function FindAvailableCrystal()
+    -- 如果已缓存的水晶仍然有效，直接返回
+    if cachedCrystal and cachedCrystal.Parent then
+        return cachedCrystal
+    end
+    
+    local success, crystalContainer = pcall(function()
+        return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]
+    end)
+    
+    if not success or not crystalContainer then
+        return nil
+    end
+    
+    local crystals = crystalContainer:GetChildren()
+    if #crystals == 0 then
+        return nil
+    end
+    
+    -- 获取当前角色位置
+    local currentChar = LocalPlayer.Character
+    if not currentChar or not currentChar.Parent then
+        return nil
+    end
+    local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
+    if not currentHRP then
+        return nil
+    end
+    local startPos = currentHRP.Position
+    
+    -- 尝试每个水晶，找到第一个可以计算路径的
+    for _, crystal in ipairs(crystals) do
+        if crystal and crystal.Parent then
+            -- 获取水晶位置
+            local targetPosition
+            if crystal:IsA("Model") then
+                local pivotCFrame = crystal:GetPivot()
+                targetPosition = pivotCFrame.Position
+            elseif crystal:IsA("BasePart") then
+                targetPosition = crystal.Position
+            end
+            
+            -- 如果成功获取位置，尝试计算路径
+            if targetPosition then
+                -- 尝试计算路径
+                local testPath = PathfindingService:CreatePath({
+                    AgentRadius = 1,
+                    AgentHeight = 3,
+                    AgentCanJump = true,
+                    WaypointSpacing = 4,
+                })
+                
+                local pathFound, pathError = pcall(function()
+                    testPath:ComputeAsync(startPos, targetPosition)
+                end)
+                
+                if pathFound and testPath.Status ~= Enum.PathStatus.NoPath then
+                    local waypoints = testPath:GetWaypoints()
+                    if #waypoints > 0 then
+                        -- 找到可用的水晶，缓存并返回
+                        cachedCrystal = crystal
+                        print("找到可用的水晶:", crystal.Name)
+                        return crystal
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 如果所有水晶都无法计算路径，返回第一个水晶（作为备选）
+    if #crystals > 0 then
+        cachedCrystal = crystals[1]
+        print("使用第一个水晶作为备选:", crystals[1].Name)
+        return crystals[1]
+    end
+    
+    return nil
+end
+
 -- 函数：在目标位置周围搜索可到达的点
-local function findReachablePosition(targetPos, startPos)
-    local searchRadius = 20
+local function findReachablePosition(targetPos, startPos, maxRadius)
+    local searchRadius = maxRadius or 20  -- 默认20，可以传入更大的值
     local searchHeightRange = 50
     local searchStep = 5  -- 可以增加到10以加快搜索，但会降低精度
     
@@ -90,7 +174,7 @@ local function findReachablePosition(targetPos, startPos)
                     AgentRadius = 1,
                     AgentHeight = 3,
                     AgentCanJump = true,
-                    WaypointSpacing = 3,
+                    WaypointSpacing = 4,  -- 使用较小的默认间距以获得更好的路径
                 })
                 
                 local success, err = pcall(function()
@@ -153,53 +237,122 @@ local function MoveToTarget(targetModel)
     
     print("目标位置:", targetPosition)
     
-    -- 使用 Raycast 找到目标位置下方的地面
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {currentChar}
+    local startPos = currentHRP.Position
     
-    local rayOrigin = Vector3.new(targetPosition.X, targetPosition.Y + 100, targetPosition.Z)
-    local rayDirection = Vector3.new(0, -300, 0)
-    local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    
-    local finalTargetPosition
-    if rayResult and rayResult.Instance then
-        finalTargetPosition = rayResult.Position + Vector3.new(0, currentHRP.Size.Y/2 + 1, 0)
+    -- 先尝试在水晶附近搜索可到达的位置（使用较大的搜索范围，因为水晶周围可能有墙和入口）
+    print("在水晶附近搜索可到达的位置（搜索半径30单位）...")
+    local reachablePos, testPath = findReachablePosition(targetPosition, startPos, 30)
+    local endPos
+    if reachablePos then
+        endPos = reachablePos
+        print("找到可到达的位置:", endPos, "距离水晶:", (endPos - targetPosition).Magnitude)
     else
-        finalTargetPosition = Vector3.new(targetPosition.X, currentHRP.Position.Y, targetPosition.Z)
+        -- 如果搜索失败，尝试使用较小的搜索范围
+        print("使用较小搜索范围（20单位）重试...")
+        reachablePos, testPath = findReachablePosition(targetPosition, startPos, 20)
+        if reachablePos then
+            endPos = reachablePos
+            print("找到可到达的位置:", endPos)
+        else
+            -- 如果还是失败，使用Raycast找到目标位置下方的地面
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            raycastParams.FilterDescendantsInstances = {currentChar}
+            
+            local rayOrigin = Vector3.new(targetPosition.X, targetPosition.Y + 100, targetPosition.Z)
+            local rayDirection = Vector3.new(0, -300, 0)
+            local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+            
+            if rayResult and rayResult.Instance then
+                endPos = rayResult.Position + Vector3.new(0, currentHRP.Size.Y/2 + 1, 0)
+            else
+                endPos = Vector3.new(targetPosition.X, currentHRP.Position.Y, targetPosition.Z)
+            end
+            print("使用Raycast获取的位置:", endPos)
+        end
     end
     
-    local startPos = currentHRP.Position
-    local endPos = finalTargetPosition
+    -- 检查距离
+    local distance = (startPos - endPos).Magnitude
+    print("起点到终点的距离:", distance)
     
-    -- 创建路径对象（增大路径点间距以提高移动速度）
+    -- 使用默认的最佳间距（先尝试较小值以获得更精确的路径）
+    local waypointSpacing = 4  -- 默认使用较小的间距以获得最佳路径
+    
+    -- 创建路径对象
     local path = PathfindingService:CreatePath({
         AgentRadius = 1,
         AgentHeight = 3,
         AgentCanJump = true,
-        WaypointSpacing = 5,  -- 从3增加到5，减少路径点数量
+        WaypointSpacing = waypointSpacing,
         Costs = {
             Water = 1,
         }
     })
     
     -- 计算路径
-    print("开始计算路径，起始位置:", startPos, "目标位置:", endPos)
+    print("开始计算路径，起始位置:", startPos, "目标位置:", endPos, "路径点间距:", waypointSpacing)
     local pathFound, noPathMessage = pcall(function()
         path:ComputeAsync(startPos, endPos)
     end)
     
     if not pathFound then
-        print("路径计算异常:", tostring(noPathMessage))
-        print("尝试在周围搜索可到达的点...")
-        local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
-        if reachablePos and reachablePath then
-            endPos = reachablePos
-            path = reachablePath
-            print("找到可到达的替代位置")
+        local errorMsg = tostring(noPathMessage)
+        print("路径计算异常:", errorMsg)
+        
+        -- 检查是否是"path request is too long"错误
+        if string.find(errorMsg:lower(), "too long") or string.find(errorMsg:lower(), "path.*long") then
+            print("检测到路径请求过长错误，尝试使用更大的路径点间距...")
+            -- 尝试逐步增大WaypointSpacing
+            local spacingOptions = {8, 12, 16, 20, 25, 30}
+            local success = false
+            
+            for _, spacing in ipairs(spacingOptions) do
+                print("尝试使用路径点间距:", spacing)
+                local longerPath = PathfindingService:CreatePath({
+                    AgentRadius = 1,
+                    AgentHeight = 3,
+                    AgentCanJump = true,
+                    WaypointSpacing = spacing,
+                    Costs = { Water = 1 }
+                })
+                local retrySuccess, retryError = pcall(function()
+                    longerPath:ComputeAsync(startPos, endPos)
+                end)
+                if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
+                    path = longerPath
+                    pathFound = true
+                    success = true
+                    print("使用路径点间距 " .. spacing .. " 成功计算路径")
+                    break
+                end
+            end
+            
+            if not success then
+                print("即使使用更大的路径点间距仍然失败，尝试在周围搜索可到达的点...")
+                local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
+                if reachablePos and reachablePath then
+                    endPos = reachablePos
+                    path = reachablePath
+                    pathFound = true
+                    print("找到可到达的替代位置")
+                else
+                    print("无法找到任何可到达的路径")
+                    return false
+                end
+            end
         else
-            print("无法找到任何可到达的路径")
-            return false
+            print("尝试在周围搜索可到达的点...")
+            local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
+            if reachablePos and reachablePath then
+                endPos = reachablePos
+                path = reachablePath
+                pathFound = true
+                print("找到可到达的替代位置")
+            else
+                print("无法找到任何可到达的路径")
+                return false
+            end
         end
     end
     
@@ -321,25 +474,66 @@ local function MoveToTarget(targetModel)
         local newStartPos = currentHRP.Position
         print("新的起始位置:", newStartPos)
         
+        local newDistance = (newStartPos - endPos).Magnitude
+        local newWaypointSpacing = 4  -- 使用默认的最佳间距
+        
         local newPath = PathfindingService:CreatePath({
             AgentRadius = 1,
             AgentHeight = 3,
             AgentCanJump = true,
-            WaypointSpacing = 5,
+            WaypointSpacing = newWaypointSpacing,
             Costs = { Water = 1 }
         })
         
-        local pathFound = pcall(function()
+        local pathFound, pathError = pcall(function()
             newPath:ComputeAsync(newStartPos, endPos)
         end)
         
         if not pathFound then
-            local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
-            if reachablePos and reachablePath then
-                endPos = reachablePos
-                newPath = reachablePath
+            local errorMsg = tostring(pathError)
+            if string.find(errorMsg:lower(), "too long") or string.find(errorMsg:lower(), "path.*long") then
+                -- 尝试逐步增大WaypointSpacing
+                local spacingOptions = {8, 12, 16, 20, 25, 30}
+                local success = false
+                
+                for _, spacing in ipairs(spacingOptions) do
+                    local longerPath = PathfindingService:CreatePath({
+                        AgentRadius = 1,
+                        AgentHeight = 3,
+                        AgentCanJump = true,
+                        WaypointSpacing = spacing,
+                        Costs = { Water = 1 }
+                    })
+                    local retrySuccess = pcall(function()
+                        longerPath:ComputeAsync(newStartPos, endPos)
+                    end)
+                    if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
+                        newPath = longerPath
+                        pathFound = true
+                        success = true
+                        break
+                    end
+                end
+                
+                if not success then
+                    local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
+                    if reachablePos and reachablePath then
+                        endPos = reachablePos
+                        newPath = reachablePath
+                        pathFound = true
+                    else
+                        return nil, nil
+                    end
+                end
             else
-                return nil, nil
+                local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
+                if reachablePos and reachablePath then
+                    endPos = reachablePos
+                    newPath = reachablePath
+                    pathFound = true
+                else
+                    return nil, nil
+                end
             end
         end
         
@@ -409,54 +603,108 @@ local function MoveToTarget(targetModel)
         if currentTime - lastCheckTime > 0.5 and not isRecalculating then  -- 每0.5秒检查一次
             local positionChange = (currentPos - lastCheckPosition).Magnitude
             if positionChange > 60 then
-                warn(string.format("检测到位置突然大变化 (%.1f 单位)，角色可能已死亡并重生", positionChange))
+                warn(string.format("检测到位置突然大变化 (%.1f 单位)，角色可能已死亡并重生，重新计算路径", positionChange))
+                
+                -- 重新计算路径
+                isRecalculating = true
+                local newPath, newWaypoints = recalculatePathForMove()
+                if newPath and newWaypoints and #newWaypoints > 0 then
+                    path = newPath
+                    waypoints = newWaypoints
+                    currentWaypointIndex = 1
+                    if #waypoints > 1 then
+                        currentWaypointIndex = 2
+                    end
+                    print("重新计算路径完成，共 " .. #waypoints .. " 个路径点，从路径点 " .. currentWaypointIndex .. " 开始")
+                end
+                isRecalculating = false
                 
                 -- 重置移动计时器（死亡后重新开始计时）
                 if moveStartTimeTable.value then
                     moveStartTimeTable.value = tick()
-                    print("检测到死亡，重置移动计时器")
                 end
                 
                 -- 重置位置检查
                 lastCheckPosition = currentPos
                 lastCheckTime = currentTime
-                
-                -- 不中断移动，继续执行
             else
                 lastCheckPosition = currentPos
                 lastCheckTime = currentTime
             end
+        end
+        
+        -- 安全检查：确保路径点索引有效
+        if currentWaypointIndex > #waypoints then
+            moveComplete = true
+            if moveConnection then
+                moveConnection:Disconnect()
+            end
+            return
         end
         
         local waypoint = waypoints[currentWaypointIndex]
         local targetPos = waypoint.Position
         local distanceToWaypoint = (currentPos - targetPos).Magnitude
         
-        -- 卡住检测（减少检测时间以提高响应速度）
-        if isMoving and tick() - stuckCheckTime > 2 then
-            local movedDistance = (currentPos - lastPosition).Magnitude
-            if movedDistance < 2 then
-                currentWaypointIndex = currentWaypointIndex + 1
-                if currentWaypointIndex <= #waypoints then
-                    moveToNextWaypoint()
-                end
-                return
-            end
-            stuckCheckTime = tick()
-            lastPosition = currentPos
-        end
-        
-        -- 检查是否到达当前路径点（减少判断距离以提高速度）
-        if distanceToWaypoint < 4 then
+        -- 检查是否到达当前路径点（使用较小的判断距离以避免跳过路径点）
+        if distanceToWaypoint < 6 then
             currentWaypointIndex = currentWaypointIndex + 1
             
             if currentWaypointIndex <= #waypoints then
-                moveToNextWaypoint()
+                -- 立即切换到下一个路径点
+                waypoint = waypoints[currentWaypointIndex]
+                targetPos = waypoint.Position
+                stuckCheckTime = tick()
+                lastPosition = currentPos
+                print(string.format("切换到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
             else
+                print("已到达所有路径点")
                 moveComplete = true
                 if moveConnection then
                     moveConnection:Disconnect()
                 end
+                return
+            end
+        end
+        
+        -- 获取Humanoid以确保可以持续移动
+        local currentHumanoid = currentChar:FindFirstChild("Humanoid")
+        if currentHumanoid then
+            -- 持续调用MoveTo确保角色一直移动（每帧都调用）
+            if currentHumanoid.WalkSpeed < 64 then
+                currentHumanoid.WalkSpeed = 64
+            end
+            -- 如果是跳跃点，设置跳跃
+            if waypoint.Action == Enum.PathWaypointAction.Jump then
+                currentHumanoid.Jump = true
+            end
+            currentHumanoid:MoveTo(targetPos)
+            isMoving = true
+        end
+        
+        -- 卡住检测（减少检测时间以提高响应速度）
+        if isMoving and tick() - stuckCheckTime > 1.5 then
+            local movedDistance = (currentPos - lastPosition).Magnitude
+            if movedDistance < 2 then
+                -- 卡住了，跳过当前路径点
+                print(string.format("检测到卡住，跳过路径点 %d/%d", currentWaypointIndex, #waypoints))
+                currentWaypointIndex = currentWaypointIndex + 1
+                if currentWaypointIndex <= #waypoints then
+                    stuckCheckTime = tick()
+                    lastPosition = currentPos
+                    waypoint = waypoints[currentWaypointIndex]
+                    targetPos = waypoint.Position
+                    print(string.format("跳过到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
+                else
+                    print("已到达所有路径点")
+                    moveComplete = true
+                    if moveConnection then
+                        moveConnection:Disconnect()
+                    end
+                end
+            else
+                stuckCheckTime = tick()
+                lastPosition = currentPos
             end
         end
     end)
@@ -528,15 +776,17 @@ local function ExecutePathfindingOperation()
         return
     end
     
-    local success, targetModel = pcall(function()
-        return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"]
-    end)
+    -- 查找可用的水晶
+    local targetModel = FindAvailableCrystal()
     
-    if success and targetModel then
+    if targetModel then
         print("找到目标水晶，开始路径寻找...")
         -- 如果移动失败（可能是死亡导致），重试一次
         local moveSuccess = MoveToTarget(targetModel)
         if not moveSuccess then
+            -- 清除缓存，重新查找可用水晶
+            cachedCrystal = nil
+            
             -- 等待一下，可能是角色死亡需要重生（使用Heartbeat每帧检查GUI）
             local waitStartTime = tick()
             local retryGuiCheckConnection
@@ -565,11 +815,9 @@ local function ExecutePathfindingOperation()
                 return
             end
             
-            -- 重新获取目标并重试
-            local success2, targetModel2 = pcall(function()
-                return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]["\230\176\180\230\153\182"]
-            end)
-            if success2 and targetModel2 then
+            -- 重新查找可用水晶并重试
+            local targetModel2 = FindAvailableCrystal()
+            if targetModel2 then
                 print("重试路径寻找...")
                 moveSuccess = MoveToTarget(targetModel2)
             end
@@ -580,7 +828,7 @@ local function ExecutePathfindingOperation()
             print("路径寻找失败")
         end
     else
-        print("未找到目标水晶")
+        print("未找到可用的水晶")
     end
 end
 
