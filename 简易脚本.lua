@@ -289,7 +289,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.3', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.4', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -1271,7 +1271,7 @@ end)
 -- 使用重试机制获取公会名称，避免卡死
 local Guidename = ""
 local maxRetries = 10
-local retryDelay = 0.5
+local retryDelay = 1.5
 for attempt = 1, maxRetries do
     local success, result = pcall(function()
         return GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"].Text
@@ -1280,8 +1280,23 @@ for attempt = 1, maxRetries do
         Guidename = result
         break
     else
+        -- 打印GUI下的内容用于调试
+        print('[初始化错误] 获取公会名称失败，重试 ' .. attempt .. '/' .. maxRetries)
+        pcall(function()
+            print('[调试信息] GUI下的子对象:')
+            for _, child in pairs(GUI:GetChildren()) do
+                print('  - ' .. tostring(child.Name) .. ' (' .. child.ClassName .. ')')
+            end
+            if GUI:FindFirstChild("\228\186\140\231\186\167\231\149\140\233\157\162") then
+                local secondaryUI = GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]
+                print('[调试信息] 二级界面下的子对象:')
+                for _, child in pairs(secondaryUI:GetChildren()) do
+                    print('  - ' .. tostring(child.Name) .. ' (' .. child.ClassName .. ')')
+                end
+            end
+        end)
+        
         if attempt < maxRetries then
-            warn('[初始化] 获取公会名称失败，重试 ' .. attempt .. '/' .. maxRetries)
             task.wait(retryDelay)
         else
             warn('[初始化] 获取公会名称失败，使用默认值')
