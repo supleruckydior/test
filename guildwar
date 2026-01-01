@@ -1,3 +1,8 @@
+-- 检查游戏ID，如果是特定ID则不运行
+if game.PlaceId == 18645473062 then
+    return
+end
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end

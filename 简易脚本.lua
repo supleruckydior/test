@@ -168,6 +168,10 @@ end
 -- 等待游戏加载完成
 waitForGameLoadComplete(60)
 
+-- 额外等待确保GUI完全初始化（避免菜单加载不正确）
+print('[初始化] 等待GUI完全初始化...')
+task.wait(2)
+
 -- ============================================
 -- 工具函数
 -- ============================================
@@ -830,13 +834,24 @@ end
 -- ============================================
 local function setupFeatures1Tab(features1)
     local timeLabel = features1:AddLabel('距離下自動獲取還有 0 秒')
-    local Online_Gift = GUI
-        :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
-        :WaitForChild('\232\138\130\230\151\165\230\180\187\229\138\168\229\149\134\229\186\151')
-        :WaitForChild('\232\131\140\230\153\175')
-        :WaitForChild('\229\143\179\228\190\167\231\149\140\233\157\162')
-        :WaitForChild('\229\156\168\231\186\191\229\165\150\229\138\177')
-        :WaitForChild('\229\136\151\232\161\168')
+    
+    -- 等待GUI元素准备好，使用错误处理
+    local Online_Gift = nil
+    local success, err = pcall(function()
+        Online_Gift = GUI
+            :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162', 10)
+            :WaitForChild('\232\138\130\230\151\165\230\180\187\229\138\168\229\149\134\229\186\151', 10)
+            :WaitForChild('\232\131\140\230\153\175', 10)
+            :WaitForChild('\229\143\179\228\190\167\231\149\140\233\157\162', 10)
+            :WaitForChild('\229\156\168\231\186\191\229\165\150\229\138\177', 10)
+            :WaitForChild('\229\136\151\232\161\168', 10)
+    end)
+    
+    if not success or not Online_Gift then
+        warn('[初始化警告] 无法加载在线奖励GUI元素，在线奖励功能可能无法使用:', err)
+        -- 如果加载失败，返回但不影响其他功能
+        return
+    end
     
     local Gife_check = false
     local countdownList = {}
@@ -1186,7 +1201,13 @@ local function setupFeatures1Tab(features1)
     end)
 end
 
-setupFeatures1Tab(features1)
+-- 使用错误处理调用setupFeatures1Tab，确保GUI元素已准备好
+local success, err = pcall(function()
+    setupFeatures1Tab(features1)
+end)
+if not success then
+    warn('[初始化错误] setupFeatures1Tab执行失败:', err)
+end
 
 -- ============================================
 -- 炼丹标签页设置
