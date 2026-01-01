@@ -289,7 +289,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.4', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.3', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -1273,27 +1273,92 @@ local Guidename = ""
 local maxRetries = 10
 local retryDelay = 1.5
 for attempt = 1, maxRetries do
-    local success, result = pcall(function()
+    local success, result, err = pcall(function()
         return GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"].Text
     end)
     if success and result then
         Guidename = result
         break
     else
-        -- 打印GUI下的内容用于调试
+        -- 打印详细的调试信息
         print('[初始化错误] 获取公会名称失败，重试 ' .. attempt .. '/' .. maxRetries)
+        if not success then
+            print('[错误信息] ' .. tostring(err))
+        end
+        
+        -- 逐步检查路径的每一步
         pcall(function()
-            print('[调试信息] GUI下的子对象:')
-            for _, child in pairs(GUI:GetChildren()) do
-                print('  - ' .. tostring(child.Name) .. ' (' .. child.ClassName .. ')')
-            end
-            if GUI:FindFirstChild("\228\186\140\231\186\167\231\149\140\233\157\162") then
-                local secondaryUI = GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]
-                print('[调试信息] 二级界面下的子对象:')
-                for _, child in pairs(secondaryUI:GetChildren()) do
-                    print('  - ' .. tostring(child.Name) .. ' (' .. child.ClassName .. ')')
+            print('[调试信息] ========== GUI结构检查 ==========')
+            print('[调试信息] GUI是否存在: ' .. tostring(GUI ~= nil))
+            if GUI then
+                local children = GUI:GetChildren()
+                print('[调试信息] GUI子对象数量: ' .. #children)
+                if #children == 0 then
+                    print('[调试信息] ⚠️ GUI下没有任何子对象！')
+                else
+                    print('[调试信息] GUI下的子对象:')
+                    for _, child in pairs(children) do
+                        print('  - ' .. tostring(child.Name) .. ' (' .. child.ClassName .. ')')
+                    end
+                end
+                
+                -- 检查二级界面
+                local secondaryUI = GUI:FindFirstChild("\228\186\140\231\186\167\231\149\140\233\157\162")
+                if secondaryUI then
+                    print('[调试信息] 二级界面存在，子对象数量: ' .. #secondaryUI:GetChildren())
+                    local guildTab = secondaryUI:FindFirstChild("\229\133\172\228\188\154")
+                    if guildTab then
+                        print('[调试信息] 公会标签存在，子对象数量: ' .. #guildTab:GetChildren())
+                        local background = guildTab:FindFirstChild("背景")
+                        if background then
+                            print('[调试信息] 背景存在，子对象数量: ' .. #background:GetChildren())
+                            local rightPanel = background:FindFirstChild("右侧界面")
+                            if rightPanel then
+                                print('[调试信息] 右侧界面存在，子对象数量: ' .. #rightPanel:GetChildren())
+                                local mainPage = rightPanel:FindFirstChild("主页")
+                                if mainPage then
+                                    print('[调试信息] 主页存在，子对象数量: ' .. #mainPage:GetChildren())
+                                    local intro = mainPage:FindFirstChild("介绍")
+                                    if intro then
+                                        print('[调试信息] 介绍存在，子对象数量: ' .. #intro:GetChildren())
+                                        local nameLabel = intro:FindFirstChild("名称")
+                                        if nameLabel then
+                                            print('[调试信息] 名称存在，子对象数量: ' .. #nameLabel:GetChildren())
+                                            local textLabel = nameLabel:FindFirstChild("文本")
+                                            if textLabel then
+                                                print('[调试信息] 文本存在，子对象数量: ' .. #textLabel:GetChildren())
+                                                local finalText = textLabel:FindFirstChild("文本")
+                                                if finalText then
+                                                    print('[调试信息] 最终文本存在，Text属性: ' .. tostring(finalText.Text))
+                                                else
+                                                    print('[调试信息] ❌ 最终文本不存在')
+                                                end
+                                            else
+                                                print('[调试信息] ❌ 文本不存在')
+                                            end
+                                        else
+                                            print('[调试信息] ❌ 名称不存在')
+                                        end
+                                    else
+                                        print('[调试信息] ❌ 介绍不存在')
+                                    end
+                                else
+                                    print('[调试信息] ❌ 主页不存在')
+                                end
+                            else
+                                print('[调试信息] ❌ 右侧界面不存在')
+                            end
+                        else
+                            print('[调试信息] ❌ 背景不存在')
+                        end
+                    else
+                        print('[调试信息] ❌ 公会标签不存在')
+                    end
+                else
+                    print('[调试信息] ❌ 二级界面不存在')
                 end
             end
+            print('[调试信息] =================================')
         end)
         
         if attempt < maxRetries then
