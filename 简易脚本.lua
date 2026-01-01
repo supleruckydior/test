@@ -75,12 +75,12 @@ end
 -- 等待游戏加载动画完成
 -- ============================================
 local function waitForGameLoadComplete(maxWaitTime)
-    maxWaitTime = maxWaitTime or 60 -- 默认最多等待60秒
+    maxWaitTime = maxWaitTime or 120 -- 默认最多等待60秒
     
     print('[初始化] 等待游戏加载动画完成...')
     
     -- 第一步：等待加载动画路径出现（因为注入可能比动画加载还早）
-    local pathWaitTimeout = 15 -- 等待路径出现的超时时间（15秒）
+    local pathWaitTimeout = 30 -- 等待路径出现的超时时间（15秒）
     local pathWaitStartTime = os.clock()
     local loadingAnimation = nil
     
@@ -116,7 +116,7 @@ local function waitForGameLoadComplete(maxWaitTime)
     if loadingAnimation and not loadingAnimation.Visible then
         print('[初始化] 路径存在但不可见，等待动画开始显示...')
         local visibleWaitStartTime = os.clock()
-        local visibleWaitTimeout = 10 -- 等待可见的超时时间（10秒）
+        local visibleWaitTimeout = 30 -- 等待可见的超时时间（10秒）
         
         while os.clock() - visibleWaitStartTime < visibleWaitTimeout do
             local checkSuccess, checkResult = pcall(function()
@@ -166,7 +166,7 @@ local function waitForGameLoadComplete(maxWaitTime)
 end
 
 -- 等待游戏加载完成
-waitForGameLoadComplete(60)
+waitForGameLoadComplete(120)
 
 -- ============================================
 -- 工具函数
