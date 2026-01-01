@@ -354,19 +354,6 @@ if not success then
 end
 
 
--- ============================================
--- FPS 锁定
--- ============================================
-local function PersistentFPSLock()
-    local targetFPS = 10
-    while true do
-        setfpscap(targetFPS)
-        task.wait(0.5)
-    end
-end
-
-task.spawn(PersistentFPSLock)
-print("🔒 持续FPS锁定为10（每0.5秒重置）")
 
 -- ============================================
 -- 数值获取函数（统一使用 parseNumber）
