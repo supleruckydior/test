@@ -170,7 +170,38 @@ waitForGameLoadComplete(120)
 
 -- 额外等待确保GUI完全初始化（避免菜单加载不正确）
 print('[初始化] 等待GUI完全初始化...')
-task.wait(5)
+task.wait(2)
+
+-- ============================================
+-- 等待二级界面出现并更新GUI对象
+-- ============================================
+print('[初始化] 等待二级界面出现...')
+local secondaryUIWaitTimeout = 30
+local secondaryUIWaitStartTime = os.clock()
+local secondaryUIReady = false
+
+while os.clock() - secondaryUIWaitStartTime < secondaryUIWaitTimeout do
+    local success, result = pcall(function()
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+        return currentGUI:FindFirstChild("\228\186\140\231\186\167\231\149\140\233\157\162")
+    end)
+    
+    if success and result and result.Parent then
+        -- 更新全局GUI对象，确保使用正确的GUI
+        GUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+        secondaryUIReady = true
+        print('[初始化] 二级界面已出现，GUI对象已更新')
+        break
+    end
+    
+    task.wait(0.5)
+end
+
+if not secondaryUIReady then
+    warn('[初始化] 等待二级界面超时，继续执行...')
+    -- 即使超时也更新GUI对象
+    GUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+end
 
 -- ============================================
 -- 工具函数
@@ -289,7 +320,7 @@ end)
 -- ============================================
 -- 创建主窗口
 -- ============================================
-local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.3', {
+local window = library:AddWindow('Cultivation-Simulator  養成模擬器v2.5', {
     main_color = Color3.fromRGB(41, 74, 122),
     min_size = Vector2.new(530, 315),
     can_resize = false,
@@ -419,8 +450,10 @@ local function getGuildName(forceRefresh)
     local wasUIOpen = false  -- 记录UI原本是否打开
     
     pcall(function()
+        -- 使用完整路径获取GUI
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
         -- 检查UI是否已经打开
-        local guildTab = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']
+        local guildTab = currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']
         if guildTab then
             wasUIOpen = guildTab.Visible
         end
@@ -428,14 +461,14 @@ local function getGuildName(forceRefresh)
         -- 如果UI未打开，则打开它来刷新数据
         if not wasUIOpen then
             pcall(function()
-                GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = true
+                currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = true
             end)
             -- 等待UI打开和数据刷新
             task.wait(0.5)
         end
         
         -- 使用完整路径直接获取公会名称
-        local textLabel = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"]
+        local textLabel = currentGUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"]
         if textLabel then
             guildNameText = textLabel.Text or ''
         end
@@ -443,7 +476,7 @@ local function getGuildName(forceRefresh)
         -- 如果原本UI是关闭的，则关闭它
         if not wasUIOpen then
             pcall(function()
-                GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = false
+                currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = false
             end)
         end
         
@@ -838,7 +871,8 @@ local function setupFeatures1Tab(features1)
     -- 等待GUI元素准备好，使用错误处理
     local Online_Gift = nil
     local success, err = pcall(function()
-        Online_Gift = GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\232\138\130\230\151\165\230\180\187\229\138\168\229\149\134\229\186\151"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\156\168\231\186\191\229\165\150\229\138\177"]["\229\136\151\232\161\168"]
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+        Online_Gift = currentGUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\232\138\130\230\151\165\230\180\187\229\138\168\229\149\134\229\186\151"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\229\156\168\231\186\191\229\165\150\229\138\177"]["\229\136\151\232\161\168"]
     end)
     
     if not success or not Online_Gift then
@@ -1268,99 +1302,22 @@ features4:AddButton('传送炼器', function()
 end)
 
 -- 公会相关
--- 使用重试机制获取公会名称，避免卡死
+-- 获取公会名称（使用完整路径，确保使用正确的GUI）
 local Guidename = ""
-local maxRetries = 10
+local maxRetries = 5
 local retryDelay = 1.5
 for attempt = 1, maxRetries do
-    local success, result, err = pcall(function()
-        return GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"].Text
+    local success, result = pcall(function()
+        -- 使用完整路径获取，每次都重新获取GUI
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+        return currentGUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\133\172\228\188\154"]["\232\131\140\230\153\175"]["\229\143\179\228\190\167\231\149\140\233\157\162"]["\228\184\187\233\161\181"]["\228\187\139\231\187\141"]["\229\144\141\231\167\176"]["\230\150\135\230\156\172"]["\230\150\135\230\156\172"].Text
     end)
     if success and result then
         Guidename = result
+        -- 更新全局GUI变量
+        GUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
         break
     else
-        -- 打印详细的调试信息
-        print('[初始化错误] 获取公会名称失败，重试 ' .. attempt .. '/' .. maxRetries)
-        if not success then
-            print('[错误信息] ' .. tostring(err))
-        end
-        
-        -- 逐步检查路径的每一步
-        pcall(function()
-            print('[调试信息] ========== GUI结构检查 ==========')
-            print('[调试信息] GUI是否存在: ' .. tostring(GUI ~= nil))
-            if GUI then
-                local children = GUI:GetChildren()
-                print('[调试信息] GUI子对象数量: ' .. #children)
-                if #children == 0 then
-                    print('[调试信息] ⚠️ GUI下没有任何子对象！')
-                else
-                    print('[调试信息] GUI下的子对象:')
-                    for _, child in pairs(children) do
-                        print('  - ' .. tostring(child.Name) .. ' (' .. child.ClassName .. ')')
-                    end
-                end
-                
-                -- 检查二级界面
-                local secondaryUI = GUI:FindFirstChild("\228\186\140\231\186\167\231\149\140\233\157\162")
-                if secondaryUI then
-                    print('[调试信息] 二级界面存在，子对象数量: ' .. #secondaryUI:GetChildren())
-                    local guildTab = secondaryUI:FindFirstChild("\229\133\172\228\188\154")
-                    if guildTab then
-                        print('[调试信息] 公会标签存在，子对象数量: ' .. #guildTab:GetChildren())
-                        local background = guildTab:FindFirstChild("背景")
-                        if background then
-                            print('[调试信息] 背景存在，子对象数量: ' .. #background:GetChildren())
-                            local rightPanel = background:FindFirstChild("右侧界面")
-                            if rightPanel then
-                                print('[调试信息] 右侧界面存在，子对象数量: ' .. #rightPanel:GetChildren())
-                                local mainPage = rightPanel:FindFirstChild("主页")
-                                if mainPage then
-                                    print('[调试信息] 主页存在，子对象数量: ' .. #mainPage:GetChildren())
-                                    local intro = mainPage:FindFirstChild("介绍")
-                                    if intro then
-                                        print('[调试信息] 介绍存在，子对象数量: ' .. #intro:GetChildren())
-                                        local nameLabel = intro:FindFirstChild("名称")
-                                        if nameLabel then
-                                            print('[调试信息] 名称存在，子对象数量: ' .. #nameLabel:GetChildren())
-                                            local textLabel = nameLabel:FindFirstChild("文本")
-                                            if textLabel then
-                                                print('[调试信息] 文本存在，子对象数量: ' .. #textLabel:GetChildren())
-                                                local finalText = textLabel:FindFirstChild("文本")
-                                                if finalText then
-                                                    print('[调试信息] 最终文本存在，Text属性: ' .. tostring(finalText.Text))
-                                                else
-                                                    print('[调试信息] ❌ 最终文本不存在')
-                                                end
-                                            else
-                                                print('[调试信息] ❌ 文本不存在')
-                                            end
-                                        else
-                                            print('[调试信息] ❌ 名称不存在')
-                                        end
-                                    else
-                                        print('[调试信息] ❌ 介绍不存在')
-                                    end
-                                else
-                                    print('[调试信息] ❌ 主页不存在')
-                                end
-                            else
-                                print('[调试信息] ❌ 右侧界面不存在')
-                            end
-                        else
-                            print('[调试信息] ❌ 背景不存在')
-                        end
-                    else
-                        print('[调试信息] ❌ 公会标签不存在')
-                    end
-                else
-                    print('[调试信息] ❌ 二级界面不存在')
-                end
-            end
-            print('[调试信息] =================================')
-        end)
-        
         if attempt < maxRetries then
             task.wait(retryDelay)
         else
@@ -1370,7 +1327,9 @@ for attempt = 1, maxRetries do
     end
 end
 
-local Donatetimes = GUI
+-- 使用完整路径获取，确保使用正确的GUI
+local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+local Donatetimes = currentGUI
     :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
     :WaitForChild('\229\133\172\228\188\154')
     :WaitForChild('捐献')
@@ -1385,7 +1344,8 @@ local Guildname = features4:AddLabel(
 )
 
 features4:AddButton('更新公會', function()
-    Donatetimes = GUI
+    local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+    Donatetimes = currentGUI
         :WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162')
         :WaitForChild('\229\133\172\228\188\154')
         :WaitForChild('捐献')
@@ -1401,7 +1361,8 @@ features4:AddButton('更新公會', function()
     Guildname.Text = '公會名稱：' .. Guidename .. ' 剩餘貢獻次數： ' .. Donatetimesnumber
 end)
 
-local DonationUI = GUI:WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162'):WaitForChild('\229\133\172\228\188\154')
+local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+local DonationUI = currentGUI:WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162'):WaitForChild('\229\133\172\228\188\154')
 local DonateButton = DonationUI:WaitForChild('捐献')
     :WaitForChild('背景')
     :WaitForChild('按钮')
@@ -1486,7 +1447,8 @@ local herbController = {
 
 local function toggleGuildUI(state)
     pcall(function()
-            GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = state
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+        currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible = state
     end)
 end
 
@@ -1502,7 +1464,8 @@ local function herbLoop()
             end
 
             local money = getDiamond()
-            local guilditemlist = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
+            local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+            local guilditemlist = currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
 
 
             local function tryBuy(slotIndex)
@@ -1656,22 +1619,24 @@ local farm5Level = 0
 local elixirLevel = 0
 
 pcall(function()
+    local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
     farm5Level = tonumber(
-        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
+        currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
     ) or 0
+    currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176'].Visible = false
 end)
-GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176'].Visible = false
 
 pcall(function()
     local elixirUI = ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182', true):FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
     if elixirUI then
         elixirUI['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']:Fire()
         task.wait(0.5)
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
         elixirLevel = tonumber(
-            GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
+            currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
         ) or 0
+        currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible = false
     end
-    GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible = false
 end)
 
 if farm5Level >= 80 and elixirLevel >= 80 then
@@ -1689,7 +1654,8 @@ end
 -- 自动出售检查
 -- ============================================
 local function CheckAndFire()
-    local gui = GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
+    local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+    local gui = currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
     
     if gui and gui.Visible == false then
         local remote = ReplicatedStorage
