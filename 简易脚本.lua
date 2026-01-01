@@ -6,8 +6,6 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
--- 额外等待确保游戏完全初始化
-task.wait(3)
 
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
@@ -73,6 +71,102 @@ if not GUI then
     return
 end
 
+-- ============================================
+-- 等待游戏加载动画完成
+-- ============================================
+local function waitForGameLoadComplete(maxWaitTime)
+    maxWaitTime = maxWaitTime or 60 -- 默认最多等待60秒
+    
+    print('[初始化] 等待游戏加载动画完成...')
+    
+    -- 第一步：等待加载动画路径出现（因为注入可能比动画加载还早）
+    local pathWaitTimeout = 15 -- 等待路径出现的超时时间（15秒）
+    local pathWaitStartTime = os.clock()
+    local loadingAnimation = nil
+    
+    print('[初始化] 等待加载动画路径出现...')
+    
+    -- 循环检查完整路径，不使用 WaitForChild
+    while os.clock() - pathWaitStartTime < pathWaitTimeout do
+        local success, result = pcall(function()
+            -- 直接使用完整路径访问
+            return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
+        end)
+        
+        if success and result and result.Parent then
+            loadingAnimation = result
+            -- 检查是否可见，如果可见就跳出循环
+            if loadingAnimation.Visible then
+                print('[初始化] 检测到加载动画（可见），等待动画完成...')
+                break
+            end
+            -- 如果路径存在但不可见，继续等待直到它变为可见
+        end
+        
+        task.wait(0.3)
+    end
+    
+    -- 如果等待路径超时，可能是已经加载完成（路径被销毁了），直接继续
+    if not loadingAnimation then
+        print('[初始化] 等待路径超时，可能已加载完成，继续执行...')
+        return true
+    end
+    
+    -- 第二步：如果路径存在但不可见，等待它变为可见（动画开始显示）
+    if loadingAnimation and not loadingAnimation.Visible then
+        print('[初始化] 路径存在但不可见，等待动画开始显示...')
+        local visibleWaitStartTime = os.clock()
+        local visibleWaitTimeout = 10 -- 等待可见的超时时间（10秒）
+        
+        while os.clock() - visibleWaitStartTime < visibleWaitTimeout do
+            local checkSuccess, checkResult = pcall(function()
+                return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
+            end)
+            
+            if checkSuccess and checkResult and checkResult.Parent and checkResult.Visible then
+                print('[初始化] 加载动画已显示，等待动画完成...')
+                loadingAnimation = checkResult
+                break
+            end
+            
+            task.wait(0.3)
+        end
+        
+        -- 如果等待可见超时，可能已经加载完成，直接继续
+        if not loadingAnimation.Visible then
+            print('[初始化] 等待可见超时，可能已加载完成，继续执行...')
+            return true
+        end
+    end
+    
+    -- 第三步：等待加载动画消失（表示加载完成）
+    if loadingAnimation and loadingAnimation.Visible then
+        local startTime = os.clock()
+        print('[初始化] 等待加载动画消失...')
+        
+        while os.clock() - startTime < maxWaitTime do
+            -- 使用完整路径检查加载动画是否还存在且可见
+            local checkSuccess, checkResult = pcall(function()
+                return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
+            end)
+            
+            -- 如果加载动画不存在或不可见，说明加载完成
+            if not checkSuccess or not checkResult or not checkResult.Parent or not checkResult.Visible then
+                print('[初始化] 游戏加载完成！')
+                return true
+            end
+            
+            task.wait(0.5)
+        end
+        
+        warn('[初始化] 等待游戏加载超时，继续执行...')
+    end
+    
+    return true
+end
+
+-- 等待游戏加载完成
+waitForGameLoadComplete(60)
 
 -- ============================================
 -- 工具函数
