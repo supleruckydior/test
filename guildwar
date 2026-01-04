@@ -158,42 +158,48 @@ end
 
 -- 函数：在目标位置周围搜索可到达的点
 local function findReachablePosition(targetPos, startPos, maxRadius)
-    local searchRadius = maxRadius or 20  -- 默认20，可以传入更大的值
-    local searchHeightRange = 50
-    local searchStep = 5  -- 可以增加到10以加快搜索，但会降低精度
+    local searchRadius = maxRadius or 50  -- 默认增大到50
+    local searchHeightRange = 100  -- 增大高度搜索范围
+    local searchStep = 2  -- 减小步长到2，增加搜索密度
     
-    for heightOffset = -searchHeightRange, searchHeightRange, 10 do
-        for radius = 0, searchRadius, searchStep do
-            for angle = 0, 360, 45 do
-                local rad = math.rad(angle)
-                local offsetX = math.cos(rad) * radius
-                local offsetZ = math.sin(rad) * radius
-                
-                local testPos = Vector3.new(
-                    targetPos.X + offsetX,
-                    targetPos.Y + heightOffset,
-                    targetPos.Z + offsetZ
-                )
-                
-                local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
-                    AgentHeight = 3,
-                    AgentCanJump = true,
-                    WaypointSpacing = 4,  -- 使用较小的默认间距以获得更好的路径
-                })
-                
-                local success, err = pcall(function()
-                    testPath:ComputeAsync(startPos, testPos)
-                end)
-                
-                if success then
-                    local status = testPath.Status
-                    if status == Enum.PathStatus.Success or 
-                       status == Enum.PathStatus.ClosestNoPath or
-                       status == Enum.PathStatus.ClosestOutOfRange then
-                        local waypoints = testPath:GetWaypoints()
-                        if #waypoints > 0 then
-                            return testPos, testPath
+    -- 尝试多个AgentRadius值，从2.5开始
+    local agentRadiusOptions = {2.5, 3, 3.5, 2, 1.5}
+    
+    for _, agentRadius in ipairs(agentRadiusOptions) do
+        for heightOffset = -searchHeightRange, searchHeightRange, 10 do
+            for radius = 0, searchRadius, searchStep do
+                for angle = 0, 360, 30 do  -- 减小角度步长到30度，增加搜索密度
+                    local rad = math.rad(angle)
+                    local offsetX = math.cos(rad) * radius
+                    local offsetZ = math.sin(rad) * radius
+                    
+                    local testPos = Vector3.new(
+                        targetPos.X + offsetX,
+                        targetPos.Y + heightOffset,
+                        targetPos.Z + offsetZ
+                    )
+                    
+                    local testPath = PathfindingService:CreatePath({
+                        AgentRadius = agentRadius,  -- 尝试不同的半径
+                        AgentHeight = 3,
+                        AgentCanJump = true,
+                        WaypointSpacing = 8,  -- 使用较大的间距以提高成功率
+                    })
+                    
+                    local success, err = pcall(function()
+                        testPath:ComputeAsync(startPos, testPos)
+                    end)
+                    
+                    if success then
+                        local status = testPath.Status
+                        if status == Enum.PathStatus.Success or 
+                           status == Enum.PathStatus.ClosestNoPath or
+                           status == Enum.PathStatus.ClosestOutOfRange then
+                            local waypoints = testPath:GetWaypoints()
+                            if #waypoints > 0 then
+                                print("找到可到达位置，使用AgentRadius=" .. agentRadius)
+                                return testPos, testPath
+                            end
                         end
                     end
                 end
@@ -228,22 +234,11 @@ local function MoveToTarget(targetModel)
     -- 确保移动速度为高速
     currentHumanoid.WalkSpeed = 64
     
-    -- 获取目标位置
-    local targetPosition
-    if targetModel:IsA("Model") then
-        local pivotCFrame = targetModel:GetPivot()
-        targetPosition = pivotCFrame.Position
-    elseif targetModel:IsA("BasePart") then
-        targetPosition = targetModel.Position
-    else
-        print("MoveToTarget: 目标类型不支持")
-        return false
-    end
-    
-    print("目标位置:", targetPosition)
+    -- 获取目标位置（默认使用固定坐标）
+    local targetPosition = Vector3.new(-513, 10, -511)
+    print("使用默认目标位置:", targetPosition)
     
     local startPos = currentHRP.Position
-    -- 直接使用水晶位置作为目标，PathfindingService会自动找到最接近的可到达位置
     local endPos = targetPosition
     
     -- 检查距离
@@ -263,33 +258,61 @@ local function MoveToTarget(targetModel)
         print("随机选择的路径点间距:", waypointSpacing)
     end
     
-    -- 添加路径随机性：在目标位置添加小的随机偏移（让路径略有不同）
-    local randomOffsetAmount = math.random(3, 8)  -- 随机偏移3-8单位
-    local randomAngle = math.random() * 2 * math.pi  -- 随机角度
-    local randomOffset = Vector3.new(
-        math.cos(randomAngle) * randomOffsetAmount,  -- X方向随机偏移
-        0,  -- Y方向不偏移
-        math.sin(randomAngle) * randomOffsetAmount   -- Z方向随机偏移
-    )
-    local randomizedEndPos = endPos + randomOffset
-    print("添加随机偏移后的目标位置:", randomizedEndPos, "偏移量:", randomOffset)
+    -- 创建路径对象（尝试多个AgentRadius值，从2.5开始）
+    local path = nil
+    local pathFound = false
+    local noPathMessage = nil
+    local agentRadiusOptions = {2.5, 3, 3.5, 2, 1.5}  -- 从2.5开始尝试
     
-    -- 创建路径对象（增大AgentRadius以检测墙壁缝隙，半个人大小的缝隙约1.5单位）
-    local path = PathfindingService:CreatePath({
-        AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到半个人大小（1.5单位）的墙壁缝隙
-        AgentHeight = 3,
-        AgentCanJump = true,
-        WaypointSpacing = waypointSpacing,
-        Costs = {
-            Water = 1,
-        }
-    })
+    print("开始计算路径，起始位置:", startPos, "目标位置:", endPos, "路径点间距:", waypointSpacing)
+    for _, radius in ipairs(agentRadiusOptions) do
+        local testPath = PathfindingService:CreatePath({
+            AgentRadius = radius,
+            AgentHeight = 3,
+            AgentCanJump = true,
+            WaypointSpacing = waypointSpacing,
+            Costs = {
+                Water = 1,
+            }
+        })
+        
+        local success, errorMsg = pcall(function()
+            testPath:ComputeAsync(startPos, endPos)
+        end)
+        
+        if success and testPath.Status ~= Enum.PathStatus.NoPath then
+            local waypoints = testPath:GetWaypoints()
+            if #waypoints > 0 then
+                path = testPath
+                pathFound = true
+                print("使用AgentRadius=" .. radius .. "成功计算路径")
+                break
+            end
+        end
+        
+        if not success then
+            noPathMessage = errorMsg
+        end
+    end
     
-    -- 计算路径（使用添加了随机偏移的目标位置）
-    print("开始计算路径，起始位置:", startPos, "目标位置:", randomizedEndPos, "路径点间距:", waypointSpacing)
-    local pathFound, noPathMessage = pcall(function()
-        path:ComputeAsync(startPos, randomizedEndPos)
-    end)
+    -- 如果所有AgentRadius都失败，使用最后一个选项的结果
+    if not pathFound then
+        local lastRadius = agentRadiusOptions[#agentRadiusOptions]
+        path = PathfindingService:CreatePath({
+            AgentRadius = lastRadius,
+            AgentHeight = 3,
+            AgentCanJump = true,
+            WaypointSpacing = waypointSpacing,
+            Costs = {
+                Water = 1,
+            }
+        })
+        local success, errorMsg = pcall(function()
+            path:ComputeAsync(startPos, endPos)
+        end)
+        pathFound = success
+        noPathMessage = errorMsg
+    end
     
     if not pathFound then
         local errorMsg = tostring(noPathMessage)
@@ -312,7 +335,7 @@ local function MoveToTarget(targetModel)
                     Costs = { Water = 1 }
                 })
                 local retrySuccess, retryError = pcall(function()
-                    longerPath:ComputeAsync(startPos, randomizedEndPos)
+                    longerPath:ComputeAsync(startPos, endPos)
                 end)
                 if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
                     path = longerPath
@@ -325,10 +348,10 @@ local function MoveToTarget(targetModel)
             
             if not success then
                 print("即使使用更大的路径点间距仍然失败，尝试在周围搜索可到达的点...")
-                local reachablePos, reachablePath = findReachablePosition(randomizedEndPos, startPos)
+                -- 使用更大的搜索范围
+                local reachablePos, reachablePath = findReachablePosition(endPos, startPos, 80)
                 if reachablePos and reachablePath then
-                    randomizedEndPos = reachablePos
-                    endPos = reachablePos  -- 更新endPos以便后续使用
+                    endPos = reachablePos
                     path = reachablePath
                     pathFound = true
                     print("找到可到达的替代位置")
@@ -336,15 +359,13 @@ local function MoveToTarget(targetModel)
                     print("无法找到任何可到达的路径")
                     return false
                 end
-            else
-                endPos = randomizedEndPos  -- 更新endPos
             end
         else
             print("尝试在周围搜索可到达的点...")
-            local reachablePos, reachablePath = findReachablePosition(randomizedEndPos, startPos)
+            -- 使用更大的搜索范围
+            local reachablePos, reachablePath = findReachablePosition(endPos, startPos, 80)
             if reachablePos and reachablePath then
-                randomizedEndPos = reachablePos
-                endPos = reachablePos  -- 更新endPos
+                endPos = reachablePos
                 path = reachablePath
                 pathFound = true
                 print("找到可到达的替代位置")
@@ -353,8 +374,6 @@ local function MoveToTarget(targetModel)
                 return false
             end
         end
-    else
-        endPos = randomizedEndPos  -- 更新endPos
     end
     
     local pathStatus = path.Status
@@ -363,8 +382,8 @@ local function MoveToTarget(targetModel)
     -- 接受Success、ClosestNoPath和ClosestOutOfRange状态（这些都能到达接近目标的位置）
     if pathStatus == Enum.PathStatus.NoPath then
         print("无法找到路径，尝试在周围搜索...")
-        -- 如果距离太远，使用更大的搜索范围
-        local searchRadius = distance > 500 and 50 or 20  -- 距离远时使用50单位搜索范围
+        -- 使用更大的搜索范围（无论距离远近都使用更大的范围）
+        local searchRadius = distance > 500 and 100 or 80  -- 增大搜索范围
         local reachablePos, reachablePath = findReachablePosition(endPos, startPos, searchRadius)
         if reachablePos and reachablePath then
             endPos = reachablePos
