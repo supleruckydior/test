@@ -123,7 +123,7 @@ local function FindAvailableCrystal()
             if targetPosition then
                 -- 尝试计算路径
                 local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 1,
+                    AgentRadius = 3,  -- 增大半径以更好地检测墙壁
                     AgentHeight = 3,
                     AgentCanJump = true,
                     WaypointSpacing = 4,
@@ -176,7 +176,7 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
                 )
                 
                 local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 1,
+                    AgentRadius = 3,  -- 增大半径以更好地检测墙壁
                     AgentHeight = 3,
                     AgentCanJump = true,
                     WaypointSpacing = 4,  -- 使用较小的默认间距以获得更好的路径
@@ -250,24 +250,36 @@ local function MoveToTarget(targetModel)
     local distance = (startPos - endPos).Magnitude
     print("起点到终点的距离:", distance)
     
-    -- 使用默认的最佳间距（先尝试较小值以获得更精确的路径）
-    local waypointSpacing = 4  -- 默认使用较小的间距以获得最佳路径
+    -- 添加路径随机性：随机选择WaypointSpacing（让每次路径略有不同）
+    local spacingOptions = {4, 5, 6, 7, 8}
+    local waypointSpacing = spacingOptions[math.random(1, #spacingOptions)]
+    print("随机选择的路径点间距:", waypointSpacing)
     
-    -- 创建路径对象
+    -- 添加路径随机性：在目标位置添加小的随机偏移（让路径略有不同）
+    local randomOffset = Vector3.new(
+        (math.random() - 0.5) * 5,  -- X方向随机偏移 -2.5 到 2.5
+        0,  -- Y方向不偏移
+        (math.random() - 0.5) * 5   -- Z方向随机偏移 -2.5 到 2.5
+    )
+    local randomizedEndPos = endPos + randomOffset
+    print("添加随机偏移后的目标位置:", randomizedEndPos, "偏移量:", randomOffset)
+    
+    -- 创建路径对象（增大AgentRadius以避免忽略墙壁）
     local path = PathfindingService:CreatePath({
-        AgentRadius = 1,
+        AgentRadius = 2,  -- 增大半径以更好地检测墙壁
         AgentHeight = 3,
         AgentCanJump = true,
         WaypointSpacing = waypointSpacing,
         Costs = {
             Water = 1,
+            -- 可以添加更多Costs来影响路径选择
         }
     })
     
-    -- 计算路径
-    print("开始计算路径，起始位置:", startPos, "目标位置:", endPos, "路径点间距:", waypointSpacing)
+    -- 计算路径（使用添加了随机偏移的目标位置）
+    print("开始计算路径，起始位置:", startPos, "目标位置:", randomizedEndPos, "路径点间距:", waypointSpacing)
     local pathFound, noPathMessage = pcall(function()
-        path:ComputeAsync(startPos, endPos)
+        path:ComputeAsync(startPos, randomizedEndPos)
     end)
     
     if not pathFound then
@@ -284,14 +296,14 @@ local function MoveToTarget(targetModel)
             for _, spacing in ipairs(spacingOptions) do
                 print("尝试使用路径点间距:", spacing)
                 local longerPath = PathfindingService:CreatePath({
-                    AgentRadius = 1,
+                    AgentRadius = 2,  -- 增大半径以更好地检测墙壁
                     AgentHeight = 3,
                     AgentCanJump = true,
                     WaypointSpacing = spacing,
                     Costs = { Water = 1 }
                 })
                 local retrySuccess, retryError = pcall(function()
-                    longerPath:ComputeAsync(startPos, endPos)
+                    longerPath:ComputeAsync(startPos, randomizedEndPos)
                 end)
                 if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
                     path = longerPath
@@ -304,9 +316,10 @@ local function MoveToTarget(targetModel)
             
             if not success then
                 print("即使使用更大的路径点间距仍然失败，尝试在周围搜索可到达的点...")
-                local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
+                local reachablePos, reachablePath = findReachablePosition(randomizedEndPos, startPos)
                 if reachablePos and reachablePath then
-                    endPos = reachablePos
+                    randomizedEndPos = reachablePos
+                    endPos = reachablePos  -- 更新endPos以便后续使用
                     path = reachablePath
                     pathFound = true
                     print("找到可到达的替代位置")
@@ -314,12 +327,15 @@ local function MoveToTarget(targetModel)
                     print("无法找到任何可到达的路径")
                     return false
                 end
+            else
+                endPos = randomizedEndPos  -- 更新endPos
             end
         else
             print("尝试在周围搜索可到达的点...")
-            local reachablePos, reachablePath = findReachablePosition(endPos, startPos)
+            local reachablePos, reachablePath = findReachablePosition(randomizedEndPos, startPos)
             if reachablePos and reachablePath then
-                endPos = reachablePos
+                randomizedEndPos = reachablePos
+                endPos = reachablePos  -- 更新endPos
                 path = reachablePath
                 pathFound = true
                 print("找到可到达的替代位置")
@@ -328,6 +344,8 @@ local function MoveToTarget(targetModel)
                 return false
             end
         end
+    else
+        endPos = randomizedEndPos  -- 更新endPos
     end
     
     local pathStatus = path.Status
@@ -455,7 +473,7 @@ local function MoveToTarget(targetModel)
         local newWaypointSpacing = 4  -- 使用默认的最佳间距
         
         local newPath = PathfindingService:CreatePath({
-            AgentRadius = 1,
+            AgentRadius = 2,  -- 增大半径以更好地检测墙壁
             AgentHeight = 3,
             AgentCanJump = true,
             WaypointSpacing = newWaypointSpacing,
@@ -475,7 +493,7 @@ local function MoveToTarget(targetModel)
                 
                 for _, spacing in ipairs(spacingOptions) do
                     local longerPath = PathfindingService:CreatePath({
-                        AgentRadius = 1,
+                        AgentRadius = 2,  -- 增大半径以更好地检测墙壁
                         AgentHeight = 3,
                         AgentCanJump = true,
                         WaypointSpacing = spacing,
