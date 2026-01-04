@@ -123,7 +123,7 @@ local function FindAvailableCrystal()
             if targetPosition then
                 -- 尝试计算路径
                 local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 3,  -- 增大半径以更好地检测墙壁
+                    AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
                     AgentHeight = 3,
                     AgentCanJump = true,
                     WaypointSpacing = 4,
@@ -176,7 +176,7 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
                 )
                 
                 local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 3,  -- 增大半径以更好地检测墙壁
+                    AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
                     AgentHeight = 3,
                     AgentCanJump = true,
                     WaypointSpacing = 4,  -- 使用较小的默认间距以获得更好的路径
@@ -251,28 +251,70 @@ local function MoveToTarget(targetModel)
     print("起点到终点的距离:", distance)
     
     -- 添加路径随机性：随机选择WaypointSpacing（让每次路径略有不同）
-    local spacingOptions = {4, 5, 6, 7, 8}
+    local spacingOptions = {4, 5, 6, 7, 8, 10, 12}
     local waypointSpacing = spacingOptions[math.random(1, #spacingOptions)]
     print("随机选择的路径点间距:", waypointSpacing)
     
-    -- 添加路径随机性：在目标位置添加小的随机偏移（让路径略有不同）
-    local randomOffset = Vector3.new(
-        (math.random() - 0.5) * 5,  -- X方向随机偏移 -2.5 到 2.5
-        0,  -- Y方向不偏移
-        (math.random() - 0.5) * 5   -- Z方向随机偏移 -2.5 到 2.5
-    )
-    local randomizedEndPos = endPos + randomOffset
-    print("添加随机偏移后的目标位置:", randomizedEndPos, "偏移量:", randomOffset)
+    -- 添加路径随机性：尝试多个随机偏移方向，随机选择一个可行的路径
+    local validPaths = {}  -- 存储所有可行的路径
+    local randomizedEndPos = endPos
     
-    -- 创建路径对象（增大AgentRadius以避免忽略墙壁）
+    -- 尝试5个不同的随机偏移方向，收集所有可行的路径
+    for i = 1, 5 do
+        local randomOffsetAmount = math.random(8, 20)  -- 随机偏移8-20单位（更大的偏移范围）
+        local randomAngle = math.random() * 2 * math.pi  -- 随机角度
+        local randomOffset = Vector3.new(
+            math.cos(randomAngle) * randomOffsetAmount,  -- X方向随机偏移
+            0,  -- Y方向不偏移
+            math.sin(randomAngle) * randomOffsetAmount   -- Z方向随机偏移
+        )
+        local testEndPos = endPos + randomOffset
+        
+        -- 测试这个偏移是否能够计算路径
+        local testPath = PathfindingService:CreatePath({
+            AgentRadius = 3.5,
+            AgentHeight = 3,
+            AgentCanJump = true,
+            WaypointSpacing = waypointSpacing,
+            Costs = { Water = 1 }
+        })
+        
+        local testSuccess, testError = pcall(function()
+            testPath:ComputeAsync(startPos, testEndPos)
+        end)
+        
+        if testSuccess and testPath.Status ~= Enum.PathStatus.NoPath then
+            local testWaypoints = testPath:GetWaypoints()
+            if #testWaypoints > 0 then
+                -- 保存这个可行的路径选项
+                table.insert(validPaths, {
+                    offset = randomOffset,
+                    endPos = testEndPos,
+                    path = testPath,
+                    waypoints = testWaypoints
+                })
+            end
+        end
+    end
+    
+    -- 如果有可行的路径，随机选择一个
+    if #validPaths > 0 then
+        local selectedPath = validPaths[math.random(1, #validPaths)]
+        randomizedEndPos = selectedPath.endPos
+        print("随机选择的路径偏移量:", selectedPath.offset, "从", #validPaths, "个可行路径中选择")
+    else
+        -- 如果没有找到可行路径，使用原始位置
+        print("未找到可行的随机路径，使用原始目标位置")
+    end
+    
+    -- 创建路径对象（增大AgentRadius以检测墙壁缝隙，半个人大小的缝隙约1.5单位）
     local path = PathfindingService:CreatePath({
-        AgentRadius = 2,  -- 增大半径以更好地检测墙壁
+        AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到半个人大小（1.5单位）的墙壁缝隙
         AgentHeight = 3,
         AgentCanJump = true,
         WaypointSpacing = waypointSpacing,
         Costs = {
             Water = 1,
-            -- 可以添加更多Costs来影响路径选择
         }
     })
     
@@ -296,7 +338,7 @@ local function MoveToTarget(targetModel)
             for _, spacing in ipairs(spacingOptions) do
                 print("尝试使用路径点间距:", spacing)
                 local longerPath = PathfindingService:CreatePath({
-                    AgentRadius = 2,  -- 增大半径以更好地检测墙壁
+                    AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙
                     AgentHeight = 3,
                     AgentCanJump = true,
                     WaypointSpacing = spacing,
@@ -473,7 +515,7 @@ local function MoveToTarget(targetModel)
         local newWaypointSpacing = 4  -- 使用默认的最佳间距
         
         local newPath = PathfindingService:CreatePath({
-            AgentRadius = 2,  -- 增大半径以更好地检测墙壁
+            AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙
             AgentHeight = 3,
             AgentCanJump = true,
             WaypointSpacing = newWaypointSpacing,
@@ -493,7 +535,7 @@ local function MoveToTarget(targetModel)
                 
                 for _, spacing in ipairs(spacingOptions) do
                     local longerPath = PathfindingService:CreatePath({
-                        AgentRadius = 2,  -- 增大半径以更好地检测墙壁
+                        AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
                         AgentHeight = 3,
                         AgentCanJump = true,
                         WaypointSpacing = spacing,
