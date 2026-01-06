@@ -15,6 +15,14 @@ local elixirSyncEvent =
     ReplicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175']['\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150']
 local treeSyncEvent =ReplicatedStorage["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\228\184\150\231\149\140\230\160\145"]["\229\144\140\230\173\165\228\184\150\231\149\140\230\160\145\230\149\176\230\141\174"]
 local runeSyncEvent =ReplicatedStorage["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175\233\152\181\230\179\149"]["\233\152\181\230\179\149\230\149\176\230\141\174\229\143\152\229\140\150"]
+-- 尝试获取翅膀数据同步事件（如果存在）
+local armorSyncEvent = nil
+local armorSyncSuccess, armorSyncResult = pcall(function()
+    return ReplicatedStorage["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175\232\163\133\229\164\135"]["\232\163\133\229\164\135\230\149\176\230\141\174\229\143\152\229\140\150"]
+end)
+if armorSyncSuccess then
+    armorSyncEvent = armorSyncResult
+end
 local addTradeItemEvent =
     ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\228\186\164\230\152\147']['\230\150\176\229\162\158\228\186\164\230\152\147\231\137\169\229\147\129']
 
@@ -34,6 +42,7 @@ local tradePriceEvent =
     )
 
 local elixirData = {}
+local armorData = {}
 
 -- 数据同步处理
 elixirSyncEvent.Event:Connect(function(data)
@@ -45,6 +54,99 @@ end)
 runeSyncEvent.Event:Connect(function(data)
     runeData = data
 end)
+
+-- 获取切换装备组事件（用于触发服务器下发装备数据）
+local switchArmorSetEvent = nil
+local switchArmorSetSuccess, switchArmorSetResult = pcall(function()
+    return ReplicatedStorage["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\232\163\133\229\164\135"]["\229\136\135\230\141\162\232\163\133\229\164\135\231\187\132"]
+end)
+if switchArmorSetSuccess then
+    switchArmorSetEvent = switchArmorSetResult
+end
+
+-- 翅膀数据同步处理（如果存在同步事件）
+if armorSyncEvent then
+    armorSyncEvent.Event:Connect(function(data)
+        armorData = data
+        print('翅膀数据已同步更新')
+    end)
+    print('已连接翅膀数据同步事件')
+    
+    -- 触发切换装备组事件，让服务器下发数据
+    if switchArmorSetEvent then
+        pcall(function()
+            switchArmorSetEvent:FireServer(1)
+            print('已触发切换装备组事件，请求翅膀数据')
+        end)
+    end
+else
+    -- 如果没有同步事件，使用定期刷新机制
+    print('未找到翅膀数据同步事件，使用定期刷新机制')
+    
+    -- 首次触发切换装备组事件
+    if switchArmorSetEvent then
+        pcall(function()
+            switchArmorSetEvent:FireServer(1)
+            print('已触发切换装备组事件，请求翅膀数据')
+        end)
+    end
+    
+    spawn(function()
+        while running do
+            wait(5) -- 每5秒刷新一次翅膀数据
+            -- 触发切换装备组事件来刷新数据
+            if switchArmorSetEvent then
+                pcall(function()
+                    switchArmorSetEvent:FireServer(1)
+                end)
+            else
+                armorData = findArmorBackpackData()
+            end
+        end
+    end)
+end
+
+-- 翅膀背包数据搜索函数
+local function findArmorBackpackData()
+    local bestMatch = nil
+    local maxWings = 0
+    
+    for i, obj in ipairs(getgc(true)) do
+        if type(obj) == 'table' then
+            -- 检查是否是背包数据（包含"背包"键）
+            local backpack = rawget(obj, '\232\131\140\229\140\133') or rawget(obj, '背包')
+            if type(backpack) == 'table' then
+                local wingCount = 0
+                for _, item in pairs(backpack) do
+                    if type(item) == 'table' and (rawget(item, '翅膀ID') or rawget(item, 'wingId')) then
+                        wingCount = wingCount + 1
+                    end
+                end
+                if wingCount > maxWings then
+                    maxWings = wingCount
+                    bestMatch = backpack
+                end
+            else
+                -- 如果没有"背包"键，检查是否直接包含翅膀数据
+                local wingCount = 0
+                for k, v in pairs(obj) do
+                    if type(v) == 'table' and (rawget(v, '翅膀ID') or rawget(v, 'wingId')) then
+                        wingCount = wingCount + 1
+                    end
+                end
+                if wingCount > maxWings then
+                    maxWings = wingCount
+                    bestMatch = obj
+                end
+            end
+        end
+    end
+    
+    return bestMatch or {}
+end
+
+-- 初始化翅膀数据
+armorData = findArmorBackpackData()
 -- 获取蛋数据的 RemoteEvents
 local remoteFetchServer = ReplicatedStorage
     :WaitForChild('\228\186\139\228\187\182')
@@ -491,6 +593,59 @@ coroutine.wrap(function()
                         end
                     end
                 end
+
+                if tradeMode == 'armor' or tradeMode == 'both' then
+                    -- 如果没有同步事件，在交易时触发切换装备组事件刷新数据（确保最新）
+                    if not armorSyncEvent and switchArmorSetEvent then
+                        pcall(function()
+                            switchArmorSetEvent:FireServer(1)
+                        end)
+                        wait(0.5) -- 等待服务器下发数据
+                    elseif not armorSyncEvent then
+                        armorData = findArmorBackpackData()
+                    end
+                    
+                    -- 处理翅膀数据（兼容同步事件和内存搜索两种结构）
+                    local wingsToTrade = armorData
+                    if armorData and type(armorData) == 'table' then
+                        -- 如果数据包含"背包"键（同步事件结构），使用背包数据
+                        if armorData['\232\131\140\229\140\133'] or armorData['背包'] then
+                            wingsToTrade = armorData['\232\131\140\229\140\133'] or armorData['背包']
+                        end
+                    end
+                    
+                    if wingsToTrade then
+                        local wingCount = 0
+                        local processedCount = 0
+                        for _, item in pairs(wingsToTrade) do
+                            processedCount = processedCount + 1
+                            if type(item) == 'table' then
+                                -- 检查是否是翅膀（有翅膀ID字段）
+                                local isWing = item['翅膀ID'] 
+                                    or (type(item.wingId) == 'number' and item.wingId > 0)
+                                    or item.wingId
+                                
+                                if isWing then
+                                    local itemIndex = item['索引']
+                                        or item.Index
+                                        or item.id
+                                    if itemIndex then
+                                        print('交易翅膀，索引:', itemIndex)
+                                        tradeArmor(itemIndex)
+                                        wingCount = wingCount + 1
+                                    end
+                                end
+                            end
+                        end
+                        if wingCount > 0 then
+                            print('翅膀交易完成，共交易', wingCount, '个')
+                        else
+                            print('警告: 未找到可交易的翅膀，处理了', processedCount, '个物品')
+                        end
+                    else
+                        print('警告: 没有翅膀数据可交易')
+                    end
+                end
                 -- 确认交易
                 if waitForTradeUI() then
                     wait(1)
@@ -514,8 +669,19 @@ end)()
 infoLabel.Text = '自动交易已启动！\n模式: 2.0丹药+tree+蛋\n蛋数量: '
     .. #eggData['背包']
 print('自动交易系统已启动 - 蛋数量:', #eggData['背包'])
+
+-- 触发丹药数据同步
 local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
     :FindFirstChild("\229\133\172\231\148\168")
     :FindFirstChild("\231\130\188\228\184\185")
     :FindFirstChild("\229\136\182\228\189\156")
 elixirEvent:FireServer()
+
+-- 触发翅膀数据同步（如果存在切换装备组事件）
+if switchArmorSetEvent then
+    wait(0.5) -- 等待一下再触发
+    pcall(function()
+        switchArmorSetEvent:FireServer(1)
+        print('已触发切换装备组事件，请求翅膀数据')
+    end)
+end
