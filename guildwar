@@ -435,6 +435,21 @@ local function MoveToTarget(targetModel)
     local stuckCheckInterval = math.random(1.0, 2.5)  -- 卡住检测时间随机（1-2.5秒）
     local stuckDistanceThreshold = math.random(1.5, 3.0)  -- 卡住判断的移动距离阈值随机（1.5-3单位）
     
+    -- 新增随机性：动态速度变化
+    local lastSpeedChangeTime = tick()  -- 上次改变速度的时间
+    local speedChangeInterval = math.random(3, 8)  -- 速度变化间隔（3-8秒随机）
+    local currentWalkSpeed = baseWalkSpeed  -- 当前使用的速度
+    
+    -- 新增随机性：路径点等待
+    local lastWaypointWaitTime = 0  -- 上次路径点等待的时间
+    local waypointWaitChance = 0.15  -- 15%的概率在到达路径点后等待
+    local waypointWaitDuration = 0  -- 等待时长（0表示不等待）
+    local waypointWaitStartTime = 0  -- 等待开始时间
+    
+    -- 新增随机性：路径点位置随机偏移
+    local waypointOffsetChance = 0.3  -- 30%的概率对路径点添加偏移
+    local waypointOffsetRange = math.random(2, 5)  -- 偏移范围2-5单位
+    
     local function moveToNextWaypoint()
         -- 确保角色仍然有效（重新获取引用以确保最新）
         local currentChar = LocalPlayer.Character
@@ -479,9 +494,9 @@ local function MoveToTarget(targetModel)
         end
         
         -- 移动到目标位置
-        -- 设置随机移动速度
-        if currentHumanoid.WalkSpeed ~= baseWalkSpeed then
-            currentHumanoid.WalkSpeed = baseWalkSpeed
+        -- 设置当前动态速度（初始化时currentWalkSpeed等于baseWalkSpeed）
+        if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
+            currentHumanoid.WalkSpeed = currentWalkSpeed
         end
         currentHumanoid:MoveTo(targetPos)
         isMoving = true
@@ -686,12 +701,37 @@ local function MoveToTarget(targetModel)
         
         -- 检查是否到达当前路径点（使用随机判断距离以增加随机性）
         if distanceToWaypoint < waypointReachDistance then
+            -- 随机等待：有概率在路径点等待一小段时间
+            if waypointWaitDuration == 0 and math.random() < waypointWaitChance then
+                waypointWaitDuration = math.random(0.1, 0.5)  -- 随机等待0.1-0.5秒
+                waypointWaitStartTime = tick()
+                print(string.format("在路径点 %d/%d 随机等待 %.2f 秒", currentWaypointIndex, #waypoints, waypointWaitDuration))
+            end
+            
+            -- 如果正在等待，继续等待
+            if waypointWaitDuration > 0 then
+                if tick() - waypointWaitStartTime < waypointWaitDuration then
+                    return  -- 继续等待，不切换路径点
+                else
+                    waypointWaitDuration = 0  -- 等待结束
+                end
+            end
+            
             currentWaypointIndex = currentWaypointIndex + 1
             
             if currentWaypointIndex <= #waypoints then
                 -- 立即切换到下一个路径点
                 waypoint = waypoints[currentWaypointIndex]
                 targetPos = waypoint.Position
+                
+                -- 随机路径点偏移：有概率对路径点添加小的随机偏移
+                if math.random() < waypointOffsetChance then
+                    local offsetX = (math.random() - 0.5) * waypointOffsetRange * 2
+                    local offsetZ = (math.random() - 0.5) * waypointOffsetRange * 2
+                    targetPos = targetPos + Vector3.new(offsetX, 0, offsetZ)
+                    print(string.format("路径点 %d/%d 添加随机偏移", currentWaypointIndex, #waypoints))
+                end
+                
                 stuckCheckTime = tick()
                 lastPosition = currentPos
                 print(string.format("切换到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
@@ -708,10 +748,21 @@ local function MoveToTarget(targetModel)
         -- 获取Humanoid以确保可以持续移动
         local currentHumanoid = currentChar:FindFirstChild("Humanoid")
         if currentHumanoid then
+            -- 动态速度变化：随机改变移动速度（增加随机性）
+            local currentTime = tick()
+            if currentTime - lastSpeedChangeTime > speedChangeInterval then
+                -- 速度在基础速度的±3单位范围内波动
+                local speedVariation = math.random(-3, 3)  -- ±3单位的速度变化
+                currentWalkSpeed = math.clamp(baseWalkSpeed + speedVariation, 55, 72)  -- 限制在55-72之间
+                lastSpeedChangeTime = currentTime
+                speedChangeInterval = math.random(3, 8)  -- 重新随机下一次速度变化间隔
+                print(string.format("动态调整速度: %.1f (基础: %.1f)", currentWalkSpeed, baseWalkSpeed))
+            end
+            
             -- 持续调用MoveTo确保角色一直移动（每帧都调用）
-            -- 使用随机移动速度
-            if currentHumanoid.WalkSpeed ~= baseWalkSpeed then
-                currentHumanoid.WalkSpeed = baseWalkSpeed
+            -- 使用当前动态速度
+            if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
+                currentHumanoid.WalkSpeed = currentWalkSpeed
             end
             -- 如果是跳跃点，设置跳跃
             if waypoint.Action == Enum.PathWaypointAction.Jump then

@@ -22,13 +22,34 @@ local COLOR_SCHEME = {
     SEARCH_BG = Color3.fromRGB(40, 40, 55)
 }
 
--- 品质ID映射
+-- 通用品质ID映射（1-13）
 local QUALITY_TYPES = {
+    [1] = "普通",
+    [2] = "良好",
+    [3] = "坚固",
+    [4] = "稀有",
+    [5] = "完美",
+    [6] = "稀少",
+    [7] = "史诗",
+    [8] = "传奇",
+    [9] = "不朽",
     [10] = "神话",
     [11] = "永恒",
     [12] = "神器",
     [13] = "太初"
 }
+
+-- 生成通用品质下拉框选项
+local function GetQualityOptions()
+    local options = {{text = "全部", value = "all"}}
+    for i = 1, 13 do
+        table.insert(options, {
+            text = string.format("%d-%s", i, QUALITY_TYPES[i] or tostring(i)),
+            value = tostring(i)
+        })
+    end
+    return options
+end
 
 -- 符石类别映射
 local RUNE_TYPE_NAMES = {
@@ -39,26 +60,65 @@ local RUNE_TYPE_NAMES = {
     [5] = "土"
 }
 
+-- 挂饰类型映射
+local ACCESSORY_TYPE_NAMES = {
+    [1001] = "肉(血量加成)",
+    [1002] = "攻击力加成",
+    [1003] = "攻击速度",
+    [1004] = "熊猫(血量恢复)",
+    [1005] = "技能伤害",
+    [1006] = "法宝伤害",
+    [1007] = "反弹伤害概率",
+    [1008] = "反弹伤害",
+    [1011] = "鱼骨头(暴击概率)",
+    [1012] = "鲸鱼(暴击伤害)",
+    [1013] = "闪避概率",
+    [1014] = "忽视闪避概率",
+    [1015] = "金币加成",
+    [1016] = "星星(经验加成)",
+    [1017] = "矿灯(矿石加成)"
+}
+
+-- 从数据文件读取所有符文属性名称（已统计并硬编码）
+-- 从ShopData文件夹中读取至少10个文件统计得到的符石属性名称列表
+-- 已去重并按字母顺序排序
+local function LoadRuneAttributeNames()
+    return {
+        "Boss减伤",
+        "Boss伤害",
+        "暴击概率",
+        "暴击伤害",
+        "反弹概率",
+        "反弹伤害",
+        "攻击力百分比",
+        "攻击速度百分比",
+        "技能伤害",
+        "金币额外获取",
+        "经验额外获取",
+        "忽视闪避概率",
+        "生命恢复百分比",
+        "生命值百分比",
+        "闪避概率",
+        "法宝伤害"
+    }
+end
+
 -- 全局变量
 local allPlayersData = {} -- 存储所有玩家数据
 local currentPlayerIndex = 1
 local isScanning = false
 local scanInterval = 0.2 -- 扫描间隔(秒)
 local viewEvent = ReplicatedStorage:WaitForChild("事件"):WaitForChild("公用"):WaitForChild("露天商店"):WaitForChild("查看")
-local favorites = {} -- 收藏列表
+-- 已移除收藏列表功能
 local priceAlerts = {} -- 价格提醒列表
 local searchText = "" -- 搜索文本
 local sortMode = "price_asc" -- 排序模式: price_asc, price_desc, level_asc, level_desc, name_asc
-local autoRefreshEnabled = false -- 自动刷新
-local autoRefreshInterval = 30 -- 自动刷新间隔(秒)
-local lastRefreshTime = 0
 local filterWingsOnly = false -- 仅显示翅膀
 local filterRunesOnly = false -- 仅显示符石
+local currentPage = "全部" -- 当前页面：全部、装备、符石、配饰、宠物、宠物蛋
 local scanTimeout = 1 -- 扫描超时时间(秒)
 local lastDataCount = 0 -- 上次数据数量
 local lastDataTime = 0 -- 上次数据更新时间
-local shopDataPath = "C:\\Users\\Administrator\\AppData\\Local\\seliware-workspace\\ShopData" -- ShopData文件夹路径
-
 -- 1. 创建完整UI
 local function CreateCompleteUI()
     local screenGui = Instance.new("ScreenGui")
@@ -170,19 +230,19 @@ local function CreateCompleteUI()
     searchBox.TextXAlignment = Enum.TextXAlignment.Left
     searchBox.Parent = searchFrame
 
-    -- 左侧过滤面板
+    -- 左侧过滤面板（调整位置，避免被按钮挡住）
     local filterScroll = Instance.new("ScrollingFrame")
-    filterScroll.Size = UDim2.new(0.35, -5, 1, -160)
-    filterScroll.Position = UDim2.new(0, 5, 0, 50)
+    filterScroll.Size = UDim2.new(0.35, -5, 1, -210)
+    filterScroll.Position = UDim2.new(0, 5, 0, 100)
     filterScroll.BackgroundColor3 = COLOR_SCHEME.PANEL
     filterScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     filterScroll.ScrollBarThickness = 8
     filterScroll.Parent = contentFrame
 
-    -- 右侧结果面板
+    -- 右侧结果面板（调整位置，为页面标签留出空间）
     local resultsScroll = Instance.new("ScrollingFrame")
-    resultsScroll.Size = UDim2.new(0.65, -10, 1, -160)
-    resultsScroll.Position = UDim2.new(0.35, 5, 0, 50)
+    resultsScroll.Size = UDim2.new(0.65, -10, 1, -200)
+    resultsScroll.Position = UDim2.new(0.35, 5, 0, 100)
     resultsScroll.BackgroundColor3 = COLOR_SCHEME.PANEL
     resultsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     resultsScroll.ScrollBarThickness = 8
@@ -215,10 +275,10 @@ local function CreateCompleteUI()
     sortDropdown.TextSize = 16
     sortDropdown.Parent = sortFrame
 
-    -- 底部按钮区域
+    -- 底部按钮区域（调整位置，避免与页面标签重叠）
     local buttonFrame = Instance.new("Frame")
     buttonFrame.Size = UDim2.new(1, -10, 0, 50)
-    buttonFrame.Position = UDim2.new(0, 5, 1, -105)
+    buttonFrame.Position = UDim2.new(0, 5, 0, 45)
     buttonFrame.BackgroundTransparency = 1
     buttonFrame.Parent = contentFrame
 
@@ -241,53 +301,47 @@ local function CreateCompleteUI()
 
     local resetButton = Instance.new("TextButton")
     resetButton.Text = "重置条件"
-    resetButton.Size = UDim2.new(0.33, -5, 1, 0)
-    resetButton.Position = UDim2.new(0.33, 2, 0, 0)
+    resetButton.Size = UDim2.new(0.5, -5, 1, 0)
+    resetButton.Position = UDim2.new(0.5, 2, 0, 0)
     resetButton.Font = Enum.Font.SourceSansBold
     resetButton.TextSize = 18
     resetButton.TextColor3 = COLOR_SCHEME.TEXT_MAIN
     resetButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     resetButton.Parent = buttonFrame
 
-    local favoriteButton = Instance.new("TextButton")
-    favoriteButton.Text = "收藏列表"
-    favoriteButton.Size = UDim2.new(0.25, -5, 1, 0)
-    favoriteButton.Position = UDim2.new(0.5, 2, 0, 0)
-    favoriteButton.Font = Enum.Font.SourceSansBold
-    favoriteButton.TextSize = 18
-    favoriteButton.TextColor3 = COLOR_SCHEME.TEXT_MAIN
-    favoriteButton.BackgroundColor3 = COLOR_SCHEME.FAVORITE
-    favoriteButton.Parent = buttonFrame
 
-    local wingFilterButton = Instance.new("TextButton")
-    wingFilterButton.Text = "仅显示翅膀"
-    wingFilterButton.Size = UDim2.new(0.2, -5, 1, 0)
-    wingFilterButton.Position = UDim2.new(0.5, 2, 0, 0)
-    wingFilterButton.Font = Enum.Font.SourceSansBold
-    wingFilterButton.TextSize = 16
-    wingFilterButton.TextColor3 = COLOR_SCHEME.TEXT_MAIN
-    wingFilterButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    wingFilterButton.Parent = buttonFrame
-
-    local runeFilterButton = Instance.new("TextButton")
-    runeFilterButton.Text = "仅显示符石"
-    runeFilterButton.Size = UDim2.new(0.2, -5, 1, 0)
-    runeFilterButton.Position = UDim2.new(0.7, 2, 0, 0)
-    runeFilterButton.Font = Enum.Font.SourceSansBold
-    runeFilterButton.TextSize = 16
-    runeFilterButton.TextColor3 = COLOR_SCHEME.TEXT_MAIN
-    runeFilterButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    runeFilterButton.Parent = buttonFrame
-
-    local loadDataButton = Instance.new("TextButton")
-    loadDataButton.Text = "加载文件数据"
-    loadDataButton.Size = UDim2.new(0.1, -5, 1, 0)
-    loadDataButton.Position = UDim2.new(0.8, 2, 0, 0)
-    loadDataButton.Font = Enum.Font.SourceSansBold
-    loadDataButton.TextSize = 14
-    loadDataButton.TextColor3 = COLOR_SCHEME.TEXT_MAIN
-    loadDataButton.BackgroundColor3 = Color3.fromRGB(100, 150, 100)
-    loadDataButton.Parent = buttonFrame
+    -- 页面标签区域
+    local pageFrame = Instance.new("Frame")
+    pageFrame.Size = UDim2.new(1, -10, 0, 40)
+    pageFrame.Position = UDim2.new(0, 5, 0, 0)
+    pageFrame.BackgroundTransparency = 1
+    pageFrame.Parent = contentFrame
+    
+    local pages = {"全部", "装备", "符石", "配饰", "宠物", "宠物蛋"}
+    local pageButtons = {}
+    for i, pageName in ipairs(pages) do
+        local pageBtn = Instance.new("TextButton")
+        pageBtn.Text = pageName
+        pageBtn.Size = UDim2.new(1 / #pages, -2, 1, 0)
+        pageBtn.Position = UDim2.new((i - 1) / #pages, (i - 1) * 2, 0, 0)
+        pageBtn.Font = Enum.Font.SourceSansBold
+        pageBtn.TextSize = 16
+        pageBtn.TextColor3 = COLOR_SCHEME.TEXT_MAIN
+        pageBtn.BackgroundColor3 = (pageName == "全部") and COLOR_SCHEME.ACCENT or Color3.fromRGB(80, 80, 80)
+        pageBtn.Parent = pageFrame
+        pageButtons[pageName] = pageBtn
+        
+        pageBtn.MouseEnter:Connect(function()
+            if currentPage ~= pageName then
+                pageBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            end
+        end)
+        pageBtn.MouseLeave:Connect(function()
+            if currentPage ~= pageName then
+                pageBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            end
+        end)
+    end
 
     -- 扫描控制区域
     local scanFrame = Instance.new("Frame")
@@ -308,7 +362,7 @@ local function CreateCompleteUI()
 
     local progressLabel = Instance.new("TextLabel")
     progressLabel.Text = "准备扫描"
-    progressLabel.Size = UDim2.new(0.33, -5, 1, 0)
+    progressLabel.Size = UDim2.new(0.66, -5, 1, 0)
     progressLabel.Position = UDim2.new(0.33, 2, 0, 0)
     progressLabel.TextXAlignment = Enum.TextXAlignment.Left
     progressLabel.TextColor3 = COLOR_SCHEME.TEXT_MAIN
@@ -316,16 +370,6 @@ local function CreateCompleteUI()
     progressLabel.TextSize = 16
     progressLabel.BackgroundTransparency = 1
     progressLabel.Parent = scanFrame
-
-    local autoRefreshButton = Instance.new("TextButton")
-    autoRefreshButton.Text = "自动刷新: 关闭"
-    autoRefreshButton.Size = UDim2.new(0.34, -5, 1, 0)
-    autoRefreshButton.Position = UDim2.new(0.66, 2, 0, 0)
-    autoRefreshButton.Font = Enum.Font.SourceSansBold
-    autoRefreshButton.TextSize = 14
-    autoRefreshButton.TextColor3 = COLOR_SCHEME.TEXT_MAIN
-    autoRefreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    autoRefreshButton.Parent = scanFrame
 
     -- 鼠标悬停效果
     scanButton.MouseEnter:Connect(function()
@@ -335,23 +379,29 @@ local function CreateCompleteUI()
         scanButton.BackgroundColor3 = COLOR_SCHEME.BUTTON
     end)
 
-    favoriteButton.MouseEnter:Connect(function()
-        favoriteButton.BackgroundColor3 = Color3.fromRGB(255, 235, 100)
-    end)
-    favoriteButton.MouseLeave:Connect(function()
-        favoriteButton.BackgroundColor3 = COLOR_SCHEME.FAVORITE
-    end)
+
+    -- 动态过滤界面容器（先创建）
+    local filterContainer = Instance.new("Frame")
+    filterContainer.Size = UDim2.new(1, 0, 1, 0)
+    filterContainer.BackgroundTransparency = 1
+    filterContainer.Parent = filterScroll
 
     -- 添加过滤控件
     local yOffset = 10
     local controls = {}
 
-    local function AddFilterRow(labelText, inputType, defaultValue)
+    local function AddFilterRow(labelText, inputType, defaultValue, container, currentYOffset)
+        if not container then
+            container = filterContainer
+        end
+        if not currentYOffset then
+            currentYOffset = yOffset
+        end
         local frame = Instance.new("Frame")
         frame.Size = UDim2.new(1, -10, 0, 40)
-        frame.Position = UDim2.new(0, 5, 0, yOffset)
+        frame.Position = UDim2.new(0, 5, 0, currentYOffset)
         frame.BackgroundTransparency = 1
-        frame.Parent = filterScroll
+        frame.Parent = container
 
         local label = Instance.new("TextLabel")
         label.Text = labelText
@@ -578,48 +628,252 @@ local function CreateCompleteUI()
         if type(input) == "table" then
             -- 下拉框已经创建，不需要parent
         else
-            input.Parent = frame
+        input.Parent = frame
         end
 
         yOffset = yOffset + 45
         return input
     end
 
-    -- 添加过滤条件
-    controls.minLevel = AddFilterRow("最低等级:", "text", 1)
-    controls.maxLevel = AddFilterRow("最高等级:", "text", 100)
-    controls.minPrice = AddFilterRow("最低价格:", "text", "")
-    controls.maxPrice = AddFilterRow("最高价格:", "text", "")
-    controls.wingAttr = AddFilterRow("翅膀第三属性≥:", "text", 1.0)
-    controls.atkSpeed = AddFilterRow("需要攻击速度", "checkbox", false)
-    controls.critRate = AddFilterRow("需要暴击概率", "checkbox", false)
-    -- 装备品质下拉框（12、13）
-    controls.equipQuality = AddFilterRow("装备品质:", "dropdown", {
-        default = "all",  -- 使用 value
-        options = {
-            {text = "全部", value = "all"},
-            {text = "12-神器", value = "12"},
-            {text = "13-太初", value = "13"}
-        }
-    })
+    -- 存储各页面的过滤控件
+    controls.pageFilters = {}
     
-    -- 符石品质下拉框（10、11、12、13）
-    controls.runeQuality = AddFilterRow("符石品质:", "dropdown", {
-        default = "all",  -- 使用 value
-        options = {
-            {text = "全部", value = "all"},
-            {text = "10-神话", value = "10"},
-            {text = "11-永恒", value = "11"},
-            {text = "12-神器", value = "12"},
-            {text = "13-太初", value = "13"}
-        }
-    })
+    -- 存储各页面的过滤界面容器
+    local pageFilterContainers = {}
     
-    controls.runeType = AddFilterRow("符石类型:", "text", "")
-    controls.runeMinAttr = AddFilterRow("符石属性数≥:", "text", "")
-    controls.runeAttrName = AddFilterRow("符石属性名称:", "text", "")
-    controls.runeAttrCount = AddFilterRow("该属性条数≥:", "text", "")
-    filterScroll.CanvasSize = UDim2.new(0, 0, 0, yOffset + 10)
+    -- 创建页面过滤界面容器
+    local function CreatePageFilterContainer(pageName)
+        if pageFilterContainers[pageName] then
+            return pageFilterContainers[pageName]
+        end
+        
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 1, 0)
+        container.BackgroundTransparency = 1
+        container.Visible = false
+        container.Parent = filterContainer
+        pageFilterContainers[pageName] = container
+        return container
+    end
+    
+    -- 切换显示页面过滤界面
+    local function ShowPageFilterContainer(pageName)
+        for name, container in pairs(pageFilterContainers) do
+            container.Visible = (name == pageName)
+        end
+        -- 更新滚动区域大小
+        if controls.pageFilters[pageName] and pageFilterContainers[pageName] then
+            local maxY = 10
+            for _, child in ipairs(pageFilterContainers[pageName]:GetChildren()) do
+                if child:IsA("Frame") then
+                    local childY = child.Position.Y.Offset + child.Size.Y.Offset
+                    if childY > maxY then
+                        maxY = childY
+                    end
+                end
+            end
+            filterScroll.CanvasSize = UDim2.new(0, 0, 0, maxY + 10)
+        end
+    end
+    
+    -- 创建装备页面过滤界面
+    local function CreateEquipFilters()
+        local pageName = "装备"
+        local container = CreatePageFilterContainer(pageName)
+        
+        if not controls.pageFilters[pageName] then
+            controls.pageFilters[pageName] = {}
+            local pageControls = controls.pageFilters[pageName]
+            local localYOffset = 10
+            
+            pageControls.minLevel = AddFilterRow("最低等级:", "text", "1", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.maxLevel = AddFilterRow("最高等级:", "text", "100", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.minPrice = AddFilterRow("最低价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.maxPrice = AddFilterRow("最高价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.filterWings = AddFilterRow("仅显示翅膀", "checkbox", false, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.atkSpeed = AddFilterRow("需要攻击速度", "checkbox", false, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.critRate = AddFilterRow("需要暴击概率", "checkbox", false, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.critDamage = AddFilterRow("需要暴击伤害", "checkbox", false, container, localYOffset)
+            localYOffset = localYOffset + 45
+            -- 翅膀第三个词条系数过滤
+            pageControls.wingThirdAttr = AddFilterRow("翅膀第三个词条系数:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.quality = AddFilterRow("装备品质:", "dropdown", {
+                default = "all",
+                options = GetQualityOptions()
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
+            
+            filterScroll.CanvasSize = UDim2.new(0, 0, 0, localYOffset + 10)
+        end
+        
+        ShowPageFilterContainer(pageName)
+    end
+    
+    -- 创建符石页面过滤界面
+    local function CreateRuneFilters()
+        local pageName = "符石"
+        local container = CreatePageFilterContainer(pageName)
+        
+        if not controls.pageFilters[pageName] then
+            controls.pageFilters[pageName] = {}
+            local pageControls = controls.pageFilters[pageName]
+            local localYOffset = 10
+            
+            -- 读取符文属性名称
+            local runeAttrNames = LoadRuneAttributeNames()
+            local runeAttrOptions = {{text = "全部", value = "all"}}
+            for _, attrName in ipairs(runeAttrNames) do
+                table.insert(runeAttrOptions, {text = attrName, value = attrName})
+            end
+            
+            pageControls.minPrice = AddFilterRow("最低价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.maxPrice = AddFilterRow("最高价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.quality = AddFilterRow("符石品质:", "dropdown", {
+                default = "all",
+                options = GetQualityOptions()
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.type = AddFilterRow("符石类型:", "dropdown", {
+                default = "all",
+                options = {
+                    {text = "全部", value = "all"},
+                    {text = "1-太阳", value = "1"},
+                    {text = "2-木", value = "2"},
+                    {text = "3-水", value = "3"},
+                    {text = "4-火", value = "4"},
+                    {text = "5-土", value = "5"}
+                }
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.attrName = AddFilterRow("符石属性名称:", "dropdown", {
+                default = "all",
+                options = runeAttrOptions
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.attrCount = AddFilterRow("该属性条数≥:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            
+            filterScroll.CanvasSize = UDim2.new(0, 0, 0, localYOffset + 10)
+        end
+        
+        ShowPageFilterContainer(pageName)
+    end
+    
+    -- 创建挂饰页面过滤界面
+    local function CreateAccessoryFilters()
+        local pageName = "配饰"
+        local container = CreatePageFilterContainer(pageName)
+        
+        if not controls.pageFilters[pageName] then
+            controls.pageFilters[pageName] = {}
+            local pageControls = controls.pageFilters[pageName]
+            local localYOffset = 10
+            
+            local accessoryTypeOptions = {{text = "全部", value = "all"}}
+            local typeIds = {1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1011, 1012, 1013, 1014, 1015, 1016, 1017}
+            for _, typeId in ipairs(typeIds) do
+                table.insert(accessoryTypeOptions, {
+                    text = string.format("%d-%s", typeId, ACCESSORY_TYPE_NAMES[typeId] or tostring(typeId)),
+                    value = tostring(typeId)
+                })
+            end
+            
+            local originalYOffset = yOffset
+            yOffset = localYOffset
+            
+            pageControls.minPrice = AddFilterRow("最低价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.maxPrice = AddFilterRow("最高价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.quality = AddFilterRow("挂饰品质:", "dropdown", {
+                default = "all",
+                options = GetQualityOptions()
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.type = AddFilterRow("挂饰类型:", "dropdown", {
+                default = "all",
+                options = accessoryTypeOptions
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
+            
+            filterScroll.CanvasSize = UDim2.new(0, 0, 0, localYOffset + 10)
+        end
+        
+        ShowPageFilterContainer(pageName)
+    end
+    
+    -- 创建宠物页面过滤界面（暂不填充）
+    local function CreatePetFilters()
+        local pageName = "宠物"
+        local container = CreatePageFilterContainer(pageName)
+        
+        if not controls.pageFilters[pageName] then
+            controls.pageFilters[pageName] = {}
+        end
+        
+        ShowPageFilterContainer(pageName)
+        filterScroll.CanvasSize = UDim2.new(0, 0, 0, 10)
+    end
+    
+    -- 创建宠物蛋页面过滤界面（暂不填充）
+    local function CreatePetEggFilters()
+        local pageName = "宠物蛋"
+        local container = CreatePageFilterContainer(pageName)
+        
+        if not controls.pageFilters[pageName] then
+            controls.pageFilters[pageName] = {}
+        end
+        
+        ShowPageFilterContainer(pageName)
+        filterScroll.CanvasSize = UDim2.new(0, 0, 0, 10)
+    end
+    
+    -- 创建全部页面过滤界面（显示所有通用过滤）
+    local function CreateAllFilters()
+        local pageName = "全部"
+        local container = CreatePageFilterContainer(pageName)
+        
+        if not controls.pageFilters[pageName] then
+            controls.pageFilters[pageName] = {}
+            local pageControls = controls.pageFilters[pageName]
+            local localYOffset = 10
+            
+            local originalYOffset = yOffset
+            yOffset = localYOffset
+            
+            pageControls.minPrice = AddFilterRow("最低价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            pageControls.maxPrice = AddFilterRow("最高价格:", "text", "", container, localYOffset)
+            localYOffset = localYOffset + 45
+            
+            filterScroll.CanvasSize = UDim2.new(0, 0, 0, localYOffset + 10)
+        end
+        
+        ShowPageFilterContainer(pageName)
+    end
+    
+    -- 页面过滤界面映射（存储到controls中以便外部访问）
+    controls.pageFilterCreators = {
+        ["全部"] = CreateAllFilters,
+        ["装备"] = CreateEquipFilters,
+        ["符石"] = CreateRuneFilters,
+        ["配饰"] = CreateAccessoryFilters,
+        ["宠物"] = CreatePetFilters,
+        ["宠物蛋"] = CreatePetEggFilters
+    }
+    
+    -- 初始化显示"全部"页面
+    CreateAllFilters()
 
     -- 窗口拖拽功能
     local dragging = false
@@ -725,64 +979,13 @@ local function CreateCompleteUI()
         toggleUI = ToggleUI,
         mainFrame = mainFrame,
         searchBox = searchBox,
-        favoriteButton = favoriteButton,
-        autoRefreshButton = autoRefreshButton,
         statsLabel = statsLabel,
         sortDropdown = sortDropdown,
-        wingFilterButton = wingFilterButton,
-        runeFilterButton = runeFilterButton,
-        loadDataButton = loadDataButton
+        pageButtons = pageButtons
     }
 end
 
 -- 读取ShopData文件夹中的数据
-local function LoadShopDataFromFiles()
-    if not readfile or not listfiles then
-        warn("文件系统不可用，无法读取ShopData")
-        return {}
-    end
-    
-    local loadedData = {}
-    local success, err = pcall(function()
-        if not isfolder(shopDataPath) then
-            print("ShopData文件夹不存在:", shopDataPath)
-            return {}
-        end
-        
-        local files = listfiles(shopDataPath)
-        local HttpService = game:GetService("HttpService")
-        
-        for _, filePath in ipairs(files) do
-            if string.find(filePath, "%.json$") then
-                local fileContent = readfile(filePath)
-                if fileContent then
-                    local success2, data = pcall(function()
-                        return HttpService:JSONDecode(fileContent)
-                    end)
-                    
-                    if success2 and data then
-                        -- 从文件名提取玩家名
-                        local fileName = filePath:match("([^\\]+)%.json$")
-                        if fileName then
-                            local playerName = fileName:match("^(.+)_%d+$") or fileName:match("^(.+)%.json$")
-                            if playerName then
-                                loadedData[playerName] = data
-                                print("已加载商店数据:", playerName)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    
-    if not success then
-        warn("读取ShopData失败:", err)
-    end
-    
-    return loadedData
-end
-
 -- 合并相同属性的符石属性（系数相加）
 local function MergeRuneAttributes(attributes)
     if not attributes or type(attributes) ~= "table" then
@@ -820,27 +1023,6 @@ local function MergeRuneAttributes(attributes)
 end
 
 -- 保存商店数据到文件（用于debug）
-local function SaveShopData(playerName, shopData)
-    if not writefile then
-        return -- 如果没有writefile函数则跳过
-    end
-    
-    local success, err = pcall(function()
-        local folderPath = shopDataPath
-        if not isfolder(folderPath) then
-            makefolder(folderPath)
-        end
-        
-        local fileName = folderPath .. "\\" .. playerName .. "_" .. os.time() .. ".json"
-        local jsonData = game:GetService("HttpService"):JSONEncode(shopData)
-        writefile(fileName, jsonData)
-        print("已保存商店数据:", fileName)
-    end)
-    
-    if not success then
-        warn("保存商店数据失败:", err)
-    end
-end
 
 -- 获取物品名称
 local function GetItemName(item, itemId)
@@ -879,78 +1061,239 @@ local function GetItemName(item, itemId)
 end
 
 -- 2. 物品过滤逻辑
-local function FilterItems(items, filters, searchQuery, wingsOnly, runesOnly)
+local function FilterItems(items, uiControls, searchQuery, category)
+    -- 获取当前页面的过滤控件
+    local filters = uiControls.pageFilters and uiControls.pageFilters[category] or {}
     local filtered = {}
     
     for itemId, itemData in pairs(items) do
         local item = itemData["物品数据"]
         local valid = true
         
-        -- 仅显示翅膀过滤
-        if wingsOnly then
-            if not item["翅膀ID"] then
+        -- 根据分类应用不同的过滤逻辑
+        if category == "装备" then
+            -- 装备过滤逻辑
+            local filterWings = filters.filterWings and filters.filterWings.Text == "[✓]"
+            
+            -- 翅膀过滤：如果开启仅显示翅膀，则只显示翅膀；如果关闭，则剔除翅膀
+            if filterWings then
+                if not item["翅膀ID"] then
+                    valid = false
+                end
+            else
+                -- 关闭时剔除翅膀
+                if item["翅膀ID"] then
                 valid = false
             end
-        end
-        
-        -- 仅显示符石过滤
-        if valid and runesOnly then
+            end
+            
+            -- 如果仅翅膀过滤不匹配，跳过后续检查
+            if valid then
+                -- 搜索过滤
+                if searchQuery and searchQuery ~= "" then
+                    local searchLower = string.lower(searchQuery)
+                    local itemIdLower = string.lower(tostring(itemId))
+                    local itemName = GetItemName(item, itemId)
+                    local itemNameLower = string.lower(tostring(itemName))
+                    local sellerName = ""
+                    if itemData["卖家"] then
+                        sellerName = string.lower(tostring(itemData["卖家"]))
+                    end
+                    if not (string.find(itemIdLower, searchLower) or 
+                            string.find(itemNameLower, searchLower) or 
+                            string.find(sellerName, searchLower)) then
+                        valid = false
+                    end
+                end
+                
+                -- 如果搜索不匹配，跳过后续检查
+                if valid then
+                    -- 价格过滤
+                    local price = tonumber(itemData["价格"]) or 0
+                    if filters.minPrice and filters.minPrice.Text ~= "" then
+                        local minPrice = tonumber(filters.minPrice.Text) or 0
+                        if price < minPrice then
+                            valid = false
+                        end
+                    end
+                    if valid and filters.maxPrice and filters.maxPrice.Text ~= "" then
+                        local maxPrice = tonumber(filters.maxPrice.Text) or 0
+                        if price > maxPrice then
+                            valid = false
+                        end
+                    end
+                    
+                    -- 等级过滤
+                    if valid and item["等级"] then
+                local level = tonumber(item["等级"]) or 0
+                        local minLevel = filters.minLevel and filters.minLevel.Text ~= "" and tonumber(filters.minLevel.Text) or nil
+                        local maxLevel = filters.maxLevel and filters.maxLevel.Text ~= "" and tonumber(filters.maxLevel.Text) or nil
+                        
+                        if minLevel and level < minLevel then
+                    valid = false
+                end
+                        if maxLevel and level > maxLevel then
+                    valid = false
+                end
+            end
+            
+            -- 品质过滤
+                    if valid and filters.quality then
+                        local qualityFilter = filters.quality.GetValue and filters.quality.GetValue() or "all"
+                        if qualityFilter ~= "all" then
+                local quality = tonumber(item["品质"]) or 0
+                            local filterQuality = tonumber(qualityFilter)
+                            if quality ~= filterQuality then
+                    valid = false
+                            end
+                end
+            end
+            
+            -- 属性检查
+                    if valid then
+                        local needAtkSpeed = filters.atkSpeed and filters.atkSpeed.Text == "[✓]"
+                        local needCritRate = filters.critRate and filters.critRate.Text == "[✓]"
+                        local needCritDamage = filters.critDamage and filters.critDamage.Text == "[✓]"
+                        
+                        if needAtkSpeed or needCritRate or needCritDamage then
+                            local hasAtkSpeed = false
+                            local hasCritRate = false
+                            local hasCritDamage = false
+                
+                if item["属性"] then
+                    for _, attr in ipairs(item["属性"]) do
+                        if attr["名称"] then
+                            if string.find(attr["名称"], "攻击速度") then
+                                hasAtkSpeed = true
+                                        elseif string.find(attr["名称"], "暴击概率") or string.find(attr["名称"], "暴击几率") then
+                                hasCritRate = true
+                                        elseif string.find(attr["名称"], "暴击伤害") then
+                                            hasCritDamage = true
+                            end
+                        end
+                    end
+                end
+                
+                            if (needAtkSpeed and not hasAtkSpeed) or 
+                               (needCritRate and not hasCritRate) or 
+                               (needCritDamage and not hasCritDamage) then
+                    valid = false
+                end
+                        end
+                        
+                        -- 翅膀第三个词条系数过滤
+                        if valid and item["翅膀ID"] and filters.wingThirdAttr then
+                            local minCoefficient = filters.wingThirdAttr.Text ~= "" and tonumber(filters.wingThirdAttr.Text) or nil
+                            if minCoefficient then
+                                if item["属性"] and #item["属性"] >= 3 then
+                                    local thirdAttr = item["属性"][3]
+                                    local coefficient = thirdAttr and thirdAttr["系数"] or 0
+                                    if coefficient < minCoefficient then
+                                        valid = false
+                                    end
+                                else
+                                    -- 如果翅膀没有第三个属性，则不匹配
+                                    valid = false
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        elseif category == "符石" then
+            -- 符石过滤逻辑
             if not item["类型"] or not item["属性"] then
                 valid = false
             else
-                -- 符石类型过滤
-                if filters.runeType and filters.runeType.Text ~= "" then
-                    local filterType = tonumber(filters.runeType.Text)
-                    local itemType = tonumber(item["类型"]) or 0
-                    if filterType and itemType ~= filterType then
-                        valid = false
+                -- 搜索过滤
+                if searchQuery and searchQuery ~= "" then
+                    local searchLower = string.lower(searchQuery)
+                    local itemIdLower = string.lower(tostring(itemId))
+                    local itemName = GetItemName(item, itemId)
+                    local itemNameLower = string.lower(tostring(itemName))
+                    local sellerName = ""
+                    if itemData["卖家"] then
+                        sellerName = string.lower(tostring(itemData["卖家"]))
                     end
-                end
-                
-                -- 符石属性数量过滤
-                if valid and filters.runeMinAttr and filters.runeMinAttr.Text ~= "" then
-                    local minAttrCount = tonumber(filters.runeMinAttr.Text) or 0
-                    local attrCount = item["属性"] and #item["属性"] or 0
-                    if attrCount < minAttrCount then
+                    if not (string.find(itemIdLower, searchLower) or 
+                            string.find(itemNameLower, searchLower) or 
+                            string.find(sellerName, searchLower)) then
                         valid = false
+            end
+        end
+        
+        if valid then
+                    -- 价格过滤
+                    local price = tonumber(itemData["价格"]) or 0
+                    if filters.minPrice and filters.minPrice.Text ~= "" then
+                        local minPrice = tonumber(filters.minPrice.Text) or 0
+                        if price < minPrice then
+                            valid = false
+                        end
                     end
-                end
-                
-                -- 符石特定属性条数过滤
-                if valid and filters.runeAttrName and filters.runeAttrName.Text ~= "" then
-                    local attrName = filters.runeAttrName.Text
-                    local minCount = tonumber(filters.runeAttrCount and filters.runeAttrCount.Text or "0") or 0
-                    
-                    if minCount > 0 and item["属性"] then
-                        -- 统计该属性名称在原始属性列表中出现的次数
-                        local count = 0
-                        for _, attr in ipairs(item["属性"]) do
-                            if attr["名称"] and attr["名称"] == attrName then
-                                count = count + 1
+                    if valid and filters.maxPrice and filters.maxPrice.Text ~= "" then
+                        local maxPrice = tonumber(filters.maxPrice.Text) or 0
+                        if price > maxPrice then
+                            valid = false
+        end
+    end
+
+                    -- 符石品质过滤
+                    if valid and filters.quality then
+                        local qualityFilter = filters.quality.GetValue and filters.quality.GetValue() or "all"
+                        if qualityFilter ~= "all" then
+                            local quality = tonumber(item["品质"]) or 0
+                            local filterQuality = tonumber(qualityFilter)
+                            if quality ~= filterQuality then
+                                valid = false
                             end
                         end
-                        if count < minCount then
-                            valid = false
+                    end
+                    
+                    -- 符石类型过滤
+                    if valid and filters.type then
+                        local typeFilter = filters.type.GetValue and filters.type.GetValue() or "all"
+                        if typeFilter ~= "all" then
+                            local itemType = tonumber(item["类型"]) or 0
+                            local filterType = tonumber(typeFilter)
+                            if itemType ~= filterType then
+                                valid = false
+                            end
                         end
                     end
-                end
-                
-                -- 符石品质过滤（下拉框）
-                if valid and filters.runeQuality then
-                    local qualityFilter = filters.runeQuality.GetValue and filters.runeQuality.GetValue() or "all"
-                    if qualityFilter ~= "all" then
-                        local quality = tonumber(item["品质"]) or 0
-                        local filterQuality = tonumber(qualityFilter)
-                        if quality ~= filterQuality then
-                            valid = false
+                    
+                    -- 符石特定属性条数过滤
+                    if valid and filters.attrName then
+                        local attrNameFilter = filters.attrName.GetValue and filters.attrName.GetValue() or "all"
+                        if attrNameFilter ~= "all" then
+                            local minCount = tonumber(filters.attrCount and filters.attrCount.Text or "0") or 0
+                            -- 如果未输入条数，默认至少需要1条
+                            if minCount == 0 then
+                                minCount = 1
+                            end
+                            
+                            if item["属性"] then
+                                local count = 0
+                                for _, attr in ipairs(item["属性"]) do
+                                    if attr["名称"] and attr["名称"] == attrNameFilter then
+                                        count = count + 1
+                                    end
+                                end
+                                if count < minCount then
+                                    valid = false
+                                end
+                            else
+                                -- 如果没有属性数组，且要求至少1条，则过滤掉
+                                if minCount > 0 then
+                                    valid = false
+                                end
+                            end
                         end
                     end
                 end
             end
-        end
-        
-        -- 如果仅翅膀/符石过滤不匹配，跳过后续检查
-        if valid then
+        elseif category == "配饰" then
+            -- 配饰过滤逻辑
             -- 搜索过滤
             if searchQuery and searchQuery ~= "" then
                 local searchLower = string.lower(searchQuery)
@@ -968,7 +1311,6 @@ local function FilterItems(items, filters, searchQuery, wingsOnly, runesOnly)
                 end
             end
             
-            -- 如果搜索不匹配，跳过后续检查
             if valid then
                 -- 价格过滤
                 local price = tonumber(itemData["价格"]) or 0
@@ -985,74 +1327,94 @@ local function FilterItems(items, filters, searchQuery, wingsOnly, runesOnly)
                     end
                 end
                 
-                -- 翅膀判断（仅检查翅膀ID，不检查类型）
-                if valid then
-                    if item["翅膀ID"] then
-                        -- 翅膀物品跳过等级检查
-                        if item["属性"] and #item["属性"] >= 3 then
-                            local wingAttrValue = filters.wingAttr and filters.wingAttr.Text or ""
-                            if wingAttrValue ~= "" then
-                                local thirdAttr = item["属性"][3]["系数"] or 0
-                                local minWingAttr = tonumber(wingAttrValue) or 0
-                                if thirdAttr < minWingAttr then
-                                    valid = false
-                                end
-                            end
-                        else
-                            -- 翅膀物品必须有至少3个属性
+                -- 配饰品质过滤
+                if valid and filters.quality then
+                    local qualityFilter = filters.quality.GetValue and filters.quality.GetValue() or "all"
+                    if qualityFilter ~= "all" then
+                        local quality = tonumber(item["品质"]) or 0
+                        local filterQuality = tonumber(qualityFilter)
+                        if quality ~= filterQuality then
                             valid = false
                         end
-                    else
-                        -- 非翅膀物品进行等级过滤
-                        if item["等级"] then
-                            local level = tonumber(item["等级"]) or 0
-                            local minLevel = filters.minLevel and filters.minLevel.Text ~= "" and tonumber(filters.minLevel.Text) or nil
-                            local maxLevel = filters.maxLevel and filters.maxLevel.Text ~= "" and tonumber(filters.maxLevel.Text) or nil
-                            
-                            if minLevel and level < minLevel then
-                                valid = false
-                            end
-                            if maxLevel and level > maxLevel then
-                                valid = false
-                            end
+                    end
+                end
+                
+                -- 配饰类型过滤
+                if valid and filters.type then
+                    local typeFilter = filters.type.GetValue and filters.type.GetValue() or "all"
+                    if typeFilter ~= "all" then
+                        local itemIdNum = tonumber(item["id"]) or 0
+                        local filterType = tonumber(typeFilter)
+                        if itemIdNum ~= filterType then
+                            valid = false
                         end
-                        
-                        -- 装备品质过滤（下拉框）
-                        if valid and filters.equipQuality then
-                            local qualityFilter = filters.equipQuality.GetValue and filters.equipQuality.GetValue() or "all"
-                            if qualityFilter ~= "all" then
-                                local quality = tonumber(item["品质"]) or 0
-                                local filterQuality = tonumber(qualityFilter)
-                                if quality ~= filterQuality then
-                                    valid = false
-                                end
-                            end
-                        end
-                        
-                        -- 属性检查
-                        if valid then
-                            if filters.atkSpeed.Text == "[✓]" or filters.critRate.Text == "[✓]" then
-                                local hasAtkSpeed = false
-                                local hasCritRate = false
-                                
-                                if item["属性"] then
-                                    for _, attr in ipairs(item["属性"]) do
-                                        if attr["名称"] then
-                                            if string.find(attr["名称"], "攻击速度") then
-                                                hasAtkSpeed = true
-                                            elseif string.find(attr["名称"], "暴击概率") or string.find(attr["名称"], "暴击几率") then
-                                                hasCritRate = true
-                                            end
-                                        end
-                                    end
-                                end
-                                
-                                if (filters.atkSpeed.Text == "[✓]" and not hasAtkSpeed) or 
-                                   (filters.critRate.Text == "[✓]" and not hasCritRate) then
-                                    valid = false
-                                end
-                            end
-                        end
+                    end
+                end
+            end
+        elseif category == "宠物" or category == "宠物蛋" then
+            -- 宠物和宠物蛋：仅搜索和价格过滤
+            if searchQuery and searchQuery ~= "" then
+                local searchLower = string.lower(searchQuery)
+                local itemIdLower = string.lower(tostring(itemId))
+                local itemName = GetItemName(item, itemId)
+                local itemNameLower = string.lower(tostring(itemName))
+                local sellerName = ""
+                if itemData["卖家"] then
+                    sellerName = string.lower(tostring(itemData["卖家"]))
+                end
+                if not (string.find(itemIdLower, searchLower) or 
+                        string.find(itemNameLower, searchLower) or 
+                        string.find(sellerName, searchLower)) then
+                    valid = false
+                end
+            end
+            
+            if valid then
+                local price = tonumber(itemData["价格"]) or 0
+                if filters.minPrice and filters.minPrice.Text ~= "" then
+                    local minPrice = tonumber(filters.minPrice.Text) or 0
+                    if price < minPrice then
+                        valid = false
+                    end
+                end
+                if valid and filters.maxPrice and filters.maxPrice.Text ~= "" then
+                    local maxPrice = tonumber(filters.maxPrice.Text) or 0
+                    if price > maxPrice then
+                        valid = false
+                    end
+                end
+            end
+        elseif category == "全部" or not category then
+            -- 全部页面：仅搜索和价格过滤
+            if searchQuery and searchQuery ~= "" then
+                local searchLower = string.lower(searchQuery)
+                local itemIdLower = string.lower(tostring(itemId))
+                local itemName = GetItemName(item, itemId)
+                local itemNameLower = string.lower(tostring(itemName))
+                local sellerName = ""
+                if itemData["卖家"] then
+                    sellerName = string.lower(tostring(itemData["卖家"]))
+                end
+                if not (string.find(itemIdLower, searchLower) or 
+                        string.find(itemNameLower, searchLower) or 
+                        string.find(sellerName, searchLower)) then
+                    valid = false
+                end
+            end
+            
+            if valid then
+                local price = tonumber(itemData["价格"]) or 0
+                local allFilters = uiControls.pageFilters and uiControls.pageFilters["全部"] or {}
+                if allFilters.minPrice and allFilters.minPrice.Text ~= "" then
+                    local minPrice = tonumber(allFilters.minPrice.Text) or 0
+                    if price < minPrice then
+                        valid = false
+                    end
+                end
+                if valid and allFilters.maxPrice and allFilters.maxPrice.Text ~= "" then
+                    local maxPrice = tonumber(allFilters.maxPrice.Text) or 0
+                    if price > maxPrice then
+                        valid = false
                     end
                 end
             end
@@ -1062,7 +1424,7 @@ local function FilterItems(items, filters, searchQuery, wingsOnly, runesOnly)
             filtered[itemId] = itemData
         end
     end
-
+    
     return filtered
 end
 
@@ -1216,20 +1578,17 @@ local function DisplayResults(scrollFrame, results, statsLabel)
             -- 渲染当前分类的物品
             while currentItemIndex <= #categoryData.items and rendered < itemsPerFrame do
                 local itemInfo = categoryData.items[currentItemIndex]
-                local sellerName = itemInfo.sellerName
+            local sellerName = itemInfo.sellerName
             local itemId = itemInfo.itemId
             local itemData = itemInfo.itemData
             local item = itemData["物品数据"]
             local price = itemData["价格"] or "无"
-            local favoriteKey = sellerName .. "_" .. itemId
-            local isFavorite = favorites[favoriteKey] == true
             
             local card = Instance.new("Frame")
             card.Size = UDim2.new(1, -10, 0, 0)
             card.Position = UDim2.new(0, 5, 0, yOffset)
-            card.BackgroundColor3 = isFavorite and Color3.fromRGB(65, 65, 90) or COLOR_SCHEME.ITEM_CARD
-            card.BorderSizePixel = isFavorite and 2 or 0
-            card.BorderColor3 = COLOR_SCHEME.FAVORITE
+            card.BackgroundColor3 = COLOR_SCHEME.ITEM_CARD
+            card.BorderSizePixel = 0
             card.AutomaticSize = Enum.AutomaticSize.Y
             card.Parent = scrollFrame
             
@@ -1238,25 +1597,6 @@ local function DisplayResults(scrollFrame, results, statsLabel)
             header.Size = UDim2.new(1, 0, 0, 35)
             header.BackgroundColor3 = COLOR_SCHEME.HEADER
             header.Parent = card
-            
-            -- 收藏按钮
-            local favoriteBtn = Instance.new("TextButton")
-            favoriteBtn.Text = isFavorite and "★" or "☆"
-            favoriteBtn.Size = UDim2.new(0, 30, 1, 0)
-            favoriteBtn.Position = UDim2.new(0, 0, 0, 0)
-            favoriteBtn.Font = Enum.Font.SourceSansBold
-            favoriteBtn.TextSize = 20
-            favoriteBtn.TextColor3 = isFavorite and COLOR_SCHEME.FAVORITE or Color3.fromRGB(150, 150, 150)
-            favoriteBtn.BackgroundTransparency = 1
-            favoriteBtn.Parent = header
-            
-            favoriteBtn.Activated:Connect(function()
-                favorites[favoriteKey] = not favorites[favoriteKey]
-                favoriteBtn.Text = favorites[favoriteKey] and "★" or "☆"
-                favoriteBtn.TextColor3 = favorites[favoriteKey] and COLOR_SCHEME.FAVORITE or Color3.fromRGB(150, 150, 150)
-                card.BackgroundColor3 = favorites[favoriteKey] and Color3.fromRGB(65, 65, 90) or COLOR_SCHEME.ITEM_CARD
-                card.BorderSizePixel = favorites[favoriteKey] and 2 or 0
-            end)
             
             -- 物品名称和价格
             local itemName = GetItemName(item, itemId)
@@ -1268,7 +1608,7 @@ local function DisplayResults(scrollFrame, results, statsLabel)
             local title = Instance.new("TextLabel")
             title.Text = string.format("%s | 价格: %s", displayName, price)
             title.Size = UDim2.new(0.6, -5, 1, 0)
-            title.Position = UDim2.new(0, 35, 0, 0)
+            title.Position = UDim2.new(0, 5, 0, 0)
             title.TextXAlignment = Enum.TextXAlignment.Left
             -- 根据价格高低使用不同颜色
             local priceNum = tonumber(price) or 0
@@ -1457,7 +1797,44 @@ local function DisplayResults(scrollFrame, results, statsLabel)
                 end
             end
             
-                yOffset = yOffset + attrY + 15
+            -- 配饰属性显示（id和系数）
+            if item["id"] and not item["类型"] and not item["属性"] then
+                -- 这是配饰，显示配饰类型和系数
+                local accessoryId = tonumber(item["id"]) or 0
+                local accessoryName = ACCESSORY_TYPE_NAMES[accessoryId] or string.format("未知类型(%d)", accessoryId)
+                local coefficient = item["系数"] or 0
+                
+                local accessoryFrame = Instance.new("Frame")
+                accessoryFrame.Size = UDim2.new(1, -10, 0, 25)
+                accessoryFrame.Position = UDim2.new(0, 5, 0, attrY)
+                accessoryFrame.BackgroundTransparency = 1
+                accessoryFrame.Parent = card
+                
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Text = string.format("类型: %s (ID:%d)", accessoryName, accessoryId)
+                nameLabel.Size = UDim2.new(0.6, 0, 1, 0)
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.TextColor3 = COLOR_SCHEME.ACCENT
+                nameLabel.Font = Enum.Font.SourceSansSemibold
+                nameLabel.TextSize = 16
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Parent = accessoryFrame
+                
+                local valueLabel = Instance.new("TextLabel")
+                valueLabel.Text = string.format("系数: %.4f", coefficient)
+                valueLabel.Size = UDim2.new(0.4, 0, 1, 0)
+                valueLabel.Position = UDim2.new(0.6, 0, 0, 0)
+                valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+                valueLabel.TextColor3 = COLOR_SCHEME.TEXT_SECONDARY
+                valueLabel.Font = Enum.Font.SourceSans
+                valueLabel.TextSize = 16
+                valueLabel.BackgroundTransparency = 1
+                valueLabel.Parent = accessoryFrame
+                
+                attrY = attrY + 30
+            end
+            
+            yOffset = yOffset + attrY + 15
                 
                 currentItemIndex = currentItemIndex + 1
                 rendered = rendered + 1
@@ -1467,11 +1844,11 @@ local function DisplayResults(scrollFrame, results, statsLabel)
             if currentItemIndex > #categoryData.items then
                 currentCategoryIndex = currentCategoryIndex + 1
                 currentItemIndex = 1
-            end
         end
-        
+    end
+    
         -- 更新CanvasSize（每帧更新一次，避免频繁计算）
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 15)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 15)
         
         -- 更新统计信息（只在最后更新一次）
         if currentCategoryIndex > #allItemsToRender and statsLabel then
@@ -1578,13 +1955,10 @@ local function StartAutoScan(ui)
                 -- 空商店也标记为已处理，但不保存数据
                 lastDataTime = tick()
             else
-                allPlayersData[player.Name] = shopData
+            allPlayersData[player.Name] = shopData
                 lastDataCount = lastDataCount + 1
                 lastDataTime = tick()
-                print("已扫描:", player.Name)
-                
-                -- 保存数据到文件（用于debug）
-                SaveShopData(player.Name, shopData)
+            print("已扫描:", player.Name)
             end
         else
             -- shopData为空或无效，但已经收到响应，说明商店可能真的为空
@@ -1594,17 +1968,16 @@ local function StartAutoScan(ui)
         
         -- 关闭当前商店界面
         CloseShopUI()
-        task.wait(scanInterval)
         
         -- 继续扫描下一个
         currentPlayerIndex = currentPlayerIndex + 1
         if currentPlayerIndex <= #allPlayers then
+            task.wait(scanInterval) -- 等待间隔时间后再发送下一个请求
             ui.progressLabel.Text = string.format("扫描中: %d/%d", currentPlayerIndex, #allPlayers)
             currentScanPlayer = allPlayers[currentPlayerIndex]
             lastReceivedPlayer = nil -- 重置接收状态
             viewEvent:FireServer(currentScanPlayer)
             scanStartTime = tick()
-            task.wait(scanInterval) -- 等待间隔时间
         else
             -- 扫描完成
             isScanning = false
@@ -1621,17 +1994,37 @@ local function StartAutoScan(ui)
             local filteredResults = {}
             for sellerName, shopData in pairs(allPlayersData) do
                 if type(shopData) == "table" then
-                    for category, items in pairs(shopData) do
+                for category, items in pairs(shopData) do
                         if type(items) == "table" then
-                            if not filteredResults[category] then
-                                filteredResults[category] = {}
-                            end
-                            filteredResults[category][sellerName] = FilterItems(items, ui.controls, searchText, filterWingsOnly, filterRunesOnly)
-                        end
+                    if not filteredResults[category] then
+                        filteredResults[category] = {}
                     end
+                            filteredResults[category][sellerName] = FilterItems(items, ui.controls, searchText, category)
                 end
             end
-            DisplayResults(ui.resultsScroll, filteredResults, ui.statsLabel)
+                end
+            end
+            
+            -- 应用页面过滤
+            local categoryMap = {
+                ["全部"] = nil,
+                ["装备"] = "装备",
+                ["符石"] = "符石",
+                ["配饰"] = "配饰",
+                ["宠物"] = "宠物",
+                ["宠物蛋"] = "宠物蛋"
+            }
+            local targetCategory = categoryMap[currentPage]
+            local pageFilteredResults = {}
+            if targetCategory then
+                if filteredResults[targetCategory] then
+                    pageFilteredResults[targetCategory] = filteredResults[targetCategory]
+                end
+            else
+                pageFilteredResults = filteredResults
+            end
+            
+            DisplayResults(ui.resultsScroll, pageFilteredResults, ui.statsLabel)
         end
     end)
     
@@ -1656,33 +2049,7 @@ local function StopAutoScan(ui)
 end
 
 -- 6. 显示收藏列表
-local function ShowFavorites(ui)
-    local favoriteResults = {}
-    
-    for sellerName, shopData in pairs(allPlayersData) do
-        if type(shopData) == "table" then
-            for category, items in pairs(shopData) do
-                if type(items) == "table" then
-                    local favoriteItems = {}
-                    for itemId, itemData in pairs(items) do
-                        local favoriteKey = sellerName .. "_" .. itemId
-                        if favorites[favoriteKey] then
-                            favoriteItems[itemId] = itemData
-                        end
-                    end
-                    if next(favoriteItems) then
-                        if not favoriteResults[category] then
-                            favoriteResults[category] = {}
-                        end
-                        favoriteResults[category][sellerName] = FilterItems(favoriteItems, ui.controls, searchText, filterWingsOnly, filterRunesOnly)
-                    end
-                end
-            end
-        end
-    end
-    
-    DisplayResults(ui.resultsScroll, favoriteResults, ui.statsLabel)
-end
+-- 已移除收藏列表功能
 
 -- 7. 初始化系统
 local ui = CreateCompleteUI()
@@ -1692,7 +2059,7 @@ local manualConnection = viewEvent.OnClientEvent:Connect(function(player, _, sho
     if not isScanning then
         if shopData and type(shopData) == "table" then
             allPlayersData[player.Name] = shopData
-            print("收到", player.Name, "的商店数据")
+        print("收到", player.Name, "的商店数据")
         end
     end
 end)
@@ -1706,19 +2073,60 @@ ui.searchBox:GetPropertyChangedSignal("Text"):Connect(function()
     end
 end)
 
+-- 页面切换函数
+local function SwitchPage(pageName)
+    currentPage = pageName
+    -- 更新按钮状态
+    for name, btn in pairs(ui.pageButtons) do
+        if name == pageName then
+            btn.BackgroundColor3 = COLOR_SCHEME.ACCENT
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end
+    end
+    -- 切换过滤界面
+    if ui.controls.pageFilterCreators and ui.controls.pageFilterCreators[pageName] then
+        ui.controls.pageFilterCreators[pageName]()
+    end
+    -- 自动应用过滤
+    ui.filterButton.Activated:Fire()
+end
+
+-- 页面按钮事件
+for pageName, pageBtn in pairs(ui.pageButtons) do
+    pageBtn.Activated:Connect(function()
+        SwitchPage(pageName)
+    end)
+end
+
 -- 过滤按钮
 ui.filterButton.Activated:Connect(function()
     searchText = ui.searchBox.Text
     local filteredResults = {}
+    
+    -- 根据当前页面过滤分类
+    local categoryMap = {
+        ["全部"] = nil,  -- 显示所有分类
+        ["装备"] = "装备",
+        ["符石"] = "符石",
+        ["配饰"] = "配饰",
+        ["宠物"] = "宠物",
+        ["宠物蛋"] = "宠物蛋"
+    }
+    local targetCategory = categoryMap[currentPage]
+    
     for sellerName, shopData in pairs(allPlayersData) do
         if type(shopData) == "table" then
-            for category, items in pairs(shopData) do
-                if type(items) == "table" then
-                    if not filteredResults[category] then
-                        filteredResults[category] = {}
-                    end
-                    filteredResults[category][sellerName] = FilterItems(items, ui.controls, searchText, filterWingsOnly, filterRunesOnly)
-                end
+        for category, items in pairs(shopData) do
+                -- 如果指定了页面，只处理对应分类
+                if not targetCategory or category == targetCategory then
+                    if type(items) == "table" then
+            if not filteredResults[category] then
+                filteredResults[category] = {}
+            end
+                        filteredResults[category][sellerName] = FilterItems(items, ui.controls, searchText, category)
+        end
+    end
             end
         end
     end
@@ -1726,85 +2134,60 @@ ui.filterButton.Activated:Connect(function()
     print("过滤完成")
 end)
 
--- 仅显示翅膀按钮
-ui.wingFilterButton.Activated:Connect(function()
-    filterWingsOnly = not filterWingsOnly
-    filterRunesOnly = false -- 互斥
-    ui.wingFilterButton.Text = filterWingsOnly and "显示全部" or "仅显示翅膀"
-    ui.wingFilterButton.BackgroundColor3 = filterWingsOnly and COLOR_SCHEME.ACCENT or Color3.fromRGB(80, 80, 80)
-    ui.runeFilterButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    -- 自动应用过滤
-    ui.filterButton.Activated:Fire()
-end)
-
--- 仅显示符石按钮
-ui.runeFilterButton.Activated:Connect(function()
-    filterRunesOnly = not filterRunesOnly
-    filterWingsOnly = false -- 互斥
-    ui.runeFilterButton.Text = filterRunesOnly and "显示全部" or "仅显示符石"
-    ui.runeFilterButton.BackgroundColor3 = filterRunesOnly and COLOR_SCHEME.ACCENT or Color3.fromRGB(80, 80, 80)
-    ui.wingFilterButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    -- 自动应用过滤
-    ui.filterButton.Activated:Fire()
-end)
-
--- 加载文件数据按钮
-ui.loadDataButton.Activated:Connect(function()
-    local loadedData = LoadShopDataFromFiles()
-    if loadedData and next(loadedData) then
-        -- 合并加载的数据
-        for playerName, shopData in pairs(loadedData) do
-            allPlayersData[playerName] = shopData
-        end
-        local count = 0
-        for _ in pairs(loadedData) do
-            count = count + 1
-        end
-        print(string.format("已加载 %d 个商店的数据文件", count))
-        -- 自动应用过滤
-        ui.filterButton.Activated:Fire()
-    else
-        warn("未找到或无法读取ShopData文件")
-    end
-end)
-
 -- 重置按钮
 ui.resetButton.Activated:Connect(function()
-    ui.controls.minLevel.Text = "1"
-    ui.controls.maxLevel.Text = "100"
-    ui.controls.minPrice.Text = ""
-    ui.controls.maxPrice.Text = ""
-    ui.controls.wingAttr.Text = "1.0"
-    ui.controls.atkSpeed.Text = "[ ]"
-    ui.controls.critRate.Text = "[ ]"
-    -- 重置下拉框
-    if ui.controls.equipQuality and ui.controls.equipQuality.SetValue then
-        ui.controls.equipQuality.SetValue("all")
-    end
-    if ui.controls.runeQuality and ui.controls.runeQuality.SetValue then
-        ui.controls.runeQuality.SetValue("all")
+    -- 重置当前页面的过滤控件
+    local pageFilters = ui.controls.pageFilters and ui.controls.pageFilters[currentPage] or {}
+    
+    if currentPage == "装备" then
+        if pageFilters.minLevel then pageFilters.minLevel.Text = "1" end
+        if pageFilters.maxLevel then pageFilters.maxLevel.Text = "100" end
+        if pageFilters.minPrice then pageFilters.minPrice.Text = "" end
+        if pageFilters.maxPrice then pageFilters.maxPrice.Text = "" end
+        if pageFilters.filterWings then pageFilters.filterWings.Text = "[ ]" end
+        if pageFilters.atkSpeed then pageFilters.atkSpeed.Text = "[ ]" end
+        if pageFilters.critRate then pageFilters.critRate.Text = "[ ]" end
+        if pageFilters.critDamage then pageFilters.critDamage.Text = "[ ]" end
+        if pageFilters.wingThirdAttr then pageFilters.wingThirdAttr.Text = "" end
+        if pageFilters.quality and pageFilters.quality.SetValue then
+            pageFilters.quality.SetValue("all")
+        end
+    elseif currentPage == "符石" then
+        if pageFilters.minPrice then pageFilters.minPrice.Text = "" end
+        if pageFilters.maxPrice then pageFilters.maxPrice.Text = "" end
+        if pageFilters.quality and pageFilters.quality.SetValue then
+            pageFilters.quality.SetValue("all")
+        end
+        if pageFilters.type and pageFilters.type.SetValue then
+            pageFilters.type.SetValue("all")
+        end
+        if pageFilters.attrName and pageFilters.attrName.SetValue then
+            pageFilters.attrName.SetValue("all")
+        end
+        if pageFilters.attrCount then pageFilters.attrCount.Text = "" end
+    elseif currentPage == "配饰" then
+        if pageFilters.minPrice then pageFilters.minPrice.Text = "" end
+        if pageFilters.maxPrice then pageFilters.maxPrice.Text = "" end
+        if pageFilters.quality and pageFilters.quality.SetValue then
+            pageFilters.quality.SetValue("all")
+        end
+        if pageFilters.type and pageFilters.type.SetValue then
+            pageFilters.type.SetValue("all")
+        end
+    elseif currentPage == "全部" then
+        if pageFilters.minPrice then pageFilters.minPrice.Text = "" end
+        if pageFilters.maxPrice then pageFilters.maxPrice.Text = "" end
     end
     
-    ui.controls.runeType.Text = ""
-    ui.controls.runeMinAttr.Text = ""
-    ui.controls.runeAttrName.Text = ""
-    ui.controls.runeAttrCount.Text = ""
     ui.searchBox.Text = ""
     searchText = ""
-    filterWingsOnly = false
-    filterRunesOnly = false
-    ui.wingFilterButton.Text = "仅显示翅膀"
-    ui.wingFilterButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    ui.runeFilterButton.Text = "仅显示符石"
-    ui.runeFilterButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     print("已重置过滤条件")
+    -- 自动应用过滤
+    ui.filterButton.Activated:Fire()
 end)
 
 -- 收藏按钮
-ui.favoriteButton.Activated:Connect(function()
-    ShowFavorites(ui)
-    print("显示收藏列表")
-end)
+-- 已移除收藏列表功能
 
 -- 扫描按钮
 ui.scanButton.Activated:Connect(function()
@@ -1815,30 +2198,6 @@ ui.scanButton.Activated:Connect(function()
     end
 end)
 
--- 自动刷新按钮
-ui.autoRefreshButton.Activated:Connect(function()
-    autoRefreshEnabled = not autoRefreshEnabled
-    ui.autoRefreshButton.Text = string.format("自动刷新: %s", autoRefreshEnabled and "开启" or "关闭")
-    ui.autoRefreshButton.BackgroundColor3 = autoRefreshEnabled and COLOR_SCHEME.POSITIVE or Color3.fromRGB(80, 80, 80)
-    if autoRefreshEnabled then
-        lastRefreshTime = tick()
-    end
-end)
-
--- 自动刷新循环
-coroutine.wrap(function()
-    while ui.screenGui.Parent do
-        task.wait(1)
-        if autoRefreshEnabled and not isScanning then
-            local currentTime = tick()
-            if currentTime - lastRefreshTime >= autoRefreshInterval then
-                print("自动刷新扫描...")
-                StartAutoScan(ui)
-                lastRefreshTime = currentTime
-            end
-        end
-    end
-end)()
 
 -- 初始请求自己的商店数据
 viewEvent:FireServer(Players.LocalPlayer)
