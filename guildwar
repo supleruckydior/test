@@ -231,8 +231,9 @@ local function MoveToTarget(targetModel)
         return false
     end
     
-    -- 确保移动速度为高速
-    currentHumanoid.WalkSpeed = 64
+    -- 设置随机移动速度（增加随机性）
+    local baseWalkSpeed = math.random(60, 68)  -- 基础移动速度在60-68之间随机
+    currentHumanoid.WalkSpeed = baseWalkSpeed
     
     -- 获取目标位置（默认使用固定坐标）
     local targetPosition = Vector3.new(-513, 10, -511)
@@ -428,6 +429,12 @@ local function MoveToTarget(targetModel)
     local i3 = i1 + i2
     local jumpInterval = math.random(i1, i3)  -- 随机跳跃间隔
     
+    -- 随机移动速度（增加随机性）
+    local baseWalkSpeed = math.random(60, 68)  -- 基础移动速度在60-68之间随机
+    local waypointReachDistance = 6  -- 路径点到达判断距离固定为6
+    local stuckCheckInterval = math.random(1.0, 2.5)  -- 卡住检测时间随机（1-2.5秒）
+    local stuckDistanceThreshold = math.random(1.5, 3.0)  -- 卡住判断的移动距离阈值随机（1.5-3单位）
+    
     local function moveToNextWaypoint()
         -- 确保角色仍然有效（重新获取引用以确保最新）
         local currentChar = LocalPlayer.Character
@@ -472,9 +479,9 @@ local function MoveToTarget(targetModel)
         end
         
         -- 移动到目标位置
-        -- 确保移动速度设置为高速
-        if currentHumanoid.WalkSpeed < 64 then
-            currentHumanoid.WalkSpeed = 64
+        -- 设置随机移动速度
+        if currentHumanoid.WalkSpeed ~= baseWalkSpeed then
+            currentHumanoid.WalkSpeed = baseWalkSpeed
         end
         currentHumanoid:MoveTo(targetPos)
         isMoving = true
@@ -500,7 +507,7 @@ local function MoveToTarget(targetModel)
             return nil, nil
         end
         
-        currentHumanoid.WalkSpeed = 64
+        currentHumanoid.WalkSpeed = baseWalkSpeed  -- 使用随机移动速度
         
         local newStartPos = currentHRP.Position
         print("新的起始位置:", newStartPos)
@@ -677,8 +684,8 @@ local function MoveToTarget(targetModel)
         local targetPos = waypoint.Position
         local distanceToWaypoint = (currentPos - targetPos).Magnitude
         
-        -- 检查是否到达当前路径点（使用较小的判断距离以避免跳过路径点）
-        if distanceToWaypoint < 6 then
+        -- 检查是否到达当前路径点（使用随机判断距离以增加随机性）
+        if distanceToWaypoint < waypointReachDistance then
             currentWaypointIndex = currentWaypointIndex + 1
             
             if currentWaypointIndex <= #waypoints then
@@ -702,8 +709,9 @@ local function MoveToTarget(targetModel)
         local currentHumanoid = currentChar:FindFirstChild("Humanoid")
         if currentHumanoid then
             -- 持续调用MoveTo确保角色一直移动（每帧都调用）
-            if currentHumanoid.WalkSpeed < 64 then
-                currentHumanoid.WalkSpeed = 64
+            -- 使用随机移动速度
+            if currentHumanoid.WalkSpeed ~= baseWalkSpeed then
+                currentHumanoid.WalkSpeed = baseWalkSpeed
             end
             -- 如果是跳跃点，设置跳跃
             if waypoint.Action == Enum.PathWaypointAction.Jump then
@@ -725,25 +733,19 @@ local function MoveToTarget(targetModel)
             isMoving = true
         end
         
-        -- 卡住检测（减少检测时间以提高响应速度）
-        if isMoving and tick() - stuckCheckTime > 1.5 then
+        -- 卡住检测（使用随机检测时间以增加随机性）
+        if isMoving and tick() - stuckCheckTime > stuckCheckInterval then
             local movedDistance = (currentPos - lastPosition).Magnitude
-            if movedDistance < 2 then
-                -- 卡住了，跳过当前路径点
-                print(string.format("检测到卡住，跳过路径点 %d/%d", currentWaypointIndex, #waypoints))
-                currentWaypointIndex = currentWaypointIndex + 1
-                if currentWaypointIndex <= #waypoints then
-                    stuckCheckTime = tick()
-                    lastPosition = currentPos
-                    waypoint = waypoints[currentWaypointIndex]
-                    targetPos = waypoint.Position
-                    print(string.format("跳过到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
-                else
-                    print("已到达所有路径点")
-                    moveComplete = true
-                    if moveConnection then
-                        moveConnection:Disconnect()
-                    end
+            if movedDistance < stuckDistanceThreshold then
+                -- 卡住了，杀死玩家（跳过路径点一般不会解决卡住问题）
+                print(string.format("检测到卡住，杀死玩家（路径点 %d/%d）", currentWaypointIndex, #waypoints))
+                local currentHumanoidForKill = currentChar:FindFirstChild("Humanoid")
+                if currentHumanoidForKill then
+                    currentHumanoidForKill.Health = 0  -- 杀死玩家
+                end
+                moveComplete = true
+                if moveConnection then
+                    moveConnection:Disconnect()
                 end
             else
                 stuckCheckTime = tick()
