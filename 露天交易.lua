@@ -60,6 +60,21 @@ local RUNE_TYPE_NAMES = {
     [5] = "土"
 }
 
+-- 装备类型映射
+local EQUIP_TYPE_NAMES = {
+    [1] = "头盔",
+    [2] = "卷轴",
+    [3] = "项链",
+    [4] = "挂坠",
+    [5] = "戒指",
+    [6] = "手套",
+    [7] = "护甲",
+    [8] = "腰带",
+    [9] = "裤子",
+    [10] = "鞋子",
+    [11] = "翅膀"
+}
+
 -- 挂饰类型映射
 local ACCESSORY_TYPE_NAMES = {
     [1001] = "肉(血量加成)",
@@ -705,6 +720,19 @@ local function CreateCompleteUI()
             -- 翅膀第三个词条系数过滤
             pageControls.wingThirdAttr = AddFilterRow("翅膀第三个词条系数:", "text", "", container, localYOffset)
             localYOffset = localYOffset + 45
+            -- 装备类型过滤
+            local equipTypeOptions = {{text = "全部", value = "all"}}
+            for i = 1, 11 do
+                table.insert(equipTypeOptions, {
+                    text = string.format("%d-%s", i, EQUIP_TYPE_NAMES[i] or tostring(i)),
+                    value = tostring(i)
+                })
+            end
+            pageControls.equipType = AddFilterRow("装备类型:", "dropdown", {
+                default = "all",
+                options = equipTypeOptions
+            }, container, localYOffset)
+            localYOffset = localYOffset + 45
             pageControls.quality = AddFilterRow("装备品质:", "dropdown", {
                 default = "all",
                 options = GetQualityOptions()
@@ -1137,15 +1165,27 @@ local function FilterItems(items, uiControls, searchQuery, category)
                 end
             end
             
+            -- 装备类型过滤
+            if valid and filters.equipType then
+                local equipTypeFilter = filters.equipType.GetValue and filters.equipType.GetValue() or "all"
+                if equipTypeFilter ~= "all" then
+                    local itemType = tonumber(item["类型"]) or 0
+                    local filterType = tonumber(equipTypeFilter)
+                    if itemType ~= filterType then
+                        valid = false
+                    end
+                end
+            end
+            
             -- 品质过滤
-                    if valid and filters.quality then
-                        local qualityFilter = filters.quality.GetValue and filters.quality.GetValue() or "all"
-                        if qualityFilter ~= "all" then
-                local quality = tonumber(item["品质"]) or 0
-                            local filterQuality = tonumber(qualityFilter)
-                            if quality ~= filterQuality then
-                    valid = false
-                            end
+            if valid and filters.quality then
+                local qualityFilter = filters.quality.GetValue and filters.quality.GetValue() or "all"
+                if qualityFilter ~= "all" then
+                    local quality = tonumber(item["品质"]) or 0
+                    local filterQuality = tonumber(qualityFilter)
+                    if quality ~= filterQuality then
+                        valid = false
+                    end
                 end
             end
             
@@ -2149,6 +2189,9 @@ ui.resetButton.Activated:Connect(function()
         if pageFilters.critRate then pageFilters.critRate.Text = "[ ]" end
         if pageFilters.critDamage then pageFilters.critDamage.Text = "[ ]" end
         if pageFilters.wingThirdAttr then pageFilters.wingThirdAttr.Text = "" end
+        if pageFilters.equipType and pageFilters.equipType.SetValue then
+            pageFilters.equipType.SetValue("all")
+        end
         if pageFilters.quality and pageFilters.quality.SetValue then
             pageFilters.quality.SetValue("all")
         end
