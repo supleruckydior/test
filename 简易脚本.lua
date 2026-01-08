@@ -6,7 +6,6 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
 
@@ -201,6 +200,31 @@ if not secondaryUIReady then
     warn('[初始化] 等待二级界面超时，继续执行...')
     -- 即使超时也更新GUI对象
     GUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+end
+
+-- ============================================
+-- 加载 Nexus WebSocket 管理器（游戏加载完成后）
+-- ============================================
+local Nexus
+local NexusLoaded = false
+print('[初始化] 游戏加载完成，开始加载 Nexus...')
+local success, err = pcall(function()
+    Nexus = loadstring(game:HttpGet('https://raw.githubusercontent.com/ic3w0lf22/Roblox-Account-Manager/master/RBX%20Alt%20Manager/Nexus/Nexus.lua', true))()
+    if Nexus and Nexus.Connect then
+        NexusLoaded = true
+        print('[Nexus] Nexus 已加载，正在连接...')
+        -- 等待 Nexus 连接
+        task.spawn(function()
+            task.wait(2)
+            if Nexus and not Nexus.IsConnected then
+                Nexus:Connect()
+            end
+        end)
+    end
+end)
+
+if not NexusLoaded then
+    warn('[Nexus] 警告: Nexus 加载失败，将使用本地保存模式。错误:', err)
 end
 
 -- ============================================
@@ -488,26 +512,19 @@ local function getGuildName(forceRefresh)
 end
 
 -- ============================================
--- 数据保存功能（使用Synapse文件系统，TSV格式适合EmEditor）
+-- 数据保存功能（使用 Nexus WebSocket 发送数据）
 -- ============================================
--- 数据保存路径（Synapse工作目录）
-local DATA_FILE_PATH = "roblox_account_data.tsv"  -- TSV格式，EmEditor可以自动识别为表格
 local DATA_SAVE_INTERVAL = 3  -- 保存间隔（秒），3秒
 
--- 保存数据到本地文件（TSV格式，适合EmEditor）
+-- 保存数据到 Nexus（通过 WebSocket 发送）
 local isSaving = false  -- 写入锁，防止并发写入
-local function saveDataToLocal()
+local function saveDataToNexus()
     -- 防止并发写入
     if isSaving then
         return
     end
     
     local success, err = pcall(function()
-        -- 检查Synapse文件函数是否可用
-        if not writefile or not readfile then
-            return
-        end
-        
         isSaving = true  -- 设置写入锁
         
         local accountName = player.Name
@@ -515,151 +532,83 @@ local function saveDataToLocal()
         local oreValue = getOREValue()
         local updateTime = os.date('%Y-%m-%d %H:%M:%S')
         local guildNameValue = getGuildName()  -- 获取公会名称
-        -- 调试信息（可选）
-        if guildNameValue == '' then
-            print('[数据保存] 警告: 无法获取公会名称，将保存为空字符串')
-        end
         
-        -- 读取现有数据
-        local accountData = {}  -- 使用字典格式，key为账号名
-        local fileContent = nil
-        local fileExists = isfile(DATA_FILE_PATH)
-        local readSuccess, readResult = pcall(function()
-            if fileExists then
-                return readfile(DATA_FILE_PATH)
-            end
-            return nil
-        end)
-        
-        local oldDataCount = 0  -- 记录读取到的旧数据数量
-        
-        if readSuccess and readResult and readResult ~= "" then
-            fileContent = readResult
-            -- 检查文件大小，如果太大可能有问题
-            if #fileContent > 10 * 1024 * 1024 then  -- 10MB限制
-                warn('[数据保存] 警告: 文件过大 (' .. #fileContent .. ' 字节)，可能无法完整读取')
-            end
+        -- 如果 Nexus 已连接，通过 WebSocket 发送数据
+        if NexusLoaded and Nexus and Nexus.IsConnected then
+            local dataJson = game:GetService('HttpService'):JSONEncode({
+                account = accountName,
+                herbs = herbValue,
+                ore = oreValue,
+                updated_at = updateTime,
+                guild_name = guildNameValue,
+                place_id = game.PlaceId,
+                job_id = game.JobId
+            })
             
-            -- 解析TSV文件
-            local lines = {}
-            for line in fileContent:gmatch("[^\r\n]+") do
-                table.insert(lines, line)
-            end
+            -- 使用 Nexus 的 Log 功能发送数据（服务器可以解析）
+            Nexus:Log(string.format('[ACCOUNT_DATA] %s', dataJson))
             
-            -- 跳过标题行，读取数据
-            for i = 2, #lines do
-                local parts = {}
-                for part in lines[i]:gmatch("[^\t]+") do
-                    table.insert(parts, part)
-                end
-                if #parts >= 3 then
-                    local acc = parts[1]
-                    local herbs = tonumber(parts[2]) or 0
-                    local ore = tonumber(parts[3]) or 0
-                    local time = parts[4] or ""
-                    local guildName = parts[5] or ""  -- 读取公会名称（如果有）
-                    accountData[acc] = {
-                        herbs = herbs,
-                        ore = ore,
-                        updated_at = time,
-                        guild_name = guildName
-                    }
-                    oldDataCount = oldDataCount + 1
-                end
-            end
-            
-            print('[数据保存] 成功读取', oldDataCount, '条旧数据')
-        elseif fileExists then
-            -- 文件存在但读取失败，这是严重问题
-            warn('[数据保存] 错误: 文件存在但读取失败，将保留原文件不覆盖')
-            isSaving = false
-            return  -- 不继续写入，避免清空文件
-        end
-        
-        -- 更新或添加当前账号数据
-        accountData[accountName] = {
-            herbs = herbValue,
-            ore = oreValue,
-            updated_at = updateTime,
-            guild_name = guildNameValue  -- 使用getGuildName()获取的值
-        }
-        
-        -- 按账号名排序（可选）
-        local sortedAccounts = {}
-        for account, _ in pairs(accountData) do
-            table.insert(sortedAccounts, account)
-        end
-        table.sort(sortedAccounts)
-        
-        -- 使用table.concat提高性能，避免字符串拼接问题
-        local tsvLines = {"账号\t草药数量\t矿石数量\t更新时间\t公会名字"}
-        
-        -- 写入数据
-        for _, account in ipairs(sortedAccounts) do
-            local data = accountData[account]
-            -- 确保所有数据都有guild_name字段（如果没有则设为空字符串）
-            if not data.guild_name then
-                data.guild_name = ""
-            end
-            table.insert(tsvLines, string.format("%s\t%d\t%d\t%s\t%s", 
-                account, 
-                data.herbs, 
-                data.ore, 
-                data.updated_at,
-                data.guild_name
-            ))
-        end
-        
-        -- 检查数据完整性：如果文件存在但读取到的数据为空，说明可能有问题
-        if fileExists and oldDataCount == 0 and #sortedAccounts == 1 then
-            -- 只有当前账号的数据，但文件存在，说明读取失败
-            warn('[数据保存] 警告: 文件存在但未读取到旧数据，可能文件格式有问题。跳过本次保存以避免数据丢失')
-            isSaving = false
-            return
-        end
-        
-        -- 使用table.concat构建完整内容，性能更好
-        local tsvContent = table.concat(tsvLines, "\n") .. "\n"
-        
-        -- 检查内容大小
-        if #tsvContent > 10 * 1024 * 1024 then  -- 10MB限制
-            warn('[数据保存] 警告: 要写入的内容过大 (' .. #tsvContent .. ' 字节)，可能写入失败')
-        end
-        
-        -- 保存到文件，检查写入是否成功
-        local writeSuccess, writeErr = pcall(function()
-            writefile(DATA_FILE_PATH, tsvContent)
-        end)
-        
-        if not writeSuccess then
-            warn('[数据保存] 写入文件失败:', writeErr)
-            -- 如果写入失败，不更新isSaving，让下次重试
-            isSaving = false
-            return
-        end
-        
-        -- 验证写入是否成功（可选，读取文件检查）
-        local verifySuccess, verifyContent = pcall(function()
-            if isfile(DATA_FILE_PATH) then
-                return readfile(DATA_FILE_PATH)
-            end
-            return nil
-        end)
-        
-        if verifySuccess and verifyContent and verifyContent ~= "" then
-            -- 写入成功，验证数据完整性
-            local verifyLines = {}
-            for line in verifyContent:gmatch("[^\r\n]+") do
-                table.insert(verifyLines, line)
-            end
-            local verifyDataCount = #verifyLines - 1  -- 减去标题行
-            if verifyDataCount == #sortedAccounts then
-                print('[数据保存] 数据已保存，账号数:', #sortedAccounts, '(旧数据:', oldDataCount, '条)')
-            else
-                warn('[数据保存] 警告: 验证时发现数据数量不匹配，期望:', #sortedAccounts, '实际:', verifyDataCount)
-            end
+            print('[数据保存] 数据已通过 Nexus 发送:', accountName, '草药:', herbValue, '矿石:', oreValue)
         else
-            warn('[数据保存] 警告: 写入后验证失败，文件可能为空。如果原文件存在，建议手动检查')
+            -- Nexus 未连接，尝试本地保存（备用方案）
+            if writefile and readfile then
+                local DATA_FILE_PATH = "roblox_account_data.tsv"
+                local accountData = {}
+                local fileExists = isfile(DATA_FILE_PATH)
+                
+                if fileExists then
+                    local readSuccess, fileContent = pcall(function()
+                        return readfile(DATA_FILE_PATH)
+                    end)
+                    
+                    if readSuccess and fileContent and fileContent ~= "" then
+                        for line in fileContent:gmatch("[^\r\n]+") do
+                            local parts = {}
+                            for part in line:gmatch("[^\t]+") do
+                                table.insert(parts, part)
+                            end
+                            if #parts >= 3 and parts[1] ~= "账号" then
+                                accountData[parts[1]] = {
+                                    herbs = tonumber(parts[2]) or 0,
+                                    ore = tonumber(parts[3]) or 0,
+                                    updated_at = parts[4] or "",
+                                    guild_name = parts[5] or ""
+                                }
+                            end
+                        end
+                    end
+                end
+                
+                accountData[accountName] = {
+                    herbs = herbValue,
+                    ore = oreValue,
+                    updated_at = updateTime,
+                    guild_name = guildNameValue
+                }
+                
+                local sortedAccounts = {}
+                for account, _ in pairs(accountData) do
+                    table.insert(sortedAccounts, account)
+                end
+                table.sort(sortedAccounts)
+                
+                local tsvLines = {"账号\t草药数量\t矿石数量\t更新时间\t公会名字"}
+                for _, account in ipairs(sortedAccounts) do
+                    local data = accountData[account]
+                    table.insert(tsvLines, string.format("%s\t%d\t%d\t%s\t%s", 
+                        account, 
+                        data.herbs, 
+                        data.ore, 
+                        data.updated_at,
+                        data.guild_name or ""
+                    ))
+                end
+                
+                writefile(DATA_FILE_PATH, table.concat(tsvLines, "\n") .. "\n")
+                print('[数据保存] 数据已保存到本地文件（Nexus 未连接）')
+            else
+                warn('[数据保存] 警告: Nexus 未连接且无法保存到本地文件')
+            end
         end
     end)
     
@@ -680,7 +629,7 @@ local function startDataSaveLoop()
     
     task.spawn(function()
         while true do
-            saveDataToLocal()
+            saveDataToNexus()
             task.wait(DATA_SAVE_INTERVAL)
         end
     end)
@@ -1588,12 +1537,33 @@ local function smartMonitor()
     while true do
         local currentHerbs = getHerbValue()
         local playerName = player.Name
+        local currentOre = getOREValue()
+        local currentDiamond = getDiamond()
+
+        -- 通过 Nexus 发送监控状态
+        if NexusLoaded and Nexus and Nexus.IsConnected then
+            local monitorData = {
+                account = playerName,
+                herbs = currentHerbs,
+                ore = currentOre,
+                diamond = currentDiamond,
+                timestamp = os.time(),
+                status = "monitoring"
+            }
+            Nexus:Log(string.format('[MONITOR] %s', game:GetService('HttpService'):JSONEncode(monitorData)))
+        end
 
         if currentHerbs > 250000 and not hasExecutedTrade then
             herbprint = true
             lowcontrol = true
             hasExecutedTrade = true
-            print(playerName .. ' --- 自动交易脚本激活! (' .. currentHerbs .. '草药)')
+            local message = playerName .. ' --- 自动交易脚本激活! (' .. currentHerbs .. '草药)'
+            print(message)
+            
+            -- 通过 Nexus 发送重要事件
+            if NexusLoaded and Nexus and Nexus.IsConnected then
+                Nexus:Log(string.format('[TRADE_START] %s | 草药: %d', playerName, currentHerbs))
+            end
 
             if not Autoelixir then
                 task.spawn(startElixirLoop)
@@ -1603,11 +1573,23 @@ local function smartMonitor()
             hasExecutedTrade = false
             herbprint = false
             lowcontrol = false
-            print(playerName .. ' --- 系统重置! (剩余' .. currentHerbs .. '草药)')
+            local message = playerName .. ' --- 系统重置! (剩余' .. currentHerbs .. '草药)'
+            print(message)
+            
+            -- 通过 Nexus 发送重置事件
+            if NexusLoaded and Nexus and Nexus.IsConnected then
+                Nexus:Log(string.format('[TRADE_RESET] %s | 剩余草药: %d', playerName, currentHerbs))
+            end
         end
         
         if herbprint and hasExecutedTrade then
-            print(playerName .. ' --- ' .. currentHerbs .. '草药')
+            local message = playerName .. ' --- ' .. currentHerbs .. '草药'
+            print(message)
+            
+            -- 通过 Nexus 发送状态更新（降低频率）
+            if NexusLoaded and Nexus and Nexus.IsConnected and math.random(1, 10) == 1 then
+                Nexus:Log(string.format('[TRADE_STATUS] %s | 草药: %d', playerName, currentHerbs))
+            end
         end
 
         task.wait(5)
