@@ -91,9 +91,9 @@ else
         end)
     end
     
-    spawn(function()
+    task.spawn(function()
         while running do
-            wait(5) -- 每5秒刷新一次翅膀数据
+            task.wait(5) -- 每5秒刷新一次翅膀数据
             -- 触发切换装备组事件来刷新数据
             if switchArmorSetEvent then
                 pcall(function()
@@ -244,7 +244,15 @@ end)
 
 -- 系统控制变量
 local running = true
-local tradeMode = 'both' -- "elixir", "armor", "egg", "both"
+local tradeMode = 'both' -- "elixir", "armor", "egg", "tree", "rune", "both"
+local isProcessingTrade = false  -- 防止重复处理交易
+local lastTradeTime = 0  -- 上次交易时间
+local tradeStats = {  -- 交易统计
+    success = 0,
+    failed = 0,
+    total = 0,
+    itemsTraded = 0
+}
 
 -- 创建监控界面
 local screenGui = Instance.new('ScreenGui')
@@ -382,106 +390,159 @@ local modeColors = {
     elixir = Color3.fromRGB(0, 0, 255),
     armor = Color3.fromRGB(255, 255, 0),
     egg = Color3.fromRGB(255, 0, 255),
+    tree = Color3.fromRGB(0, 255, 255),
+    rune = Color3.fromRGB(255, 128, 0),
 }
 
 local modeNames = {
-    both = '丹药+翅膀+蛋',
+    both = '丹药+翅膀+蛋+树+符文',
     elixir = '仅丹药',
     armor = '仅翅膀',
     egg = '仅蛋',
+    tree = '仅树挂饰',
+    rune = '仅符文',
 }
 
 modeButton.MouseButton1Click:Connect(function()
-    local modes = { 'both', 'elixir', 'armor', 'egg' }
+    local modes = { 'both', 'elixir', 'armor', 'egg', 'tree', 'rune' }
     local currentIndex = table.find(modes, tradeMode) or 1
     tradeMode = modes[(currentIndex % #modes) + 1]
 
     modeButton.BorderColor3 = modeColors[tradeMode]
-    infoLabel.Text = '自动交易运行中...\n模式: '
-        .. modeNames[tradeMode]
-        .. '\n蛋数量: '
-        .. #eggData['背包']
+    updateInfoLabel()
 end)
+
+-- 更新信息标签
+local function updateInfoLabel()
+    local eggCount = eggData['背包'] and #eggData['背包'] or 0
+    local elixirCount = elixirData['背包'] and (function()
+        local count = 0
+        for _ in pairs(elixirData['背包']) do count = count + 1 end
+        return count
+    end)() or 0
+    
+    infoLabel.Text = string.format(
+        '自动交易运行中...\n模式: %s\n蛋: %d | 丹药: %d\n成功: %d | 失败: %d',
+        modeNames[tradeMode],
+        eggCount,
+        elixirCount,
+        tradeStats.success,
+        tradeStats.failed
+    )
+end
 
 -- 关闭功能
 closeButton.MouseButton1Click:Connect(function()
     running = false
+    isProcessingTrade = false
+    print('自动交易系统已关闭')
+    print(string.format('最终统计 - 成功: %d, 失败: %d, 总计: %d', 
+        tradeStats.success, tradeStats.failed, tradeStats.total))
     screenGui:Destroy()
 end)
 
 
 -- 丹药交易函数
 local function tradeElixir(index)
+    if not index then
+        warn('丹药交易失败: 索引为空')
+        return false
+    end
+    
     local success, err = pcall(function()
         addTradeItemEvent:FireServer('\228\184\185\232\141\175', index, 999999)
     end)
 
     if success then
-        print('成功交易丹药:', index)
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
     else
         warn('丹药交易失败:', index, '错误:', err)
+        return false
     end
 end
 
 -- 翅膀交易函数
 local function tradeArmor(index)
+    if not index then
+        warn('翅膀交易失败: 索引为空')
+        return false
+    end
+    
     local success, err = pcall(function()
         addTradeItemEvent:FireServer('\232\163\133\229\164\135', index, 999999)
     end)
 
     if success then
-        print('成功交易翅膀:', index)
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
     else
         warn('翅膀交易失败:', index, '错误:', err)
+        return false
     end
 end
 
 -- 蛋交易函数（使用 unpack 方式）
 local function tradeEgg(index)
+    if not index then
+        warn('蛋交易失败: 索引为空')
+        return false
+    end
+    
     local success, err = pcall(function()
         addTradeItemEvent:FireServer('\229\174\160\231\137\169\232\155\139', index)
     end)
-
-
     
     if success then
-        print('成功交易蛋:', index)
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
     else
         warn("蛋交易失败，错误:", err)
+        return false
     end
 end
 -- 树挂饰交易函数
 local function tradetree(index)
+    if not index then
+        warn('树挂饰交易失败: 索引为空')
+        return false
+    end
+    
     local success, err = pcall(function()
         addTradeItemEvent:FireServer('\233\133\141\233\165\176', index)
     end)
-
-
     
     if success then
-        print('成功交易tree:', index)
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
     else
-        warn("tree交易失败，错误:", err)
+        warn("树挂饰交易失败，错误:", err)
+        return false
     end
 end
 -- 符文挂饰交易函数
 local function traderune(index)
+    if not index then
+        warn('符文交易失败: 索引为空')
+        return false
+    end
+    
     local success, err = pcall(function()
         addTradeItemEvent:FireServer('\231\172\166\231\159\179', index)
     end)
-
-
     
     if success then
-        print('成功交易rune:', index)
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
     else
-        warn("rune交易失败，错误:", err)
+        warn("符文交易失败，错误:", err)
+        return false
     end
 end
 -- 等待交易界面可见
-local function waitForTradeUI()
+local function waitForTradeUI(maxWaitTime)
+    maxWaitTime = maxWaitTime or 10
     local startTime = tick()
-    local maxWaitTime = 10
 
     while tick() - startTime < maxWaitTime and running do
         local success, tradeUI = pcall(function()
@@ -491,7 +552,7 @@ local function waitForTradeUI()
         if success and tradeUI and tradeUI.Visible then
             return true
         end
-        wait(0.1)
+        task.wait(0.1)
     end
     return false
 end
@@ -500,23 +561,38 @@ end
 coroutine.wrap(function()
     while running do
         if TimeIndicator.Visible then
-            -- 获取交易邀请信息
-            local tradeInviteText = ''
-            pcall(function()
-                tradeInviteText =
-                    PlayerGui.GUI['\229\159\186\231\161\128']['\229\128\146\232\174\161\230\151\182\230\161\134']['\232\131\140\230\153\175']['\229\134\133\229\174\185'].Text
-            end)
+            -- 防止重复处理
+            if not isProcessingTrade then
+                -- 检查交易冷却时间（避免过快处理）
+                local currentTime = tick()
+                if currentTime - lastTradeTime >= 2 then
+                    -- 获取交易邀请信息
+                    local tradeInviteText = ''
+                    pcall(function()
+                        tradeInviteText =
+                            PlayerGui.GUI['\229\159\186\231\161\128']['\229\128\146\232\174\161\230\151\182\230\161\134']['\232\131\140\230\153\175']['\229\134\133\229\174\185'].Text
+                    end)
 
-            local invitingPlayer =
-                tradeInviteText:match('(.+) has invited you to trade')
+                    local invitingPlayer =
+                        tradeInviteText:match('(.+) has invited you to trade')
 
-            if invitingPlayer then
-                -- 触发交易请求
-                pcall(function()
-                    requestTradeEvent:FireServer()
-                end)
+                    if invitingPlayer then
+                        isProcessingTrade = true
+                        lastTradeTime = currentTime
+                        tradeStats.total = tradeStats.total + 1
+                        print('收到交易邀请来自:', invitingPlayer)
+                        -- 触发交易请求
+                        local requestSuccess = pcall(function()
+                            requestTradeEvent:FireServer()
+                        end)
+                        
+                        if not requestSuccess then
+                            warn('交易请求失败')
+                            isProcessingTrade = false
+                            task.wait(1)
+                        else
 
-                wait(1.1)
+                task.wait(1.1)
 
                 -- 设置交易价格
                 local core = 0
@@ -533,21 +609,29 @@ coroutine.wrap(function()
                 -- 根据模式执行交易
                 if tradeMode == 'elixir' or tradeMode == 'both' then
                     if elixirData and elixirData['背包'] then
+                        local elixirCount = 0
                         for slot, item in pairs(elixirData['背包']) do
                             if type(item) == 'table' then
                                 local itemIndex = item['索引']
                                     or item.Index
                                     or item.id
                                 if itemIndex then
-                                    tradeElixir(itemIndex)
+                                    if tradeElixir(itemIndex) then
+                                        elixirCount = elixirCount + 1
+                                    end
+                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
+                        end
+                        if elixirCount > 0 then
+                            print('已添加', elixirCount, '个丹药到交易')
                         end
                     end
                 end
 
                 if tradeMode == "egg" or tradeMode == "both" then
-                    if eggData and eggData['背包'] then
+                    if eggData and eggData['背包'] and #eggData['背包'] > 0 then
+                        local eggCount = 0
                         print("开始交易蛋，背包数量:", #eggData['背包'])
                         for _, egg in ipairs(eggData['背包']) do
                             if type(egg) == "table" then
@@ -555,10 +639,15 @@ coroutine.wrap(function()
                                     or egg.Index
                                     or egg.id
                                 if eggIndex then
-                                    print(eggIndex)
-                                    tradeEgg(eggIndex)
+                                    if tradeEgg(eggIndex) then
+                                        eggCount = eggCount + 1
+                                    end
+                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
+                        end
+                        if eggCount > 0 then
+                            print('已添加', eggCount, '个蛋到交易')
                         end
                     else
                         print("没有蛋数据或背包为空")
@@ -567,29 +656,43 @@ coroutine.wrap(function()
 
                 if tradeMode == 'tree' or tradeMode == 'both' then
                     if treeData and treeData['背包'] then
+                        local treeCount = 0
                         for slot, tree in pairs(treeData['背包']) do
                             if type(tree) == 'table' then
                                 local treeIndex = tree['索引']
                                     or tree.Index
                                     or tree.id
                                 if treeIndex then
-                                    tradetree(treeIndex)
+                                    if tradetree(treeIndex) then
+                                        treeCount = treeCount + 1
+                                    end
+                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
+                        end
+                        if treeCount > 0 then
+                            print('已添加', treeCount, '个树挂饰到交易')
                         end
                     end
                 end
                 if tradeMode == 'rune' or tradeMode == 'both' then
                     if runeData and runeData['背包'] then
+                        local runeCount = 0
                         for slot, rune in pairs(runeData['背包']) do
                             if type(rune) == 'table' then
                                 local runeIndex = rune['索引']
                                     or rune.Index
                                     or rune.id
                                 if runeIndex then
-                                    traderune(runeIndex)
+                                    if traderune(runeIndex) then
+                                        runeCount = runeCount + 1
+                                    end
+                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
+                        end
+                        if runeCount > 0 then
+                            print('已添加', runeCount, '个符文到交易')
                         end
                     end
                 end
@@ -600,7 +703,7 @@ coroutine.wrap(function()
                         pcall(function()
                             switchArmorSetEvent:FireServer(1)
                         end)
-                        wait(0.5) -- 等待服务器下发数据
+                        task.wait(0.5) -- 等待服务器下发数据
                     elseif not armorSyncEvent then
                         armorData = findArmorBackpackData()
                     end
@@ -646,29 +749,58 @@ coroutine.wrap(function()
                         print('警告: 没有翅膀数据可交易')
                     end
                 end
+                
                 -- 确认交易
-                if waitForTradeUI() then
-                    wait(1)
-                    pcall(function()
+                if waitForTradeUI(15) then
+                    task.wait(1)
+                    local confirmSuccess = pcall(function()
                         confirmTradeEvent:FireServer(true)
-                        print('交易已确认')
                     end)
+                    
+                    if confirmSuccess then
+                        tradeStats.success = tradeStats.success + 1
+                        print('交易已确认，成功交易', tradeStats.itemsTraded, '个物品')
+                        updateInfoLabel()
+                    else
+                        tradeStats.failed = tradeStats.failed + 1
+                        warn('交易确认失败')
+                    end
+                else
+                    tradeStats.failed = tradeStats.failed + 1
+                    warn('交易界面超时，交易失败')
                 end
-
-                wait(1)
+                
+                -- 重置物品计数
+                tradeStats.itemsTraded = 0
+                isProcessingTrade = false
+                task.wait(1)
+                        end
+                    end
+                end
             else
-                wait(0.5)
+                task.wait(0.5)
             end
         else
-            wait(0.1)
+            task.wait(0.1)
         end
     end
 end)()
 
 
-infoLabel.Text = '自动交易已启动！\n模式: 2.0丹药+tree+蛋\n蛋数量: '
-    .. #eggData['背包']
-print('自动交易系统已启动 - 蛋数量:', #eggData['背包'])
+-- 初始化信息显示
+updateInfoLabel()
+
+-- 定期更新信息显示
+task.spawn(function()
+    while running do
+        task.wait(2)
+        if running then
+            updateInfoLabel()
+        end
+    end
+end)
+
+print('自动交易系统已启动 - 蛋数量:', eggData['背包'] and #eggData['背包'] or 0)
 
 -- 触发丹药数据同步
 local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
@@ -679,7 +811,7 @@ elixirEvent:FireServer()
 
 -- 触发翅膀数据同步（如果存在切换装备组事件）
 if switchArmorSetEvent then
-    wait(0.5) -- 等待一下再触发
+    task.wait(0.5) -- 等待一下再触发
     pcall(function()
         switchArmorSetEvent:FireServer(1)
         print('已触发切换装备组事件，请求翅膀数据')

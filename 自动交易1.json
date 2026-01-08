@@ -21,7 +21,9 @@ local SETTINGS = {
     ConfirmDelay = 2,      -- 确认延迟（秒）
     MaxRetries = 3,        -- 最大重试次数
     ResetInterval = 300,   -- 重置失败列表的间隔（秒，5分钟）
-    RetryDelay = 60        -- 失败后重试延迟（秒，1分钟）
+    RetryDelay = 60,       -- 失败后重试延迟（秒，1分钟）
+    TradeTimeout = 15,     -- 交易超时时间（秒）
+    IdleWaitTime = 30      -- 无目标时的等待时间（秒）
 }
 
 -- 状态控制
@@ -31,6 +33,12 @@ local failedPlayers = {}  -- 交易失败的玩家（带时间戳，用于重试
 local currentPlayerIndex = 1  -- 当前玩家索引（用于顺序遍历）
 local currentCoroutine = nil
 local lastResetTime = tick()  -- 上次重置时间
+local isProcessingTrade = false  -- 是否正在处理交易（防止重复请求）
+local tradeStats = {  -- 交易统计
+    success = 0,
+    failed = 0,
+    total = 0
+}
 
 -- 调试日志
 local function debugLog(message)
@@ -51,10 +59,37 @@ local function printPlayerList()
     debugLog("========================")
 end
 
+-- 清理已离开的玩家
+local function cleanupLeftPlayers()
+    local currentPlayers = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        currentPlayers[p.UserId] = true
+    end
+    
+    -- 从已交易列表中移除已离开的玩家
+    local newTradedPlayers = {}
+    for _, userId in ipairs(tradedPlayers) do
+        if currentPlayers[userId] then
+            table.insert(newTradedPlayers, userId)
+        end
+    end
+    tradedPlayers = newTradedPlayers
+    
+    -- 从失败列表中移除已离开的玩家
+    for userId, _ in pairs(failedPlayers) do
+        if not currentPlayers[userId] then
+            failedPlayers[userId] = nil
+        end
+    end
+end
+
 -- 获取有效玩家（排除自己和已成功交易的玩家）
 local function getValidPlayers()
     local valid = {}
     local currentTime = tick()
+    
+    -- 清理已离开的玩家
+    cleanupLeftPlayers()
     
     -- 清理过期的失败记录（超过重试延迟的可以重新尝试）
     for userId, failTime in pairs(failedPlayers) do
@@ -79,9 +114,30 @@ end
 
 -- 安全交易流程
 local function safeTrade(target)
+    -- 防止重复请求
+    if isProcessingTrade then
+        debugLog("正在处理其他交易，跳过")
+        return false
+    end
+    
+    -- 检查玩家是否还在线
+    if not target.Parent then
+        debugLog("目标玩家已离开: "..target.Name)
+        return false
+    end
+    
+    isProcessingTrade = true
+    tradeStats.total = tradeStats.total + 1
     debugLog("开始与 "..target.Name.." 交易")
     
+    local success = false
     for retry = 1, SETTINGS.MaxRetries do
+        -- 再次检查玩家是否在线
+        if not target.Parent then
+            debugLog("交易过程中玩家离开: "..target.Name)
+            break
+        end
+        
         -- 发送请求
         local success1, err1 = pcall(function()
             TradeRequest:FireServer(target)
@@ -98,12 +154,16 @@ local function safeTrade(target)
         -- 等待交易界面并确认交易
         local success2, err2 = pcall(function()
             -- 等待交易界面可见
-            local maxWaitTime = 5  -- 最大等待时间(秒)
+            local maxWaitTime = SETTINGS.TradeTimeout
             local startTime = tick()
             local tradeUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]
             
             while not tradeUI.Visible and (tick() - startTime) < maxWaitTime do
                 task.wait(0.1)
+                -- 检查是否还在交易状态
+                if not isTrading then
+                    error("交易已停止")
+                end
             end
             
             if not tradeUI.Visible then
@@ -120,21 +180,29 @@ local function safeTrade(target)
             table.insert(tradedPlayers, target.UserId)
             -- 如果之前在失败列表中，移除它
             failedPlayers[target.UserId] = nil
+            tradeStats.success = tradeStats.success + 1
+            success = true
             return true
         end)
 
         if success2 then 
-            return true 
+            break
         end
         
         debugLog("确认失败: "..err2)
         task.wait(1)
     end
     
-    -- 所有重试都失败，记录失败时间
-    failedPlayers[target.UserId] = tick()
-    debugLog("与 "..target.Name.." 交易失败，将在 "..SETTINGS.RetryDelay.." 秒后重试")
-    return false
+    isProcessingTrade = false
+    
+    if not success then
+        -- 所有重试都失败，记录失败时间
+        failedPlayers[target.UserId] = tick()
+        tradeStats.failed = tradeStats.failed + 1
+        debugLog("与 "..target.Name.." 交易失败，将在 "..SETTINGS.RetryDelay.." 秒后重试")
+    end
+    
+    return success
 end
 
 -- 主交易循环
@@ -172,21 +240,40 @@ local function tradeLoop()
             -- 移动到下一个玩家
             currentPlayerIndex = currentPlayerIndex + 1
             
-            -- 如果已经遍历完所有玩家，重置索引并等待更长时间
+            -- 如果已经遍历完所有玩家，重置索引
             if currentPlayerIndex > #candidates then
                 currentPlayerIndex = 1
                 debugLog("已完成一轮遍历，等待新玩家或重试失败玩家")
             end
+            
+            -- 正常等待间隔
+            for i = 1, SETTINGS.RequestInterval do
+                if not isTrading then break end
+                task.wait(1)
+            end
         else
-            debugLog("没有可交易目标（已交易: "..#tradedPlayers..", 失败: "..#failedPlayers.."）")
-            -- 如果没有可交易目标，重置索引并等待
+            local failedCount = 0
+            for _ in pairs(failedPlayers) do
+                failedCount = failedCount + 1
+            end
+            debugLog("没有可交易目标（已交易: "..#tradedPlayers..", 失败: "..failedCount..", 成功: "..tradeStats.success..", 失败: "..tradeStats.failed.."）")
+            -- 如果没有可交易目标，重置索引并等待更长时间
             currentPlayerIndex = 1
-        end
-
-        -- 可中断等待
-        for i = 1, SETTINGS.RequestInterval do
-            if not isTrading then break end
-            task.wait(1)
+            
+            -- 如果所有玩家都交易过了，等待更长时间
+            if #tradedPlayers > 0 and #getValidPlayers() == 0 then
+                debugLog("所有玩家已处理，等待 "..SETTINGS.IdleWaitTime.." 秒...")
+                for i = 1, SETTINGS.IdleWaitTime do
+                    if not isTrading then break end
+                    task.wait(1)
+                end
+            else
+                -- 可中断等待
+                for i = 1, SETTINGS.RequestInterval do
+                    if not isTrading then break end
+                    task.wait(1)
+                end
+            end
         end
     end
     debugLog("交易循环终止")
@@ -201,8 +288,8 @@ local function createControlPanel()
 
     -- 主框架（增加高度以适应内容）
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 240, 0, 140)  -- 高度增加到140
-    frame.Position = UDim2.new(1, -250, 1, -150) -- 右下角位置
+    frame.Size = UDim2.new(0, 240, 0, 180)  -- 高度增加到180以显示统计信息
+    frame.Position = UDim2.new(1, -250, 1, -190) -- 右下角位置
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BorderSizePixel = 0
     frame.Parent = screenGui
@@ -236,7 +323,7 @@ local function createControlPanel()
 
     -- 控制按钮
     local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0.9, 0, 0.35, 0)
+    toggleBtn.Size = UDim2.new(0.9, 0, 0.3, 0)
     toggleBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
     toggleBtn.Text = "▶ 启动自动交易"
     toggleBtn.TextColor3 = Color3.new(1,1,1)
@@ -245,21 +332,33 @@ local function createControlPanel()
 
     -- 状态显示
     local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(0.9, 0, 0.25, 0)
-    statusLabel.Position = UDim2.new(0.05, 0, 0.65, 0)
+    statusLabel.Size = UDim2.new(0.9, 0, 0.2, 0)
+    statusLabel.Position = UDim2.new(0.05, 0, 0.45, 0)
     statusLabel.Text = "状态：未启动"
     statusLabel.TextColor3 = Color3.new(0.9,0.9,0.9)
     statusLabel.BackgroundTransparency = 1
+    statusLabel.TextSize = 12
     statusLabel.Parent = frame
 
     -- 玩家计数
     local countLabel = Instance.new("TextLabel")
-    countLabel.Size = UDim2.new(0.9, 0, 0.2, 0)
-    countLabel.Position = UDim2.new(0.05, 0, 0.85, 0)
+    countLabel.Size = UDim2.new(0.9, 0, 0.15, 0)
+    countLabel.Position = UDim2.new(0.05, 0, 0.65, 0)
     countLabel.Text = "可交易玩家：0"
     countLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
     countLabel.BackgroundTransparency = 1
+    countLabel.TextSize = 12
     countLabel.Parent = frame
+    
+    -- 统计信息
+    local statsLabel = Instance.new("TextLabel")
+    statsLabel.Size = UDim2.new(0.9, 0, 0.25, 0)
+    statsLabel.Position = UDim2.new(0.05, 0, 0.8, 0)
+    statsLabel.Text = "成功: 0 | 失败: 0"
+    statsLabel.TextColor3 = Color3.new(0.6,0.8,0.6)
+    statsLabel.BackgroundTransparency = 1
+    statsLabel.TextSize = 11
+    statsLabel.Parent = frame
 
     -- 拖动功能
     local dragging = false
@@ -315,7 +414,9 @@ local function createControlPanel()
             failedPlayers = {}
             currentPlayerIndex = 1
             lastResetTime = tick()
-            debugLog("手动启动交易（已重置所有列表）")
+            isProcessingTrade = false
+            tradeStats = { success = 0, failed = 0, total = 0 }
+            debugLog("手动启动交易（已重置所有列表和统计）")
             currentCoroutine = coroutine.create(tradeLoop)
             coroutine.resume(currentCoroutine)
         else
@@ -326,9 +427,13 @@ local function createControlPanel()
         end
     end)
 
-    -- 实时更新玩家计数
+    -- 实时更新玩家计数和统计
     game:GetService("RunService").Heartbeat:Connect(function()
         countLabel.Text = "可交易玩家："..#getValidPlayers()
+        statsLabel.Text = string.format("成功: %d | 失败: %d | 总计: %d", 
+            tradeStats.success, 
+            tradeStats.failed, 
+            tradeStats.total)
     end)
 end
 
