@@ -263,10 +263,19 @@ local function tradeLoop()
             local target = candidates[currentPlayerIndex]
             debugLog("选中目标: "..target.Name.." ("..currentPlayerIndex.."/"..#candidates..")")
             
-            if safeTrade(target) then
-                debugLog("与 "..target.Name.." 交易成功")
+            local tradeSuccess = safeTrade(target)
+            
+            if tradeSuccess then
+                debugLog("与 "..target.Name.." 交易成功，立刻处理下一个")
+                -- 成功后只等待很短时间让界面清理，然后立刻处理下一个
+                task.wait(1)
             else
-                debugLog("与 "..target.Name.." 交易失败")
+                debugLog("与 "..target.Name.." 交易失败，等待 "..SETTINGS.RequestInterval.." 秒后重试")
+                -- 失败后等待正常间隔时间
+                for i = 1, SETTINGS.RequestInterval do
+                    if not isTrading then break end
+                    task.wait(1)
+                end
             end
             
             -- 移动到下一个玩家
@@ -275,13 +284,8 @@ local function tradeLoop()
             -- 如果已经遍历完所有玩家，重置索引
             if currentPlayerIndex > #candidates then
                 currentPlayerIndex = 1
-                debugLog("已完成一轮遍历，等待新玩家或重试失败玩家")
-            end
-            
-            -- 正常等待间隔
-            for i = 1, SETTINGS.RequestInterval do
-                if not isTrading then break end
-                task.wait(1)
+                debugLog("已完成一轮遍历，立即开始下一轮")
+                -- 不额外等待，因为成功/失败的等待已经在上面处理了
             end
         else
             local failedCount = 0
