@@ -19,17 +19,23 @@ local ConfirmTrade = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182"
 local SETTINGS = {
     RequestInterval = 8,   -- 请求间隔（秒）
     ConfirmDelay = 2,      -- 确认延迟（秒）
-    MaxRetries = 3         -- 最大重试次数
+    MaxRetries = 3,        -- 最大重试次数
+    ResetInterval = 300,   -- 重置失败列表的间隔（秒，5分钟）
+    RetryDelay = 60        -- 失败后重试延迟（秒，1分钟）
 }
 
 -- 状态控制
 local isTrading = false
-local tradedPlayers = {}
+local tradedPlayers = {}  -- 已成功交易的玩家
+local failedPlayers = {}  -- 交易失败的玩家（带时间戳，用于重试）
+local currentPlayerIndex = 1  -- 当前玩家索引（用于顺序遍历）
 local currentCoroutine = nil
+local lastResetTime = tick()  -- 上次重置时间
 
 -- 调试日志
 local function debugLog(message)
-    print("[DEBUG]["..os.date("%H:%M:%S").."] "..message)
+    local timeStr = os.date("%H:%M:%S")
+    print("[DEBUG]["..timeStr.."] "..message)
 end
 
 -- 打印玩家列表
@@ -45,12 +51,27 @@ local function printPlayerList()
     debugLog("========================")
 end
 
--- 获取有效玩家
+-- 获取有效玩家（排除自己和已成功交易的玩家）
 local function getValidPlayers()
     local valid = {}
+    local currentTime = tick()
+    
+    -- 清理过期的失败记录（超过重试延迟的可以重新尝试）
+    for userId, failTime in pairs(failedPlayers) do
+        if currentTime - failTime > SETTINGS.RetryDelay then
+            failedPlayers[userId] = nil
+        end
+    end
+    
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and not table.find(tradedPlayers, p.UserId) then
-            table.insert(valid, p)
+        if p ~= player then
+            local isTraded = table.find(tradedPlayers, p.UserId)
+            local isFailed = failedPlayers[p.UserId]
+            
+            -- 如果未交易且（未失败或失败时间已过），则加入候选列表
+            if not isTraded and (not isFailed or (currentTime - isFailed > SETTINGS.RetryDelay)) then
+                table.insert(valid, p)
+            end
         end
     end
     return valid
@@ -64,7 +85,7 @@ local function safeTrade(target)
         -- 发送请求
         local success1, err1 = pcall(function()
             TradeRequest:FireServer(target)
-            debugLog("请求发送成功")
+            debugLog("请求发送成功 (重试 "..retry.."/"..SETTINGS.MaxRetries..")")
             return true
         end)
         
@@ -74,32 +95,45 @@ local function safeTrade(target)
             continue
         end
 
-        -- 确认交易
--- 确认交易
-local success2, err2 = pcall(function()
-    -- 等待交易界面可见
-    local maxWaitTime = 5  -- 最大等待时间(秒)
-    local startTime = os.time()
-    local tradeUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]
-    
-    while not tradeUI.Visible and (os.time() - startTime) < maxWaitTime do
-        task.wait(0.1)
-    end
-    
-    if not tradeUI.Visible then
-        error("交易界面未在"..maxWaitTime.."秒内显示")
-    end
-    
-    ConfirmTrade:FireServer(true)
-    debugLog("确认发送成功")
-    table.insert(tradedPlayers, target.UserId)
-    return true
-end)
+        -- 等待交易界面并确认交易
+        local success2, err2 = pcall(function()
+            -- 等待交易界面可见
+            local maxWaitTime = 5  -- 最大等待时间(秒)
+            local startTime = tick()
+            local tradeUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]
+            
+            while not tradeUI.Visible and (tick() - startTime) < maxWaitTime do
+                task.wait(0.1)
+            end
+            
+            if not tradeUI.Visible then
+                error("交易界面未在"..maxWaitTime.."秒内显示")
+            end
+            
+            -- 等待一小段时间确保界面完全加载
+            task.wait(0.5)
+            
+            ConfirmTrade:FireServer(true)
+            debugLog("确认发送成功")
+            
+            -- 只有确认发送成功后才标记为已交易
+            table.insert(tradedPlayers, target.UserId)
+            -- 如果之前在失败列表中，移除它
+            failedPlayers[target.UserId] = nil
+            return true
+        end)
 
-        if success2 then return true end
+        if success2 then 
+            return true 
+        end
+        
         debugLog("确认失败: "..err2)
         task.wait(1)
     end
+    
+    -- 所有重试都失败，记录失败时间
+    failedPlayers[target.UserId] = tick()
+    debugLog("与 "..target.Name.." 交易失败，将在 "..SETTINGS.RetryDelay.." 秒后重试")
     return false
 end
 
@@ -108,20 +142,45 @@ local function tradeLoop()
     debugLog("交易循环启动")
     
     while isTrading do
+        -- 定期重置失败列表（避免永久标记失败玩家）
+        local currentTime = tick()
+        if currentTime - lastResetTime > SETTINGS.ResetInterval then
+            debugLog("重置失败玩家列表（已过 "..SETTINGS.ResetInterval.." 秒）")
+            failedPlayers = {}
+            lastResetTime = currentTime
+        end
+        
         printPlayerList()
         local candidates = getValidPlayers()
         
         if #candidates > 0 then
-            local target = candidates[math.random(#candidates)]
-            debugLog("选中目标: "..target.Name)
+            -- 使用顺序遍历而不是随机选择，确保每个玩家都被尝试
+            -- 如果索引超出范围，重置为1
+            if currentPlayerIndex > #candidates then
+                currentPlayerIndex = 1
+            end
+            
+            local target = candidates[currentPlayerIndex]
+            debugLog("选中目标: "..target.Name.." ("..currentPlayerIndex.."/"..#candidates..")")
             
             if safeTrade(target) then
                 debugLog("与 "..target.Name.." 交易成功")
             else
                 debugLog("与 "..target.Name.." 交易失败")
             end
+            
+            -- 移动到下一个玩家
+            currentPlayerIndex = currentPlayerIndex + 1
+            
+            -- 如果已经遍历完所有玩家，重置索引并等待更长时间
+            if currentPlayerIndex > #candidates then
+                currentPlayerIndex = 1
+                debugLog("已完成一轮遍历，等待新玩家或重试失败玩家")
+            end
         else
-            debugLog("没有可交易目标")
+            debugLog("没有可交易目标（已交易: "..#tradedPlayers..", 失败: "..#failedPlayers.."）")
+            -- 如果没有可交易目标，重置索引并等待
+            currentPlayerIndex = 1
         end
 
         -- 可中断等待
@@ -253,7 +312,10 @@ local function createControlPanel()
         
         if isTrading then
             tradedPlayers = {}
-            debugLog("手动启动交易")
+            failedPlayers = {}
+            currentPlayerIndex = 1
+            lastResetTime = tick()
+            debugLog("手动启动交易（已重置所有列表）")
             currentCoroutine = coroutine.create(tradeLoop)
             coroutine.resume(currentCoroutine)
         else

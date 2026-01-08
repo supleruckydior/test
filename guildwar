@@ -13,6 +13,98 @@ local PathfindingService = game:GetService("PathfindingService")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- 等待游戏加载界面完成（从简易脚本移植）
+local function waitForGameLoadComplete(maxWaitTime)
+    maxWaitTime = maxWaitTime or 120  -- 默认最多等待120秒
+    
+    print('[初始化] 等待游戏加载动画完成...')
+    
+    -- 第一步：等待加载动画路径出现（因为注入可能比动画加载还早）
+    local pathWaitTimeout = 30  -- 等待路径出现的超时时间（30秒）
+    local pathWaitStartTime = tick()  -- 统一使用tick()而不是os.clock()
+    local loadingAnimation = nil
+    
+    print('[初始化] 等待加载动画路径出现...')
+    
+    -- 循环检查完整路径，不使用 WaitForChild
+    while tick() - pathWaitStartTime < pathWaitTimeout do
+        local success, result = pcall(function()
+            -- 直接使用完整路径访问
+            return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
+        end)
+        
+        if success and result and result.Parent then
+            loadingAnimation = result
+            -- 检查是否可见，如果可见就跳出循环
+            if loadingAnimation.Visible then
+                print('[初始化] 检测到加载动画（可见），等待动画完成...')
+                break
+            end
+            -- 如果路径存在但不可见，继续等待直到它变为可见
+        end
+        
+        task.wait(0.3)
+    end
+    
+    -- 如果等待路径超时，可能是已经加载完成（路径被销毁了），直接继续
+    if not loadingAnimation then
+        print('[初始化] 等待路径超时，可能已加载完成，继续执行...')
+        return true
+    end
+    
+    -- 第二步：如果路径存在但不可见，等待它变为可见（动画开始显示）
+    if loadingAnimation and not loadingAnimation.Visible then
+        print('[初始化] 路径存在但不可见，等待动画开始显示...')
+        local visibleWaitStartTime = tick()  -- 统一使用tick()而不是os.clock()
+        local visibleWaitTimeout = 30  -- 等待可见的超时时间（30秒）
+        
+        while tick() - visibleWaitStartTime < visibleWaitTimeout do
+            local checkSuccess, checkResult = pcall(function()
+                return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
+            end)
+            
+            if checkSuccess and checkResult and checkResult.Parent and checkResult.Visible then
+                print('[初始化] 加载动画已显示，等待动画完成...')
+                loadingAnimation = checkResult
+                break
+            end
+            
+            task.wait(0.3)
+        end
+        
+        -- 如果等待可见超时，可能已经加载完成，直接继续
+        if not loadingAnimation.Visible then
+            print('[初始化] 等待可见超时，可能已加载完成，继续执行...')
+            return true
+        end
+    end
+    
+    -- 第三步：等待加载动画消失（表示加载完成）
+    if loadingAnimation and loadingAnimation.Visible then
+        local startTime = tick()  -- 统一使用tick()而不是os.clock()
+        print('[初始化] 等待加载动画消失...')
+        
+        while tick() - startTime < maxWaitTime do
+            -- 使用完整路径检查加载动画是否还存在且可见
+            local checkSuccess, checkResult = pcall(function()
+                return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
+            end)
+            
+            -- 如果加载动画不存在或不可见，说明加载完成
+            if not checkSuccess or not checkResult or not checkResult.Parent or not checkResult.Visible then
+                print('[初始化] 游戏加载完成！')
+                return true
+            end
+            
+            task.wait(0.5)
+        end
+        
+        warn('[初始化] 等待游戏加载超时，继续执行...')
+    end
+    
+    return true
+end
+
 -- 检查GUI可见性（需要在MoveToTarget之前定义）
 local function CheckGUIVisibility()
     local success, result = pcall(function()
@@ -24,6 +116,13 @@ local function CheckGUIVisibility()
     end
     return result == true
 end
+
+-- 等待游戏加载界面完成
+waitForGameLoadComplete(120)
+
+-- 额外等待确保GUI完全初始化（避免菜单加载不正确）
+print('[初始化] 等待GUI完全初始化...')
+task.wait(2)
 
 -- 初始等待期间也要检查GUI（使用Heartbeat每帧检查）
 local initGuiCheckConnection
@@ -51,6 +150,13 @@ if CheckGUIVisibility() then
     print("初始化后检测到GUI可见 - 关闭游戏")
     game:Shutdown()
     return
+end
+
+-- 随机初始延迟（让30个号分散启动）- 0到8秒随机等待
+local initialDelay = math.random(0, 800) / 100  -- 0-8秒，精确到0.01秒
+if initialDelay > 0 then
+    print(string.format("[初始化] 随机初始延迟: %.2f 秒", initialDelay))
+    task.wait(initialDelay)
 end
 
 -- 等待角色加载
@@ -234,8 +340,8 @@ local function MoveToTarget(targetModel)
         return false
     end
     
-    -- 设置随机移动速度（增加随机性）
-    local baseWalkSpeed = math.random(60, 68)  -- 基础移动速度在60-68之间随机
+    -- 设置随机移动速度（增加随机性）- 扩大范围让30个号更分散
+    local baseWalkSpeed = math.random(55, 75)  -- 基础移动速度在55-75之间随机（扩大范围）
     currentHumanoid.WalkSpeed = baseWalkSpeed
     
     -- 获取目标位置（默认使用固定坐标）
@@ -245,9 +351,12 @@ local function MoveToTarget(targetModel)
     local startPos = currentHRP.Position
     local endPos = targetPosition
     
-    -- 检查距离
-    local distance = (startPos - endPos).Magnitude
-    print("起点到终点的距离:", distance)
+    -- 忽略垂直移动判断：将目标位置的Y坐标设置为起点的Y坐标，用于路径计算
+    local flatEndPos = Vector3.new(endPos.X, startPos.Y, endPos.Z)
+    
+    -- 检查距离（使用水平距离）
+    local distance = (startPos - flatEndPos).Magnitude
+    print("起点到终点的水平距离:", distance)
     
     -- 如果距离太远（>500），直接使用更大的WaypointSpacing，避免路径计算失败
     local waypointSpacing
@@ -303,7 +412,7 @@ local function MoveToTarget(targetModel)
     -- 如果所有AgentRadius都失败，使用最后一个选项的结果
     if not pathFound then
         local lastRadius = agentRadiusOptions[#agentRadiusOptions]
-        path = PathfindingService:CreatePath({
+        local lastPath = PathfindingService:CreatePath({
             AgentRadius = lastRadius,
             AgentHeight = 999,  -- 忽略高度判断
             AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
@@ -314,10 +423,18 @@ local function MoveToTarget(targetModel)
         })
         local success, errorMsg = pcall(function()
             -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-            path:ComputeAsync(startPos, flatEndPos)
+            lastPath:ComputeAsync(startPos, flatEndPos)
         end)
-        pathFound = success
-        noPathMessage = errorMsg
+        if success and lastPath.Status ~= Enum.PathStatus.NoPath then
+            local lastWaypoints = lastPath:GetWaypoints()
+            if #lastWaypoints > 0 then
+                path = lastPath
+                pathFound = true
+            end
+        end
+        if not pathFound then
+            noPathMessage = errorMsg
+        end
     end
     
     if not pathFound then
@@ -383,6 +500,12 @@ local function MoveToTarget(targetModel)
         end
     end
     
+    -- 安全检查：确保path不为nil
+    if not path then
+        print("路径计算失败：path为nil")
+        return false
+    end
+    
     local pathStatus = path.Status
     print("路径状态:", pathStatus)
     
@@ -431,26 +554,27 @@ local function MoveToTarget(targetModel)
     local lastCheckTime = tick()  -- 用于死亡检测
     local isRecalculating = false  -- 防止重复重新计算
     local moveStartTimeTable = {value = nil}  -- 用于存储移动开始时间的引用，以便死亡时重置
-    -- 随机移动速度（增加随机性）
-    local baseWalkSpeed = math.random(60, 68)  -- 基础移动速度在60-68之间随机
-    local waypointReachDistance = 6  -- 路径点到达判断距离固定为6
-    local stuckCheckInterval = math.random(1.0, 2.5)  -- 卡住检测时间随机（1-2.5秒）
-    local stuckDistanceThreshold = math.random(1.5, 3.0)  -- 卡住判断的移动距离阈值随机（1.5-3单位）
+    -- 随机移动速度（增加随机性）- 扩大范围让30个号更分散
+    local baseWalkSpeed = math.random(55, 75)  -- 基础移动速度在55-75之间随机（扩大范围）
+    local waypointReachDistance = math.random(5, 9)  -- 路径点到达判断距离随机（5-9单位）
+    local stuckCheckInterval = math.random(1.0, 4.0)  -- 卡住检测时间随机（1-4秒，扩大范围）
+    local stuckDistanceThreshold = math.random(1.0, 4.0)  -- 卡住判断的移动距离阈值随机（1-4单位，扩大范围）
     
-    -- 新增随机性：动态速度变化
+    -- 新增随机性：动态速度变化 - 增强
     local lastSpeedChangeTime = tick()  -- 上次改变速度的时间
-    local speedChangeInterval = math.random(3, 8)  -- 速度变化间隔（3-8秒随机）
+    local speedChangeInterval = math.random(2, 10)  -- 速度变化间隔（2-10秒随机，扩大范围）
+    local speedVariationRange = math.random(3, 5)  -- 速度变化幅度随机（±3到±5）
     local currentWalkSpeed = baseWalkSpeed  -- 当前使用的速度
     
-    -- 新增随机性：路径点等待
+    -- 新增随机性：路径点等待 - 增强
     local lastWaypointWaitTime = 0  -- 上次路径点等待的时间
-    local waypointWaitChance = 0.15  -- 15%的概率在到达路径点后等待
+    local waypointWaitChance = math.random(10, 25) / 100  -- 10-25%的概率在到达路径点后等待（随机化）
     local waypointWaitDuration = 0  -- 等待时长（0表示不等待）
     local waypointWaitStartTime = 0  -- 等待开始时间
     
-    -- 新增随机性：路径点位置随机偏移
-    local waypointOffsetChance = 0.3  -- 30%的概率对路径点添加偏移
-    local waypointOffsetRange = math.random(2, 5)  -- 偏移范围2-5单位
+    -- 新增随机性：路径点位置随机偏移 - 增强
+    local waypointOffsetChance = math.random(20, 40) / 100  -- 20-40%的概率对路径点添加偏移（随机化）
+    local waypointOffsetRange = math.random(3, 8)  -- 偏移范围3-8单位（扩大范围）
     
     local function moveToNextWaypoint()
         -- 确保角色仍然有效（重新获取引用以确保最新）
@@ -591,6 +715,12 @@ local function MoveToTarget(targetModel)
             end
         end
         
+        -- 安全检查：确保newPath不为nil
+        if not newPath then
+            print("重新计算路径失败：newPath为nil")
+            return nil, nil
+        end
+        
         local newPathStatus = newPath.Status
         if newPathStatus == Enum.PathStatus.NoPath then
             local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
@@ -651,6 +781,11 @@ local function MoveToTarget(targetModel)
             return
         end
         
+        -- 如果正在重新计算路径，暂时跳过移动
+        if isRecalculating then
+            return
+        end
+        
         local currentPos = currentHRP.Position
         local currentTime = tick()
         
@@ -705,9 +840,9 @@ local function MoveToTarget(targetModel)
         
         -- 检查是否到达当前路径点（使用随机判断距离以增加随机性）
         if distanceToWaypoint < waypointReachDistance then
-            -- 随机等待：有概率在路径点等待一小段时间
+            -- 随机等待：有概率在路径点等待一小段时间 - 增强
             if waypointWaitDuration == 0 and math.random() < waypointWaitChance then
-                waypointWaitDuration = math.random(0.1, 0.5)  -- 随机等待0.1-0.5秒
+                waypointWaitDuration = math.random(0.1, 1.0)  -- 随机等待0.1-1.0秒（扩大范围）
                 waypointWaitStartTime = tick()
                 print(string.format("在路径点 %d/%d 随机等待 %.2f 秒", currentWaypointIndex, #waypoints, waypointWaitDuration))
             end
@@ -752,14 +887,14 @@ local function MoveToTarget(targetModel)
         -- 获取Humanoid以确保可以持续移动
         local currentHumanoid = currentChar:FindFirstChild("Humanoid")
         if currentHumanoid then
-            -- 动态速度变化：随机改变移动速度（增加随机性）
-            local currentTime = tick()
+            -- 动态速度变化：随机改变移动速度（增加随机性）- 增强
             if currentTime - lastSpeedChangeTime > speedChangeInterval then
-                -- 速度在基础速度的±3单位范围内波动
-                local speedVariation = math.random(-3, 3)  -- ±3单位的速度变化
-                currentWalkSpeed = math.clamp(baseWalkSpeed + speedVariation, 55, 72)  -- 限制在55-72之间
+                -- 速度在基础速度的±speedVariationRange范围内波动（动态变化幅度）
+                local speedVariation = math.random(-speedVariationRange, speedVariationRange)
+                currentWalkSpeed = math.clamp(baseWalkSpeed + speedVariation, 50, 80)  -- 限制在50-80之间（扩大范围）
                 lastSpeedChangeTime = currentTime
-                speedChangeInterval = math.random(3, 8)  -- 重新随机下一次速度变化间隔
+                speedChangeInterval = math.random(2, 10)  -- 重新随机下一次速度变化间隔（2-10秒）
+                speedVariationRange = math.random(3, 5)  -- 重新随机速度变化幅度
                 print(string.format("动态调整速度: %.1f (基础: %.1f)", currentWalkSpeed, baseWalkSpeed))
             end
             
@@ -774,19 +909,80 @@ local function MoveToTarget(targetModel)
         end
         
         -- 卡住检测（使用随机检测时间以增加随机性）
-        if isMoving and tick() - stuckCheckTime > stuckCheckInterval then
+        if isMoving and tick() - stuckCheckTime > stuckCheckInterval and not isRecalculating then
             local movedDistance = (currentPos - lastPosition).Magnitude
             if movedDistance < stuckDistanceThreshold then
-                -- 卡住了，杀死玩家（跳过路径点一般不会解决卡住问题）
-                print(string.format("检测到卡住，杀死玩家（路径点 %d/%d）", currentWaypointIndex, #waypoints))
-                local currentHumanoidForKill = currentChar:FindFirstChild("Humanoid")
-                if currentHumanoidForKill then
-                    currentHumanoidForKill.Health = 0  -- 杀死玩家
+                -- 卡住了，停止移动，清空全部移动，然后回到出生点
+                print(string.format("检测到卡住（路径点 %d/%d），停止移动并回到出生点", currentWaypointIndex, #waypoints))
+                
+                -- 设置重新计算标志，防止重复触发
+                isRecalculating = true
+                
+                -- 停止移动
+                local currentHumanoidForStop = currentChar:FindFirstChild("Humanoid")
+                if currentHumanoidForStop then
+                    currentHumanoidForStop:MoveTo(currentHRP.Position)  -- 停止移动到当前位置
+                    currentHumanoidForStop.WalkSpeed = 0  -- 设置速度为0
                 end
-                moveComplete = true
-                if moveConnection then
-                    moveConnection:Disconnect()
+                
+                -- 清空全部移动状态
+                isMoving = false
+                
+                -- 执行远程事件回到出生点
+                local success, errorMsg = pcall(function()
+                    game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\229\155\158\229\159\142"]:Fire()
+                end)
+                
+                if not success then
+                    print("执行回到出生点事件失败:", errorMsg)
+                else
+                    print("已执行回到出生点事件")
                 end
+                
+                -- 在后台任务中等待1秒后重新判断路径
+                task.spawn(function()
+                    task.wait(1)  -- 等待1秒
+                    
+                    -- 重新计算路径
+                    local newPath, newWaypoints = recalculatePathForMove()
+                    if newPath and newWaypoints and #newWaypoints > 0 then
+                        -- 更新路径和路径点
+                        path = newPath
+                        waypoints = newWaypoints
+                        currentWaypointIndex = 1
+                        if #waypoints > 1 then
+                            currentWaypointIndex = 2
+                        end
+                        
+                        -- 重新启动移动
+                        moveComplete = false
+                        isMoving = false
+                        stuckCheckTime = tick()
+                        
+                        -- 重新获取当前位置作为lastPosition，并恢复移动速度
+                        local currentCharCheck = LocalPlayer.Character
+                        if currentCharCheck and currentCharCheck.Parent then
+                            local currentHRPCheck = currentCharCheck:FindFirstChild("HumanoidRootPart")
+                            local currentHumanoidCheck = currentCharCheck:FindFirstChild("Humanoid")
+                            if currentHRPCheck then
+                                lastPosition = currentHRPCheck.Position
+                            end
+                            -- 恢复移动速度（确保可以重新移动）
+                            if currentHumanoidCheck then
+                                currentHumanoidCheck.WalkSpeed = currentWalkSpeed
+                                print("已恢复移动速度:", currentWalkSpeed)
+                            end
+                        end
+                        
+                        -- 重置重新计算标志
+                        isRecalculating = false
+                        
+                        print("重新计算路径完成，共 " .. #waypoints .. " 个路径点，从路径点 " .. currentWaypointIndex .. " 开始")
+                    else
+                        print("重新计算路径失败")
+                        isRecalculating = false
+                    end
+                end)
             else
                 stuckCheckTime = tick()
                 lastPosition = currentPos
@@ -941,7 +1137,9 @@ while true do
         -- 执行路径寻找操作（替代传送）
         ExecutePathfindingOperation()
         
-        -- 10秒冷却周期（持续检查GUI，使用Heartbeat每帧检查以确保第一时间退出）
+        -- 随机冷却周期（8-15秒随机，让30个号分散）- 持续检查GUI，使用Heartbeat每帧检查以确保第一时间退出
+        local cooldownTime = math.random(8, 15)  -- 8-15秒随机冷却
+        print(string.format("[冷却] 随机冷却时间: %d 秒", cooldownTime))
         local startTime = tick()
         local guiCheckConnection
         guiCheckConnection = RunService.Heartbeat:Connect(function()
@@ -954,8 +1152,8 @@ while true do
             end
         end)
         
-        -- 等待10秒或GUI可见（GUI检查由上面的Heartbeat处理）
-        while tick() - startTime < 10 do
+        -- 等待随机冷却时间或GUI可见（GUI检查由上面的Heartbeat处理）
+        while tick() - startTime < cooldownTime do
             wait(0.1)
         end
         
