@@ -125,7 +125,7 @@ local function FindAvailableCrystal()
                 local testPath = PathfindingService:CreatePath({
                     AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
                     AgentHeight = 3,
-                    AgentCanJump = true,
+                    AgentCanJump = false,
                     WaypointSpacing = 4,
                 })
                 
@@ -182,7 +182,7 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
                     local testPath = PathfindingService:CreatePath({
                         AgentRadius = agentRadius,  -- 尝试不同的半径
                         AgentHeight = 3,
-                        AgentCanJump = true,
+                        AgentCanJump = false,
                         WaypointSpacing = 8,  -- 使用较大的间距以提高成功率
                     })
                     
@@ -270,7 +270,7 @@ local function MoveToTarget(targetModel)
         local testPath = PathfindingService:CreatePath({
             AgentRadius = radius,
             AgentHeight = 3,
-            AgentCanJump = true,
+            AgentCanJump = false,
             WaypointSpacing = waypointSpacing,
             Costs = {
                 Water = 1,
@@ -302,7 +302,7 @@ local function MoveToTarget(targetModel)
         path = PathfindingService:CreatePath({
             AgentRadius = lastRadius,
             AgentHeight = 3,
-            AgentCanJump = true,
+            AgentCanJump = false,
             WaypointSpacing = waypointSpacing,
             Costs = {
                 Water = 1,
@@ -331,7 +331,7 @@ local function MoveToTarget(targetModel)
                 local longerPath = PathfindingService:CreatePath({
                     AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙
                     AgentHeight = 3,
-                    AgentCanJump = true,
+                    AgentCanJump = false,
                     WaypointSpacing = spacing,
                     Costs = { Water = 1 }
                 })
@@ -422,13 +422,6 @@ local function MoveToTarget(targetModel)
     local lastCheckTime = tick()  -- 用于死亡检测
     local isRecalculating = false  -- 防止重复重新计算
     local moveStartTimeTable = {value = nil}  -- 用于存储移动开始时间的引用，以便死亡时重置
-    local lastJumpTime = 0  -- 用于随机跳跃计时
-    -- 计算随机跳跃间隔：i1=1-3秒，i2=2-15，i3=i1+i2，随机时间为i1到i3之间
-    local i1 = math.random(1, 3)
-    local i2 = math.random(2, 15)
-    local i3 = i1 + i2
-    local jumpInterval = math.random(i1, i3)  -- 随机跳跃间隔
-    
     -- 随机移动速度（增加随机性）
     local baseWalkSpeed = math.random(60, 68)  -- 基础移动速度在60-68之间随机
     local waypointReachDistance = 6  -- 路径点到达判断距离固定为6
@@ -488,11 +481,6 @@ local function MoveToTarget(targetModel)
         
         print(string.format("移动到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
         
-        -- 如果是跳跃点，设置跳跃
-        if waypoint.Action == Enum.PathWaypointAction.Jump then
-            currentHumanoid.Jump = true
-        end
-        
         -- 移动到目标位置
         -- 设置当前动态速度（初始化时currentWalkSpeed等于baseWalkSpeed）
         if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
@@ -533,7 +521,7 @@ local function MoveToTarget(targetModel)
         local newPath = PathfindingService:CreatePath({
             AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙
             AgentHeight = 3,
-            AgentCanJump = true,
+            AgentCanJump = false,
             WaypointSpacing = newWaypointSpacing,
             Costs = { Water = 1 }
         })
@@ -553,7 +541,7 @@ local function MoveToTarget(targetModel)
                     local longerPath = PathfindingService:CreatePath({
                         AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
                         AgentHeight = 3,
-                        AgentCanJump = true,
+                        AgentCanJump = false,
                         WaypointSpacing = spacing,
                         Costs = { Water = 1 }
                     })
@@ -763,21 +751,6 @@ local function MoveToTarget(targetModel)
             -- 使用当前动态速度
             if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
                 currentHumanoid.WalkSpeed = currentWalkSpeed
-            end
-            -- 如果是跳跃点，设置跳跃
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                currentHumanoid.Jump = true
-            end
-            
-            -- 随机跳跃：使用动态随机间隔（i1=1-3秒，i2=2-15，i3=i1+i2，随机时间为i1到i3之间）
-            if currentTime - lastJumpTime > jumpInterval then
-                currentHumanoid.Jump = true
-                lastJumpTime = currentTime
-                -- 重新计算下一次跳跃间隔
-                local i1 = math.random(1, 3)
-                local i2 = math.random(2, 15)
-                local i3 = i1 + i2
-                jumpInterval = math.random(i1, i3)
             end
             
             currentHumanoid:MoveTo(targetPos)

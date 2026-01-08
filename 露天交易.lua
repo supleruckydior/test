@@ -122,7 +122,7 @@ end
 local allPlayersData = {} -- 存储所有玩家数据
 local currentPlayerIndex = 1
 local isScanning = false
-local scanInterval = 0.2 -- 扫描间隔(秒)
+local scanInterval = 0.03--扫描间隔(秒)
 local viewEvent = ReplicatedStorage:WaitForChild("事件"):WaitForChild("公用"):WaitForChild("露天商店"):WaitForChild("查看")
 -- 已移除收藏列表功能
 local priceAlerts = {} -- 价格提醒列表
