@@ -23,7 +23,8 @@ local SETTINGS = {
     ResetInterval = 300,   -- 重置失败列表的间隔（秒，5分钟）
     RetryDelay = 60,       -- 失败后重试延迟（秒，1分钟）
     TradeTimeout = 15,     -- 交易超时时间（秒）
-    IdleWaitTime = 30      -- 无目标时的等待时间（秒）
+    IdleWaitTime = 30,     -- 无目标时的等待时间（秒）
+    TradeCompleteWait = 10 -- 等待交易完成的时间（秒，包括对方确认）
 }
 
 -- 状态控制
@@ -174,9 +175,40 @@ local function safeTrade(target)
             task.wait(0.5)
             
             ConfirmTrade:FireServer(true)
-            debugLog("确认发送成功")
+            debugLog("确认发送成功，等待对方确认...")
             
-            -- 只有确认发送成功后才标记为已交易
+            -- 等待交易完成（包括对方确认和交易成功）
+            local waitStartTime = tick()
+            local tradeCompleted = false
+            
+            -- 等待交易界面关闭（表示交易完成）或超时
+            while (tick() - waitStartTime) < SETTINGS.TradeCompleteWait do
+                task.wait(0.2)
+                
+                -- 检查交易界面是否还存在且可见
+                local uiCheckSuccess, uiVisible = pcall(function()
+                    local ui = game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\228\186\164\230\152\147"]
+                    return ui and ui.Visible
+                end)
+                
+                -- 如果检查失败（界面不存在）或界面不可见，说明交易已完成
+                if not uiCheckSuccess or not uiVisible then
+                    tradeCompleted = true
+                    debugLog("交易界面已关闭，交易完成")
+                    break
+                end
+                
+                -- 检查是否还在交易状态
+                if not isTrading then
+                    error("交易已停止")
+                end
+            end
+            
+            if not tradeCompleted then
+                debugLog("等待交易完成超时，但继续标记为成功")
+            end
+            
+            -- 等待交易完成后再标记为已交易
             table.insert(tradedPlayers, target.UserId)
             -- 如果之前在失败列表中，移除它
             failedPlayers[target.UserId] = nil

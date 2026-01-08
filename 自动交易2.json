@@ -619,7 +619,6 @@ coroutine.wrap(function()
                                     if tradeElixir(itemIndex) then
                                         elixirCount = elixirCount + 1
                                     end
-                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
                         end
@@ -642,7 +641,6 @@ coroutine.wrap(function()
                                     if tradeEgg(eggIndex) then
                                         eggCount = eggCount + 1
                                     end
-                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
                         end
@@ -666,7 +664,6 @@ coroutine.wrap(function()
                                     if tradetree(treeIndex) then
                                         treeCount = treeCount + 1
                                     end
-                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
                         end
@@ -687,7 +684,6 @@ coroutine.wrap(function()
                                     if traderune(runeIndex) then
                                         runeCount = runeCount + 1
                                     end
-                                    task.wait(0.05)  -- 添加小延迟避免过快
                                 end
                             end
                         end
