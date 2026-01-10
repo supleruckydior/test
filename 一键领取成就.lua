@@ -7,8 +7,8 @@ local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local PART1_START = 1   -- 第一部分起始值
 local PART1_END = 50    -- 第一部分结束值
 local PART2_START = 1   -- 第二部分起始值
-local PART2_END = 15    -- 第二部分结束值
-local DELAY_BETWEEN_CALLS = 0.1  -- 每次调用之间的延迟（秒）
+local PART2_END = 35    -- 第二部分结束值
+local DELAY_BETWEEN_CALLS = 0  -- 每次调用之间的延迟（秒）
 
 -- 获取事件
 local targetEvent = ReplicatedStorage:WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\230\136\144\229\176\177"):WaitForChild("\233\162\134\229\143\150")
@@ -74,7 +74,6 @@ local function runCombinations()
             
             -- 延迟
             if totalCount < (PART1_END - PART1_START + 1) * (PART2_END - PART2_START + 1) then
-                task.wait(DELAY_BETWEEN_CALLS)
             end
         end
     end
