@@ -101,7 +101,7 @@ local function waitForGameLoadComplete(maxWaitTime)
 end
 
 -- 等待游戏加载界面完成
-waitForGameLoadComplete(120)
+waitForGameLoadComplete(40)
 
 -- 额外等待确保GUI完全初始化（避免菜单加载不正确）
 print('[初始化] 等待GUI完全初始化...')
