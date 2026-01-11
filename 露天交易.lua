@@ -63,15 +63,15 @@ local RUNE_TYPE_NAMES = {
 -- 装备类型映射
 local EQUIP_TYPE_NAMES = {
     [1] = "头盔",
-    [2] = "卷轴",
-    [3] = "项链",
-    [4] = "挂坠",
-    [5] = "戒指",
+    [2] = "项链",
+    [3] = "卷轴",
+    [4] = "腰带",
+    [5] = "裤子",
     [6] = "手套",
     [7] = "护甲",
-    [8] = "腰带",
-    [9] = "裤子",
-    [10] = "鞋子",
+    [8] = "鞋子",
+    [9] = "挂坠",
+    [10] = "戒指",
     [11] = "翅膀"
 }
 
@@ -122,8 +122,9 @@ end
 local allPlayersData = {} -- 存储所有玩家数据
 local currentPlayerIndex = 1
 local isScanning = false
-local scanInterval = 0.03--扫描间隔(秒)
+local scanInterval = 0 --扫描间隔(秒)（极速优化：不等待）
 local viewEvent = ReplicatedStorage:WaitForChild("事件"):WaitForChild("公用"):WaitForChild("露天商店"):WaitForChild("查看")
+local buyItemEvent = ReplicatedStorage:WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\233\156\178\229\164\169\229\149\134\229\186\151"):WaitForChild("\232\180\173\228\185\176\231\137\169\229\147\129")
 -- 已移除收藏列表功能
 local priceAlerts = {} -- 价格提醒列表
 local searchText = "" -- 搜索文本
@@ -131,7 +132,7 @@ local sortMode = "price_asc" -- 排序模式: price_asc, price_desc, level_asc, 
 local filterWingsOnly = false -- 仅显示翅膀
 local filterRunesOnly = false -- 仅显示符石
 local currentPage = "全部" -- 当前页面：全部、装备、符石、配饰、宠物、宠物蛋
-local scanTimeout = 1 -- 扫描超时时间(秒)
+local scanTimeout = 0.5 -- 扫描超时时间(秒)（极速优化）
 local lastDataCount = 0 -- 上次数据数量
 local lastDataTime = 0 -- 上次数据更新时间
 -- 1. 创建完整UI
@@ -1496,6 +1497,62 @@ local function OpenPlayerShop(playerName)
     end
 end
 
+-- 购买物品函数
+local function BuyItem(sellerName, category, itemId, price, item)
+    local success, err = pcall(function()
+        -- 获取卖家玩家对象
+        local seller = Players:FindFirstChild(sellerName)
+        if not seller then
+            error("找不到卖家: " .. tostring(sellerName))
+        end
+        
+        -- 获取物品识别ID（UUID）
+        local uuid = item["索引"] or item.Index or item.id or tostring(itemId)
+        if not uuid then
+            error("找不到物品识别ID")
+        end
+        
+        -- 确定物品类型（购买参数的第二参数）
+        local itemType = "\233\133\141\233\165\176"  -- 默认是挂饰
+        if category == "装备" then
+            itemType = "\232\163\133\229\164\135"  -- 装备
+        elseif category == "符石" then
+            itemType = "\231\172\172\231\155\174"  -- 符石
+        elseif category == "配饰" then
+            itemType = "\233\133\141\233\165\176"  -- 挂饰
+        elseif category == "宠物" then
+            itemType = "\229\174\160\231\137\169"  -- 宠物
+        elseif category == "宠物蛋" then
+            itemType = "\229\174\160\231\137\169\232\154\140"  -- 宠物蛋
+        elseif category == "丹药" then
+            itemType = "\228\184\185\232\141\175"  -- 丹药
+        end
+        
+        -- 构建购买参数（完全按照挂饰自动购买脚本的格式）
+        local args = {
+            seller,
+            itemType,
+            {
+                ["\228\187\183\230\160\188"] = tonumber(price) or 0,
+                ["\231\137\169\229\147\129\231\180\162\229\188\149"] = tostring(uuid)
+            }
+        }
+        
+        -- 发送购买请求
+        buyItemEvent:FireServer(unpack(args))
+        
+        return true
+    end)
+    
+    if success then
+        print(string.format("✓ 购买请求已发送: %s 的物品 (ID: %s) 价格: %s", sellerName, tostring(itemId), tostring(price)))
+        return true
+    else
+        warn("✗ 购买失败:", err)
+        return false
+    end
+end
+
 -- 关闭商店界面
 local function CloseShopUI()
     local success, result = pcall(function()
@@ -1647,7 +1704,7 @@ local function DisplayResults(scrollFrame, results, statsLabel)
             end
             local title = Instance.new("TextLabel")
             title.Text = string.format("%s | 价格: %s", displayName, price)
-            title.Size = UDim2.new(0.6, -5, 1, 0)
+            title.Size = UDim2.new(0.65, -5, 1, 0)  -- 减小宽度以容纳两个按钮
             title.Position = UDim2.new(0, 5, 0, 0)
             title.TextXAlignment = Enum.TextXAlignment.Left
             -- 根据价格高低使用不同颜色
@@ -1663,18 +1720,42 @@ local function DisplayResults(scrollFrame, results, statsLabel)
             title.TextSize = 18
             title.Parent = header
             
-            -- 前往购买按钮
+            -- 购买按钮（直接购买）
+            local buyBtn = Instance.new("TextButton")
+            buyBtn.Text = "购买"
+            buyBtn.Size = UDim2.new(0.16, -3, 0.8, 0)
+            buyBtn.Position = UDim2.new(0.66, 3, 0.1, 0)
+            buyBtn.Font = Enum.Font.SourceSansBold
+            buyBtn.TextSize = 14
+            buyBtn.TextColor3 = Color3.new(1, 1, 1)
+            buyBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)  -- 绿色表示购买
+            buyBtn.Parent = header
+            
+            -- 购买按钮悬停效果
+            buyBtn.MouseEnter:Connect(function()
+                buyBtn.BackgroundColor3 = Color3.fromRGB(0, 230, 120)
+            end)
+            buyBtn.MouseLeave:Connect(function()
+                buyBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+            end)
+            
+            -- 点击购买按钮直接购买
+            buyBtn.Activated:Connect(function()
+                BuyItem(sellerName, categoryData.category, itemId, price, item)
+            end)
+            
+            -- 前往购买按钮（打开商店）
             local openShopBtn = Instance.new("TextButton")
-            openShopBtn.Text = "前往购买"
-            openShopBtn.Size = UDim2.new(0.25, -5, 0.8, 0)
-            openShopBtn.Position = UDim2.new(0.75, 5, 0.1, 0)
+            openShopBtn.Text = "商店"
+            openShopBtn.Size = UDim2.new(0.16, -3, 0.8, 0)
+            openShopBtn.Position = UDim2.new(0.83, 3, 0.1, 0)
             openShopBtn.Font = Enum.Font.SourceSansBold
-            openShopBtn.TextSize = 16
+            openShopBtn.TextSize = 14
             openShopBtn.TextColor3 = Color3.new(1, 1, 1)
             openShopBtn.BackgroundColor3 = COLOR_SCHEME.BUTTON
             openShopBtn.Parent = header
             
-            -- 按钮悬停效果
+            -- 前往购买按钮悬停效果
             openShopBtn.MouseEnter:Connect(function()
                 openShopBtn.BackgroundColor3 = COLOR_SCHEME.BUTTON_HOVER
             end)
@@ -1938,10 +2019,10 @@ local function StartAutoScan(ui)
         scanConnection = nil
     end
     
-    -- 超时检测循环
+    -- 超时检测循环（极速优化）
     local timeoutCheck = coroutine.wrap(function()
         while isScanning do
-            task.wait(1)
+            task.wait(0.1)  -- 减少检测间隔（极速优化：从1秒减少到0.1秒）
             local currentTime = tick()
             local dataCount = 0
             for _ in pairs(allPlayersData) do
@@ -1952,11 +2033,10 @@ local function StartAutoScan(ui)
             if currentScanPlayer and (currentTime - scanStartTime) > scanTimeout then
                 -- 检查是否收到了当前玩家的数据
                 if lastReceivedPlayer ~= currentScanPlayer.Name then
-                    -- 没有收到当前玩家的数据，直接跳过
+                    -- 没有收到当前玩家的数据，直接跳过（不等待界面，不关闭界面）
                     print("扫描超时，跳过:", currentScanPlayer.Name)
                     ui.progressLabel.Text = string.format("超时跳过: %s", currentScanPlayer.Name)
-                    CloseShopUI() -- 关闭当前商店
-                    task.wait(0.1)
+                    -- 不关闭界面，直接继续下一个（极速优化）
                     currentPlayerIndex = currentPlayerIndex + 1
                     if currentPlayerIndex <= #allPlayers then
                         currentScanPlayer = allPlayers[currentPlayerIndex]
@@ -2006,13 +2086,10 @@ local function StartAutoScan(ui)
             lastDataTime = tick()
         end
         
-        -- 关闭当前商店界面
-        CloseShopUI()
-        
-        -- 继续扫描下一个
+        -- 不关闭界面，收到数据立即继续下一个（极速优化）
         currentPlayerIndex = currentPlayerIndex + 1
         if currentPlayerIndex <= #allPlayers then
-            task.wait(scanInterval) -- 等待间隔时间后再发送下一个请求
+            -- 移除等待间隔（极速优化：收到数据立即继续下一个）
             ui.progressLabel.Text = string.format("扫描中: %d/%d", currentPlayerIndex, #allPlayers)
             currentScanPlayer = allPlayers[currentPlayerIndex]
             lastReceivedPlayer = nil -- 重置接收状态
