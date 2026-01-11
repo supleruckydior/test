@@ -230,7 +230,7 @@ local function FindAvailableCrystal()
                 -- 尝试计算路径
                 local testPath = PathfindingService:CreatePath({
                     AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
-                    AgentHeight = 999,  -- 忽略高度判断
+                    AgentHeight = 8,    -- 合理高度，允许跳跃
                     AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
                     WaypointSpacing = 4,
                 })
@@ -266,11 +266,11 @@ end
 
 -- 函数：在目标位置周围搜索可到达的点
 local function findReachablePosition(targetPos, startPos, maxRadius)
-    local searchRadius = maxRadius or 50  -- 默认增大到50
-    local searchStep = 2  -- 减小步长到2，增加搜索密度
+    local searchRadius = maxRadius or 100  -- 放宽限制：默认增大到100
+    local searchStep = 6  -- 减小步长到2，增加搜索密度
     
-    -- 尝试多个AgentRadius值，从2.5开始
-    local agentRadiusOptions = {2.5, 3, 3.5, 2, 1.5}
+    -- 放宽限制：尝试更多的AgentRadius值
+    local agentRadiusOptions = {3.5, 3, 2.5, 2, 1.5, 1.0, 0.75}
     
     for _, agentRadius in ipairs(agentRadiusOptions) do
         -- 忽略高度判断，只使用原始目标位置的Y坐标
@@ -288,8 +288,8 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
                 
                 local testPath = PathfindingService:CreatePath({
                     AgentRadius = agentRadius,  -- 尝试不同的半径
-                    AgentHeight = 999,  -- 忽略高度判断，设置为很大的值
-                    AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
+                    AgentHeight = 8,  -- 合理高度，允许跳跃
+                    AgentCanJump = true,  -- 路径计算时允许跳跃
                     WaypointSpacing = 8,  -- 使用较大的间距以提高成功率
                 })
                 
@@ -344,12 +344,11 @@ local function MoveToTarget(targetModel)
     local baseWalkSpeed = math.random(55, 75)  -- 基础移动速度在55-75之间随机（扩大范围）
     currentHumanoid.WalkSpeed = baseWalkSpeed
     
-    -- 获取目标位置（默认使用固定坐标）
+    -- 获取目标位置（使用固定坐标）
     local targetPosition = Vector3.new(-513, 10, -511)
-    print("使用默认目标位置:", targetPosition)
-    
     local startPos = currentHRP.Position
     local endPos = targetPosition
+    print("使用固定目标位置:", targetPosition)
     
     -- 忽略垂直移动判断：将目标位置的Y坐标设置为起点的Y坐标，用于路径计算
     local flatEndPos = Vector3.new(endPos.X, startPos.Y, endPos.Z)
@@ -358,102 +357,71 @@ local function MoveToTarget(targetModel)
     local distance = (startPos - flatEndPos).Magnitude
     print("起点到终点的水平距离:", distance)
     
-    -- 如果距离太远（>500），直接使用更大的WaypointSpacing，避免路径计算失败
-    local waypointSpacing
-    if distance > 500 then
-        -- 距离太远时，使用较大的间距以确保能计算路径
-        waypointSpacing = math.random(20, 30)  -- 随机选择20-30
-        print("距离较远，使用较大的路径点间距:", waypointSpacing)
-    else
-        -- 距离较近时，可以随机选择较小的间距
-        local spacingOptions = {4, 5, 6, 7, 8, 10, 12}
-        waypointSpacing = spacingOptions[math.random(1, #spacingOptions)]
-        print("随机选择的路径点间距:", waypointSpacing)
-    end
+    -- 使用老版本的路径间距（固定值4）
+    local waypointSpacing = 4
+    print("使用路径点间距:", waypointSpacing)
     
-    -- 创建路径对象（尝试多个AgentRadius值，从2.5开始）
+    -- 创建路径对象（AgentRadius固定为2.5）
     local path = nil
     local pathFound = false
-    local noPathMessage = nil
-    local agentRadiusOptions = {2.5, 3, 3.5, 2, 1.5}  -- 从2.5开始尝试
+    local noPathMessage = "未知错误"
+    local agentRadius = 2.5  -- 固定为2.5
     
-    print("开始计算路径，起始位置:", startPos, "目标位置:", endPos, "路径点间距:", waypointSpacing)
-    for _, radius in ipairs(agentRadiusOptions) do
-        local testPath = PathfindingService:CreatePath({
-            AgentRadius = radius,
-            AgentHeight = 999,  -- 忽略高度判断
-            AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
-            WaypointSpacing = waypointSpacing,
-            Costs = {
-                Water = 1,
-            }
-        })
-        
-        local success, errorMsg = pcall(function()
-            -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-            testPath:ComputeAsync(startPos, flatEndPos)
-        end)
-        
-        if success and testPath.Status ~= Enum.PathStatus.NoPath then
+    print(string.format("开始计算路径，起始位置:%s 目标位置:%s 路径点间距:%s AgentRadius:%.2f",
+        tostring(startPos), tostring(endPos), tostring(waypointSpacing), agentRadius))
+    
+    local testPath = PathfindingService:CreatePath({
+        AgentRadius = agentRadius,
+        AgentHeight = 8,   -- 使用合理高度，允许跳跃
+        AgentCanJump = true,
+        WaypointSpacing = waypointSpacing,
+        Costs = {
+            Water = 1,
+        }
+    })
+    
+    local success, errorMsg = pcall(function()
+        -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
+        testPath:ComputeAsync(startPos, flatEndPos)
+    end)
+    
+    if success then
+        local status = testPath.Status
+        if status ~= Enum.PathStatus.NoPath then
             local waypoints = testPath:GetWaypoints()
             if #waypoints > 0 then
                 path = testPath
                 pathFound = true
-                print("使用AgentRadius=" .. radius .. "成功计算路径")
-                break
+                print(string.format("成功计算路径, status=%s, 路径点=%d", tostring(status), #waypoints))
+            else
+                noPathMessage = "路径点为空"
             end
+        else
+            noPathMessage = "PathStatus.NoPath"
         end
-        
-        if not success then
-            noPathMessage = errorMsg
-        end
+    else
+        noPathMessage = errorMsg or "ComputeAsync失败"
     end
     
-    -- 如果所有AgentRadius都失败，使用最后一个选项的结果
-    if not pathFound then
-        local lastRadius = agentRadiusOptions[#agentRadiusOptions]
-        local lastPath = PathfindingService:CreatePath({
-            AgentRadius = lastRadius,
-            AgentHeight = 999,  -- 忽略高度判断
-            AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
-            WaypointSpacing = waypointSpacing,
-            Costs = {
-                Water = 1,
-            }
-        })
-        local success, errorMsg = pcall(function()
-            -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-            lastPath:ComputeAsync(startPos, flatEndPos)
-        end)
-        if success and lastPath.Status ~= Enum.PathStatus.NoPath then
-            local lastWaypoints = lastPath:GetWaypoints()
-            if #lastWaypoints > 0 then
-                path = lastPath
-                pathFound = true
-            end
-        end
-        if not pathFound then
-            noPathMessage = errorMsg
-        end
-    end
+    -- 如果路径计算失败，不再尝试其他选项
     
     if not pathFound then
-        local errorMsg = tostring(noPathMessage)
+        local errorMsg = tostring(noPathMessage or "未知错误")
         print("路径计算异常:", errorMsg)
         
         -- 检查是否是"path request is too long"错误
         if string.find(errorMsg:lower(), "too long") or string.find(errorMsg:lower(), "path.*long") then
             print("检测到路径请求过长错误，尝试使用更大的路径点间距...")
-            -- 尝试逐步增大WaypointSpacing
-            local spacingOptions = {8, 12, 16, 20, 25, 30}
+            -- 使用老版本的WaypointSpacing范围
+            local spacingOptions = {4, 8, 12, 16, 20}
             local success = false
             
             for _, spacing in ipairs(spacingOptions) do
                 print("尝试使用路径点间距:", spacing)
                 local longerPath = PathfindingService:CreatePath({
-                    AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙
-                    AgentHeight = 999,  -- 忽略高度判断
-                    AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
+                    AgentRadius = 2.5,  -- 固定为2.5
+                    AgentHeight = 8,  -- 合理高度，允许跳跃
+                    AgentCanJump = true,  -- 路径计算时允许跳跃
                     WaypointSpacing = spacing,
                     Costs = { Water = 1 }
                 })
@@ -461,11 +429,14 @@ local function MoveToTarget(targetModel)
                     -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
                     longerPath:ComputeAsync(startPos, flatEndPos)
                 end)
+                -- 放宽限制：接受所有非NoPath状态
                 if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
                     path = longerPath
                     pathFound = true
                     success = true
-                    print("使用路径点间距 " .. spacing .. " 成功计算路径")
+                    local waypointCount = #longerPath:GetWaypoints()
+                    print(string.format("使用路径点间距 %d 成功计算路径, status=%s, 路径点=%d", 
+                        spacing, tostring(longerPath.Status), waypointCount))
                     break
                 end
             end
@@ -512,8 +483,8 @@ local function MoveToTarget(targetModel)
     -- 接受Success、ClosestNoPath和ClosestOutOfRange状态（这些都能到达接近目标的位置）
     if pathStatus == Enum.PathStatus.NoPath then
         print("无法找到路径，尝试在周围搜索...")
-        -- 使用更大的搜索范围（无论距离远近都使用更大的范围）
-        local searchRadius = distance > 500 and 100 or 80  -- 增大搜索范围
+        -- 放宽限制：使用更大的搜索范围
+        local searchRadius = distance > 500 and 150 or 120  -- 进一步增大搜索范围
         local reachablePos, reachablePath = findReachablePosition(endPos, startPos, searchRadius)
         if reachablePos and reachablePath then
             endPos = reachablePos
@@ -528,16 +499,24 @@ local function MoveToTarget(targetModel)
         print("路径状态为", pathStatus, "- 将到达最接近目标的位置")
     end
     
-    -- 获取路径点（所有路径点都在同一水平面，忽略垂直移动）
-    local waypoints = path:GetWaypoints()
-    print("路径点数量:", #waypoints)
-    if #waypoints == 0 then
+    -- 获取路径点并调整所有路径点的Y坐标为起点高度（忽略高度）
+    local rawWaypoints = path:GetWaypoints()
+    print("路径点数量:", #rawWaypoints)
+    if #rawWaypoints == 0 then
         print("路径点为空")
         return false
     end
     
-    -- 不需要调整Y坐标，保持所有路径点在同一水平面（使用flatEndPos计算的Y）
-    -- 游戏本身垂直移动不影响，所以让角色自然根据路径点移动即可
+    -- 创建调整后的路径点列表，所有路径点的Y坐标都设置为起点高度
+    local waypoints = {}
+    for i, waypoint in ipairs(rawWaypoints) do
+        local flatPos = Vector3.new(waypoint.Position.X, startPos.Y, waypoint.Position.Z)
+        table.insert(waypoints, {
+            Position = flatPos,
+            Action = waypoint.Action
+        })
+    end
+    print("已调整所有路径点的Y坐标为起点高度:", startPos.Y)
     
     -- 跳过第一个路径点（起始位置）
     local currentWaypointIndex = 1
@@ -654,9 +633,9 @@ local function MoveToTarget(targetModel)
         local newWaypointSpacing = 4  -- 使用默认的最佳间距
         
         local newPath = PathfindingService:CreatePath({
-            AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙
-            AgentHeight = 999,  -- 忽略高度判断
-            AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
+            AgentRadius = 2.5,  -- 固定为2.5
+            AgentHeight = 8,    -- 合理高度，允许跳跃
+            AgentCanJump = true,  -- 路径计算时允许跳跃
             WaypointSpacing = newWaypointSpacing,
             Costs = { Water = 1 }
         })
@@ -669,15 +648,15 @@ local function MoveToTarget(targetModel)
         if not pathFound then
             local errorMsg = tostring(pathError)
             if string.find(errorMsg:lower(), "too long") or string.find(errorMsg:lower(), "path.*long") then
-                -- 尝试逐步增大WaypointSpacing
-                local spacingOptions = {8, 12, 16, 20, 25, 30}
+                -- 使用老版本的WaypointSpacing范围
+                local spacingOptions = {4, 8, 12, 16, 20}
                 local success = false
                 
                 for _, spacing in ipairs(spacingOptions) do
                     local longerPath = PathfindingService:CreatePath({
-                        AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
-                        AgentHeight = 999,  -- 忽略高度判断
-                        AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
+                        AgentRadius = 2.5,  -- 固定为2.5
+                        AgentHeight = 8,    -- 合理高度，允许跳跃
+                        AgentCanJump = true,  -- 路径计算时允许跳跃
                         WaypointSpacing = spacing,
                         Costs = { Water = 1 }
                     })
@@ -733,15 +712,22 @@ local function MoveToTarget(targetModel)
             end
         end
         
-        local newWaypoints = newPath:GetWaypoints()
-        if #newWaypoints == 0 then
+        local rawNewWaypoints = newPath:GetWaypoints()
+        if #rawNewWaypoints == 0 then
             return nil, nil
         end
         
-        -- 不需要调整Y坐标，保持所有路径点在同一水平面（使用flatEndPos计算的Y）
-        -- 游戏本身垂直移动不影响，所以让角色自然根据路径点移动即可
+        -- 调整所有路径点的Y坐标为新的起点高度
+        local newWaypoints = {}
+        for i, waypoint in ipairs(rawNewWaypoints) do
+            local flatPos = Vector3.new(waypoint.Position.X, newStartPos.Y, waypoint.Position.Z)
+            table.insert(newWaypoints, {
+                Position = flatPos,
+                Action = waypoint.Action
+            })
+        end
         
-        print("重新计算路径完成，共 " .. #newWaypoints .. " 个路径点")
+        print("重新计算路径完成，共 " .. #newWaypoints .. " 个路径点 (Y已调整为" .. newStartPos.Y .. ")")
         return newPath, newWaypoints
     end
     
@@ -842,7 +828,7 @@ local function MoveToTarget(targetModel)
         if distanceToWaypoint < waypointReachDistance then
             -- 随机等待：有概率在路径点等待一小段时间 - 增强
             if waypointWaitDuration == 0 and math.random() < waypointWaitChance then
-                waypointWaitDuration = math.random(0.1, 1.0)  -- 随机等待0.1-1.0秒（扩大范围）
+                waypointWaitDuration = math.random(0.1, 0.3)  -- 随机等待0.1-1.0秒（扩大范围）
                 waypointWaitStartTime = tick()
                 print(string.format("在路径点 %d/%d 随机等待 %.2f 秒", currentWaypointIndex, #waypoints, waypointWaitDuration))
             end
