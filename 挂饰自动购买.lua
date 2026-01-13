@@ -187,7 +187,7 @@ local function BuyAccessory(playerName, itemId, price, accessoryId, quality)
         purchaseStats[accessoryId][quality] = (purchaseStats[accessoryId][quality] or 0) + 1
         purchaseStats.total = purchaseStats.total + 1
         
-        -- 添加到历史记录（最多保存5条，最新的在前面）
+        -- 添加到历史记录（最新的在前面）
         local historyEntry = {
             accessoryName = ACCESSORY_TYPE_NAMES[accessoryId] or tostring(accessoryId),
             accessoryId = accessoryId,
@@ -198,10 +198,15 @@ local function BuyAccessory(playerName, itemId, price, accessoryId, quality)
             timestamp = tick()
         }
         table.insert(purchaseHistory, 1, historyEntry)
-        -- 只保留最近5条记录
-        if #purchaseHistory > 5 then
-            table.remove(purchaseHistory, 6)
-        end
+        
+        -- 打印购买成功信息
+        print(string.format("✓ 购买成功! 挂饰: %s(%d), 品质: %s(%d), 价格: %d, 卖家: %s", 
+            historyEntry.accessoryName, 
+            historyEntry.accessoryId, 
+            historyEntry.qualityName, 
+            historyEntry.quality, 
+            historyEntry.price, 
+            historyEntry.sellerName))
         
         return true
     else
@@ -624,7 +629,7 @@ local function CreateUI()
     historyFrame.Parent = mainFrame
     
     local historyTitle = Instance.new("TextLabel")
-    historyTitle.Text = "最近购买记录 (最多5条):"
+    historyTitle.Text = "最近购买记录:"
     historyTitle.Size = UDim2.new(1, -10, 0, 25)
     historyTitle.Position = UDim2.new(0, 5, 0, 5)
     historyTitle.Font = Enum.Font.SourceSansBold
@@ -769,7 +774,7 @@ local function CreateUI()
             end
         end
         
-        -- 显示历史记录（最多5条）
+        -- 显示历史记录
         if #purchaseHistory > 0 then
             for i, entry in ipairs(purchaseHistory) do
                 local historyItem = Instance.new("Frame")
