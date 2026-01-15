@@ -21,6 +21,10 @@ local ACCESSORY_TYPE_NAMES = {
 
 -- 品质名称映射
 local QUALITY_NAMES = {
+    [1] = "普通",
+    [2] = "优秀",
+    [3] = "精良",
+    [4] = "稀有",
     [5] = "完美",
     [6] = "稀少",
     [7] = "史诗",
@@ -31,6 +35,10 @@ local QUALITY_NAMES = {
 
 -- 价格限制配置（根据品质）
 local PRICE_LIMITS = {
+    [1] = 10,      -- 普通
+    [2] = 20,      -- 优秀
+    [3] = 100,     -- 精良
+    [4] = 800,     -- 稀有
     [5] = 2400,    -- 完美
     [6] = 8000,    -- 稀少
     [7] = 24000,   -- 史诗
@@ -49,6 +57,47 @@ local purchaseStats = {
 
 -- 历史购买记录（最多保存5条）
 local purchaseHistory = {}
+
+-- 丹药相关配置
+local ELIXIR_TYPE_NAMES = {
+    [1] = "攻击",
+    [2] = "爆伤",
+    [3] = "法宝",
+    [4] = "血量",
+    [5] = "技能"
+}
+
+-- 品质点数映射
+local QUALITY_POINTS = {
+    [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5,
+    [6] = 6, [7] = 8, [8] = 10, [9] = 14, [10] = 20,
+    [11] = 28
+}
+
+-- 丹药数据存储
+local elixirData = {}
+local elixirStats = {
+    typeTotals = {0, 0, 0, 0, 0},  -- 每种类型的总点数
+    grandTotal = 0,                -- 全部丹药总点数
+    typeCounts = {0, 0, 0, 0, 0}   -- 每种类型的数量
+}
+
+-- 丹药消耗追踪
+local previousElixirSnapshot = nil  -- 之前的丹药快照
+local elixirConsumption = {
+    typeTotals = {0, 0, 0, 0, 0},  -- 每种类型消耗的总点数
+    grandTotal = 0,                -- 消耗的总点数
+    typeCounts = {0, 0, 0, 0, 0},  -- 每种类型消耗的数量
+    details = {}                    -- 详细消耗记录（按类型和品质）
+}
+local lastPrintedConsumption = 0  -- 上次打印的消耗总值，用于避免重复打印
+
+-- 缓存背包数据键名
+local BACKPACK_KEY = "\232\131\140\229\140\133"
+local COUNT_KEY = "\230\149\176\233\135\143"
+local TYPE_KEY = "\231\177\187\229\158\139"
+local QUALITY_KEY = "品质"
+local INDEX_KEY = "索引"
 
 -- 系统控制变量
 local isRunning = false
@@ -132,7 +181,90 @@ local function WaitForShopUI(maxWait)
     return false
 end
 
--- 购买挂饰函数（完全按照用户提供的脚本格式，带3次重试，不等待界面）
+-- 创建丹药快照（用于追踪消耗）- 必须在BuyAccessory之前定义
+local function CreateElixirSnapshot()
+    local snapshot = {}  -- 按类型和品质分类存储（总是返回一个表，即使是空表）
+    
+    if not elixirData then
+        return snapshot
+    end
+    
+    local backpack = elixirData[BACKPACK_KEY]
+    if not backpack or #backpack == 0 then
+        return snapshot
+    end
+    
+    -- 遍历背包中的物品
+    local item, count, elixirType, quality, index
+    for i = 1, #backpack do
+        item = backpack[i]
+        if item and type(item) == "table" then
+            count = item[COUNT_KEY]
+            if count then
+                count = tonumber(count) or 0
+                if count > 0 then
+                    elixirType = item[TYPE_KEY]
+                    if elixirType then
+                        elixirType = tonumber(elixirType) or 0
+                        if elixirType >= 1 and elixirType <= 5 then
+                            quality = item[QUALITY_KEY]
+                            if quality then
+                                quality = tonumber(quality) or 0
+                                index = item[INDEX_KEY]
+                                if index then
+                                    local key = string.format("%d_%d_%s", elixirType, quality, tostring(index))
+                                    snapshot[key] = {
+                                        type = elixirType,
+                                        quality = quality,
+                                        count = count,
+                                        index = index
+                                    }
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return snapshot
+end
+
+-- 检查是否有新的丹药消耗（用于验证购买是否成功）
+local function CheckElixirConsumptionAfterPurchase(previousSnapshot)
+    -- 等待一小段时间让数据同步
+    task.wait(0.3)
+    
+    -- 如果数据已更新，创建当前快照并比较
+    if elixirData and elixirData[BACKPACK_KEY] then
+        local currentSnapshot = CreateElixirSnapshot()
+        if previousSnapshot and currentSnapshot and type(previousSnapshot) == "table" then
+            -- 比较快照，检查是否有减少（消耗）
+            for key, prevItem in pairs(previousSnapshot) do
+                if prevItem and type(prevItem) == "table" then
+                    local currItem = currentSnapshot[key]
+                    local prevCount = prevItem.count or 0
+                    local currCount = currItem and currItem.count or 0
+                    if prevCount > currCount then
+                        -- 检测到消耗，说明购买成功
+                        return true, prevCount - currCount
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 如果没有快照，回退到检查消耗统计的方法
+    local previousConsumptionTotal = elixirConsumption.grandTotal or 0
+    task.wait(0.2)  -- 再等待一下
+    local currentConsumptionTotal = elixirConsumption.grandTotal or 0
+    local hasConsumption = currentConsumptionTotal > previousConsumptionTotal
+    
+    return hasConsumption, currentConsumptionTotal - previousConsumptionTotal
+end
+
+-- 购买挂饰函数（检查丹药消耗来验证购买是否成功）
 local function BuyAccessory(playerName, itemId, price, accessoryId, quality)
     -- itemId 应该是UUID格式的字符串，例如 "b75d7cfc-8a21-413f-b66a-42c3c3a0f66a"
     local maxRetries = 3
@@ -141,6 +273,10 @@ local function BuyAccessory(playerName, itemId, price, accessoryId, quality)
     
     while retryCount < maxRetries and not purchaseSuccess do
         retryCount = retryCount + 1
+        
+        -- 记录购买前的丹药快照（用于验证购买是否成功）
+        local previousSnapshot = CreateElixirSnapshot()
+        
         local callSuccess, result = pcall(function()
             -- 按照用户提供的格式获取玩家对象
             local player = game:GetService("Players"):WaitForChild(playerName)
@@ -168,9 +304,20 @@ local function BuyAccessory(playerName, itemId, price, accessoryId, quality)
             return true
         end)
         
-        -- 如果 pcall 成功且函数返回 true，则认为购买成功
+        -- 如果发送请求成功，检查是否有丹药消耗来验证购买是否成功
         if callSuccess and result == true then
-            purchaseSuccess = true
+            -- 检查是否有新的丹药消耗
+            local hasConsumption, consumedCount = CheckElixirConsumptionAfterPurchase(previousSnapshot)
+            
+            if hasConsumption then
+                -- 有消耗，说明购买成功
+                purchaseSuccess = true
+            else
+                -- 没有消耗，可能是商店未开放或其他原因，继续重试
+                if retryCount < maxRetries then
+                    task.wait(0.1)  -- 等待后重试
+                end
+            end
         else
             -- 如果购买失败且还有重试机会，等待一小段时间后重试
             if retryCount < maxRetries then
@@ -210,6 +357,14 @@ local function BuyAccessory(playerName, itemId, price, accessoryId, quality)
         
         return true
     else
+        -- 购买失败，打印信息
+        print(string.format("✗ 购买失败: 挂饰: %s(%d), 品质: %s(%d), 价格: %d, 卖家: %s (未检测到丹药消耗，可能商店未开放)", 
+            ACCESSORY_TYPE_NAMES[accessoryId] or tostring(accessoryId),
+            accessoryId,
+            QUALITY_NAMES[quality] or tostring(quality),
+            quality,
+            price,
+            playerName))
         return false
     end
 end
@@ -501,6 +656,153 @@ local function StopAutoScan()
     end
 end
 
+-- 计算丹药点数
+local function CalculateElixirPoints()
+    if not elixirData then
+        return {0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0}
+    end
+    
+    local backpack = elixirData[BACKPACK_KEY]
+    if not backpack or #backpack == 0 then
+        return {0, 0, 0, 0, 0}, 0, {0, 0, 0, 0, 0}
+    end
+    
+    local typeTotals = {0, 0, 0, 0, 0}  -- 每种类型的总点数
+    local typeCounts = {0, 0, 0, 0, 0}  -- 每种类型的数量
+    local grandTotal = 0                -- 全部丹药总点数
+    
+    -- 遍历背包中的物品
+    local item, count, elixirType, quality, points
+    for i = 1, #backpack do
+        item = backpack[i]
+        if item and type(item) == "table" then
+            count = item[COUNT_KEY]
+            if count then
+                count = tonumber(count) or 0
+                if count > 0 then
+                    elixirType = item[TYPE_KEY]
+                    if elixirType then
+                        elixirType = tonumber(elixirType) or 0
+                        if elixirType >= 1 and elixirType <= 5 then
+                            quality = item[QUALITY_KEY]
+                            if quality then
+                                quality = tonumber(quality) or 0
+                                points = QUALITY_POINTS[quality]
+                                if points then
+                                    points = points * count
+                                    typeTotals[elixirType] = typeTotals[elixirType] + points
+                                    typeCounts[elixirType] = typeCounts[elixirType] + count
+                                    grandTotal = grandTotal + points
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return typeTotals, grandTotal, typeCounts
+end
+
+-- 计算丹药消耗（累加模式，不清空之前的记录）
+local function CalculateElixirConsumption(currentSnapshot)
+    if not previousElixirSnapshot or not currentSnapshot then
+        return false  -- 返回是否有消耗
+    end
+    
+    -- 计算本次消耗增量（不重置，而是累加）
+    local hasConsumption = false
+    local deltaTypeTotals = {0, 0, 0, 0, 0}
+    local deltaGrandTotal = 0
+    local deltaTypeCounts = {0, 0, 0, 0, 0}
+    local deltaDetails = {}
+    
+    -- 比较前后快照，找出减少的丹药
+    for key, prevItem in pairs(previousElixirSnapshot) do
+        local currItem = currentSnapshot[key]
+        local prevCount = prevItem.count or 0
+        local currCount = currItem and currItem.count or 0
+        
+        if prevCount > currCount then
+            hasConsumption = true
+            local consumed = prevCount - currCount
+            local elixirType = prevItem.type
+            local quality = prevItem.quality
+            local pointsPerItem = QUALITY_POINTS[quality] or 0
+            local totalPoints = pointsPerItem * consumed
+            
+            -- 计算本次增量
+            deltaTypeTotals[elixirType] = deltaTypeTotals[elixirType] + totalPoints
+            deltaTypeCounts[elixirType] = deltaTypeCounts[elixirType] + consumed
+            deltaGrandTotal = deltaGrandTotal + totalPoints
+            
+            -- 记录详细信息
+            if not deltaDetails[elixirType] then
+                deltaDetails[elixirType] = {}
+            end
+            if not deltaDetails[elixirType][quality] then
+                deltaDetails[elixirType][quality] = 0
+            end
+            deltaDetails[elixirType][quality] = deltaDetails[elixirType][quality] + consumed
+        end
+    end
+    
+    -- 只有在检测到消耗时才累加到总消耗统计中
+    if hasConsumption then
+        for i = 1, 5 do
+            elixirConsumption.typeTotals[i] = elixirConsumption.typeTotals[i] + deltaTypeTotals[i]
+            elixirConsumption.typeCounts[i] = elixirConsumption.typeCounts[i] + deltaTypeCounts[i]
+        end
+        elixirConsumption.grandTotal = elixirConsumption.grandTotal + deltaGrandTotal
+        
+        -- 累加详细信息
+        for elixirType, qualityData in pairs(deltaDetails) do
+            if not elixirConsumption.details[elixirType] then
+                elixirConsumption.details[elixirType] = {}
+            end
+            for quality, count in pairs(qualityData) do
+                if not elixirConsumption.details[elixirType][quality] then
+                    elixirConsumption.details[elixirType][quality] = 0
+                end
+                elixirConsumption.details[elixirType][quality] = elixirConsumption.details[elixirType][quality] + count
+            end
+        end
+    end
+    
+    return hasConsumption
+end
+
+-- 初始化/刷新丹药数据
+local function RefreshElixirData()
+    local elixirModule = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+    if not elixirModule then
+        warn("找不到丹药模块")
+        return false
+    end
+    
+    local functionModule = elixirModule:FindFirstChild("\229\133\172\231\148\168")
+    if not functionModule then
+        warn("找不到功能模块")
+        return false
+    end
+    
+    local refreshModule = functionModule:FindFirstChild("\231\130\188\228\184\185")
+    if not refreshModule then
+        warn("找不到刷新模块")
+        return false
+    end
+    
+    local elixirEvent = refreshModule:FindFirstChild("\229\136\182\228\189\156")
+    if not elixirEvent then
+        warn("找不到刷新事件")
+        return false
+    end
+    
+    elixirEvent:FireServer()
+    return true
+end
+
 -- 创建UI界面
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
@@ -513,8 +815,8 @@ local function CreateUI()
     
     -- 主容器（增大高度以容纳更多统计信息和历史记录）
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 500, 0, 650)  -- 增加高度以容纳卖家信息和按钮
-    mainFrame.Position = UDim2.new(0.5, -250, 0.5, -325)
+    mainFrame.Size = UDim2.new(0, 500, 0, 850)  -- 增加高度以容纳丹药统计
+    mainFrame.Position = UDim2.new(0.5, -250, 0.5, -425)
     mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     mainFrame.BorderSizePixel = 2
     mainFrame.BorderColor3 = Color3.fromRGB(0, 162, 255)
@@ -622,7 +924,7 @@ local function CreateUI()
     -- 历史购买记录区域（增加高度以容纳更多信息）
     local historyFrame = Instance.new("Frame")
     historyFrame.Size = UDim2.new(1, -20, 0, 200)
-    historyFrame.Position = UDim2.new(0, 10, 0, 350)  -- 位置保持，因为主窗口已增加高度
+    historyFrame.Position = UDim2.new(0, 10, 0, 350)
     historyFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
     historyFrame.BorderSizePixel = 1
     historyFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
@@ -668,6 +970,52 @@ local function CreateUI()
         historyScroll.CanvasSize = UDim2.new(0, 0, 0, historyContainer.AbsoluteSize.Y)
     end)
     
+    -- 丹药统计区域
+    local elixirFrame = Instance.new("Frame")
+    elixirFrame.Size = UDim2.new(1, -20, 0, 180)
+    elixirFrame.Position = UDim2.new(0, 10, 0, 560)
+    elixirFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    elixirFrame.BorderSizePixel = 1
+    elixirFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    elixirFrame.Parent = mainFrame
+    
+    local elixirTitle = Instance.new("TextLabel")
+    elixirTitle.Text = "丹药统计:"
+    elixirTitle.Size = UDim2.new(1, -10, 0, 25)
+    elixirTitle.Position = UDim2.new(0, 5, 0, 5)
+    elixirTitle.Font = Enum.Font.SourceSansBold
+    elixirTitle.TextSize = 16
+    elixirTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    elixirTitle.BackgroundTransparency = 1
+    elixirTitle.TextXAlignment = Enum.TextXAlignment.Left
+    elixirTitle.Parent = elixirFrame
+    
+    local elixirScroll = Instance.new("ScrollingFrame")
+    elixirScroll.Name = "ElixirScroll"
+    elixirScroll.Size = UDim2.new(1, -10, 1, -35)
+    elixirScroll.Position = UDim2.new(0, 5, 0, 30)
+    elixirScroll.BackgroundTransparency = 1
+    elixirScroll.BorderSizePixel = 0
+    elixirScroll.ScrollBarThickness = 6
+    elixirScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+    elixirScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    elixirScroll.Parent = elixirFrame
+    
+    local elixirText = Instance.new("TextLabel")
+    elixirText.Name = "ElixirText"
+    elixirText.Text = "点击'初始化丹药'按钮加载数据..."
+    elixirText.Size = UDim2.new(1, -10, 0, 0)
+    elixirText.Position = UDim2.new(0, 5, 0, 5)
+    elixirText.Font = Enum.Font.SourceSans
+    elixirText.TextSize = 13
+    elixirText.TextColor3 = Color3.fromRGB(200, 200, 200)
+    elixirText.BackgroundTransparency = 1
+    elixirText.TextXAlignment = Enum.TextXAlignment.Left
+    elixirText.TextYAlignment = Enum.TextYAlignment.Top
+    elixirText.TextWrapped = true
+    elixirText.AutomaticSize = Enum.AutomaticSize.Y
+    elixirText.Parent = elixirScroll
+    
     -- 控制按钮区域
     local buttonFrame = Instance.new("Frame")
     buttonFrame.Size = UDim2.new(1, -20, 0, 50)
@@ -689,13 +1037,24 @@ local function CreateUI()
     local stopButton = Instance.new("TextButton")
     stopButton.Name = "StopButton"
     stopButton.Text = "停止运行"
-    stopButton.Size = UDim2.new(0.48, 0, 1, 0)
-    stopButton.Position = UDim2.new(0.52, 0, 0, 0)
+    stopButton.Size = UDim2.new(0.31, 0, 1, 0)
+    stopButton.Position = UDim2.new(0.34, 0, 0, 0)
     stopButton.Font = Enum.Font.SourceSansBold
     stopButton.TextSize = 16
     stopButton.TextColor3 = Color3.new(1, 1, 1)
     stopButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
     stopButton.Parent = buttonFrame
+    
+    local elixirButton = Instance.new("TextButton")
+    elixirButton.Name = "ElixirButton"
+    elixirButton.Text = "初始化丹药"
+    elixirButton.Size = UDim2.new(0.31, 0, 1, 0)
+    elixirButton.Position = UDim2.new(0.68, 0, 0, 0)
+    elixirButton.Font = Enum.Font.SourceSansBold
+    elixirButton.TextSize = 14
+    elixirButton.TextColor3 = Color3.new(1, 1, 1)
+    elixirButton.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
+    elixirButton.Parent = buttonFrame
     
     -- 窗口拖拽功能
     local dragging = false
@@ -749,6 +1108,50 @@ local function CreateUI()
             stopButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
             statusLabel.Text = "状态: 已停止"
             statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        end
+    end)
+    
+    -- 初始化丹药按钮事件
+    elixirButton.Activated:Connect(function()
+        elixirButton.BackgroundColor3 = Color3.fromRGB(60, 90, 150)
+        elixirText.Text = "正在初始化丹药数据..."
+        task.wait(0.1)
+        
+        if RefreshElixirData() then
+            -- 等待数据更新
+            local startTime = tick()
+            local timeout = 5
+            while not elixirData or not elixirData[BACKPACK_KEY] do
+                if tick() - startTime > timeout then
+                    elixirText.Text = "错误: 获取丹药数据超时"
+                    elixirButton.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
+                    return
+                end
+                task.wait(0.1)
+            end
+            
+            -- 计算丹药统计
+            local typeTotals, grandTotal, typeCounts = CalculateElixirPoints()
+            elixirStats.typeTotals = typeTotals
+            elixirStats.grandTotal = grandTotal
+            elixirStats.typeCounts = typeCounts
+            
+            -- 创建初始快照（用于后续追踪消耗）
+            previousElixirSnapshot = CreateElixirSnapshot()
+            
+            -- 重置消耗统计
+            elixirConsumption.typeTotals = {0, 0, 0, 0, 0}
+            elixirConsumption.grandTotal = 0
+            elixirConsumption.typeCounts = {0, 0, 0, 0, 0}
+            elixirConsumption.details = {}
+            lastPrintedConsumption = 0  -- 重置打印记录
+            
+            elixirText.Text = string.format("丹药数据加载成功！\n总点数: %d", grandTotal)
+            elixirButton.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
+            print(string.format("✓ 丹药数据初始化成功，总点数: %d", grandTotal))
+        else
+            elixirText.Text = "错误: 无法初始化丹药数据"
+            elixirButton.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
         end
     end)
     
@@ -906,8 +1309,8 @@ local function CreateUI()
             local totalCount = 0
             local qualityText = {}
             
-            -- 按品质顺序显示（5-10）
-            local qualityOrder = {5, 6, 7, 8, 9, 10}
+            -- 按品质顺序显示（1-10）
+            local qualityOrder = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
             for _, quality in ipairs(qualityOrder) do
                 local count = stats[quality] or 0
                 if count > 0 then
@@ -940,6 +1343,51 @@ local function CreateUI()
         -- 检查并更新历史记录显示（只在历史记录变化时更新）
         UpdateHistoryDisplay()
         
+        -- 更新丹药统计显示
+        local elixirLines = {}
+        
+        -- 显示当前拥有的丹药
+        if elixirStats.grandTotal > 0 then
+            table.insert(elixirLines, string.format("【当前拥有】总点数: %d", elixirStats.grandTotal))
+            for i = 1, 5 do
+                local typeTotal = elixirStats.typeTotals[i] or 0
+                local typeCount = elixirStats.typeCounts[i] or 0
+                if typeTotal > 0 or typeCount > 0 then
+                    table.insert(elixirLines, string.format("  %s: %d点 (%d个)", 
+                        ELIXIR_TYPE_NAMES[i] or i, typeTotal, typeCount))
+                end
+            end
+        end
+        
+        -- 显示消耗的丹药
+        if elixirConsumption.grandTotal > 0 then
+            table.insert(elixirLines, "")
+            table.insert(elixirLines, string.format("【消耗统计】总消耗: %d点", elixirConsumption.grandTotal))
+            for i = 1, 5 do
+                local consumedPoints = elixirConsumption.typeTotals[i] or 0
+                local consumedCount = elixirConsumption.typeCounts[i] or 0
+                if consumedPoints > 0 or consumedCount > 0 then
+                    local detailText = {}
+                    if elixirConsumption.details[i] then
+                        for quality, count in pairs(elixirConsumption.details[i]) do
+                            if count > 0 then
+                                table.insert(detailText, string.format("品质%d×%d", quality, count))
+                            end
+                        end
+                    end
+                    local detailStr = #detailText > 0 and (" [" .. table.concat(detailText, ", ") .. "]") or ""
+                    table.insert(elixirLines, string.format("  %s: %d点 (%d个)%s", 
+                        ELIXIR_TYPE_NAMES[i] or i, consumedPoints, consumedCount, detailStr))
+                end
+            end
+        end
+        
+        if #elixirLines > 0 then
+            elixirText.Text = table.concat(elixirLines, "\n")
+        elseif elixirStats.grandTotal == 0 then
+            elixirText.Text = "点击'初始化丹药'按钮加载数据..."
+        end
+        
         -- 如果UI被销毁，断开连接
         if not screenGui.Parent then
             updateConnection:Disconnect()
@@ -951,7 +1399,8 @@ local function CreateUI()
         runtimeLabel = runtimeLabel,
         statusLabel = statusLabel,
         statsText = statsText,
-        historyContainer = historyContainer
+        historyContainer = historyContainer,
+        elixirText = elixirText
     }
 end
 
@@ -964,6 +1413,64 @@ Players.LocalPlayer.Idled:Connect(function()
 end)
 print("✓ 防AFK功能已启用")
 
+-- 设置丹药数据同步事件监听
+local function SetupElixirDataSync()
+    local success, elixirSyncEvent = pcall(function()
+        return ReplicatedStorage
+            :WaitForChild("\228\186\139\228\187\182")          -- 药水
+            :WaitForChild("\229\174\162\230\136\183\231\171\175") -- 同步模块
+            :WaitForChild("\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175") -- 同步控制器
+            :WaitForChild("\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150") -- 数据更新事件
+    end)
+    
+    if success and elixirSyncEvent then
+        elixirSyncEvent.Event:Connect(function(data)
+            elixirData = data
+            
+            -- 创建当前快照
+            local currentSnapshot = CreateElixirSnapshot()
+            
+            -- 如果有之前的快照，计算消耗
+            if previousElixirSnapshot and currentSnapshot then
+                local hasConsumption = CalculateElixirConsumption(currentSnapshot)
+                
+                -- 如果有新的消耗且与上次打印的不同，才打印本次消耗信息（避免重复打印）
+                if hasConsumption and elixirConsumption.grandTotal > lastPrintedConsumption then
+                    local deltaTotal = elixirConsumption.grandTotal - lastPrintedConsumption
+                    local consumptionInfo = {}
+                    for i = 1, 5 do
+                        local consumedPoints = elixirConsumption.typeTotals[i] or 0
+                        local consumedCount = elixirConsumption.typeCounts[i] or 0
+                        if consumedPoints > 0 then
+                            table.insert(consumptionInfo, string.format("%s:%d点(%d个)", 
+                                ELIXIR_TYPE_NAMES[i] or i, consumedPoints, consumedCount))
+                        end
+                    end
+                    if #consumptionInfo > 0 then
+                        print(string.format("⚠ 丹药消耗: 本次消耗 %d点，累计总消耗 %d点 [%s]", 
+                            deltaTotal, elixirConsumption.grandTotal, table.concat(consumptionInfo, ", ")))
+                        lastPrintedConsumption = elixirConsumption.grandTotal
+                    end
+                end
+            end
+            
+            -- 更新快照
+            previousElixirSnapshot = currentSnapshot
+            
+            -- 自动计算丹药统计
+            local typeTotals, grandTotal, typeCounts = CalculateElixirPoints()
+            elixirStats.typeTotals = typeTotals
+            elixirStats.grandTotal = grandTotal
+            elixirStats.typeCounts = typeCounts
+        end)
+        print("✓ 丹药数据同步事件已连接")
+        return true
+    else
+        warn("无法连接丹药数据同步事件")
+        return false
+    end
+end
+
 -- 初始化
 print("=" .. string.rep("=", 60))
 print("挂饰自动购买系统已启动")
@@ -973,6 +1480,9 @@ for quality, limit in pairs(PRICE_LIMITS) do
     print(string.format("  %s(%d): <= %d", QUALITY_NAMES[quality] or quality, quality, limit))
 end
 print("=" .. string.rep("=", 60))
+
+-- 设置丹药数据同步
+SetupElixirDataSync()
 
 -- 创建UI
 CreateUI()
