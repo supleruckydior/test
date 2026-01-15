@@ -15,12 +15,12 @@ local LocalPlayer = Players.LocalPlayer
 
 -- 等待游戏加载界面完成（从简易脚本移植）
 local function waitForGameLoadComplete(maxWaitTime)
-    maxWaitTime = maxWaitTime or 120  -- 默认最多等待120秒
+    maxWaitTime = maxWaitTime or 30  -- 默认最多等待120秒
     
     print('[初始化] 等待游戏加载动画完成...')
     
     -- 第一步：等待加载动画路径出现（因为注入可能比动画加载还早）
-    local pathWaitTimeout = 30  -- 等待路径出现的超时时间（30秒）
+    local pathWaitTimeout = 10  -- 等待路径出现的超时时间（30秒）
     local pathWaitStartTime = tick()  -- 统一使用tick()而不是os.clock()
     local loadingAnimation = nil
     
@@ -56,7 +56,7 @@ local function waitForGameLoadComplete(maxWaitTime)
     if loadingAnimation and not loadingAnimation.Visible then
         print('[初始化] 路径存在但不可见，等待动画开始显示...')
         local visibleWaitStartTime = tick()  -- 统一使用tick()而不是os.clock()
-        local visibleWaitTimeout = 30  -- 等待可见的超时时间（30秒）
+        local visibleWaitTimeout = 10  -- 等待可见的超时时间（30秒）
         
         while tick() - visibleWaitStartTime < visibleWaitTimeout do
             local checkSuccess, checkResult = pcall(function()
@@ -118,7 +118,7 @@ local function CheckGUIVisibility()
 end
 
 -- 等待游戏加载界面完成
-waitForGameLoadComplete(45)
+waitForGameLoadComplete(20)
 
 -- 额外等待确保GUI完全初始化（避免菜单加载不正确）
 print('[初始化] 等待GUI完全初始化...')
