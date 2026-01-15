@@ -13,145 +13,7 @@ local PathfindingService = game:GetService("PathfindingService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- 等待游戏加载界面完成（从简易脚本移植）
-local function waitForGameLoadComplete(maxWaitTime)
-    maxWaitTime = maxWaitTime or 30  -- 默认最多等待120秒
-    
-    print('[初始化] 等待游戏加载动画完成...')
-    
-    -- 第一步：等待加载动画路径出现（因为注入可能比动画加载还早）
-    local pathWaitTimeout = 10  -- 等待路径出现的超时时间（30秒）
-    local pathWaitStartTime = tick()  -- 统一使用tick()而不是os.clock()
-    local loadingAnimation = nil
-    
-    print('[初始化] 等待加载动画路径出现...')
-    
-    -- 循环检查完整路径，不使用 WaitForChild
-    while tick() - pathWaitStartTime < pathWaitTimeout do
-        local success, result = pcall(function()
-            -- 直接使用完整路径访问
-            return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
-        end)
-        
-        if success and result and result.Parent then
-            loadingAnimation = result
-            -- 检查是否可见，如果可见就跳出循环
-            if loadingAnimation.Visible then
-                print('[初始化] 检测到加载动画（可见），等待动画完成...')
-                break
-            end
-            -- 如果路径存在但不可见，继续等待直到它变为可见
-        end
-        
-        task.wait(0.3)
-    end
-    
-    -- 如果等待路径超时，可能是已经加载完成（路径被销毁了），直接继续
-    if not loadingAnimation then
-        print('[初始化] 等待路径超时，可能已加载完成，继续执行...')
-        return true
-    end
-    
-    -- 第二步：如果路径存在但不可见，等待它变为可见（动画开始显示）
-    if loadingAnimation and not loadingAnimation.Visible then
-        print('[初始化] 路径存在但不可见，等待动画开始显示...')
-        local visibleWaitStartTime = tick()  -- 统一使用tick()而不是os.clock()
-        local visibleWaitTimeout = 10  -- 等待可见的超时时间（30秒）
-        
-        while tick() - visibleWaitStartTime < visibleWaitTimeout do
-            local checkSuccess, checkResult = pcall(function()
-                return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
-            end)
-            
-            if checkSuccess and checkResult and checkResult.Parent and checkResult.Visible then
-                print('[初始化] 加载动画已显示，等待动画完成...')
-                loadingAnimation = checkResult
-                break
-            end
-            
-            task.wait(0.3)
-        end
-        
-        -- 如果等待可见超时，可能已经加载完成，直接继续
-        if not loadingAnimation.Visible then
-            print('[初始化] 等待可见超时，可能已加载完成，继续执行...')
-            return true
-        end
-    end
-    
-    -- 第三步：等待加载动画消失（表示加载完成）
-    if loadingAnimation and loadingAnimation.Visible then
-        local startTime = tick()  -- 统一使用tick()而不是os.clock()
-        print('[初始化] 等待加载动画消失...')
-        
-        while tick() - startTime < maxWaitTime do
-            -- 使用完整路径检查加载动画是否还存在且可见
-            local checkSuccess, checkResult = pcall(function()
-                return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\138\160\232\189\189\233\161\181\233\157\162"]
-            end)
-            
-            -- 如果加载动画不存在或不可见，说明加载完成
-            if not checkSuccess or not checkResult or not checkResult.Parent or not checkResult.Visible then
-                print('[初始化] 游戏加载完成！')
-                return true
-            end
-            
-            task.wait(0.5)
-        end
-        
-        warn('[初始化] 等待游戏加载超时，继续执行...')
-    end
-    
-    return true
-end
-
--- 检查GUI可见性（需要在MoveToTarget之前定义）
-local function CheckGUIVisibility()
-    local success, result = pcall(function()
-        return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
-    end)
-    if not success then
-        -- GUI路径不存在，返回false（不shutdown）
-        return false
-    end
-    return result == true
-end
-
--- 等待游戏加载界面完成
-waitForGameLoadComplete(20)
-
--- 额外等待确保GUI完全初始化（避免菜单加载不正确）
-print('[初始化] 等待GUI完全初始化...')
-task.wait(2)
-
--- 初始等待期间也要检查GUI（使用Heartbeat每帧检查）
-local initGuiCheckConnection
-initGuiCheckConnection = RunService.Heartbeat:Connect(function()
-    if CheckGUIVisibility() then
-        if initGuiCheckConnection then
-            initGuiCheckConnection:Disconnect()
-        end
-        print("初始化等待期间检测到GUI可见 - 关闭游戏")
-        game:Shutdown()
-    end
-end)
-
-local initStartTime = tick()
-while tick() - initStartTime < 2 do
-    wait(0.1)
-end
-
-if initGuiCheckConnection then
-    initGuiCheckConnection:Disconnect()
-end
-
--- 再次检查GUI（防止在断开连接后GUI才变为可见）
-if CheckGUIVisibility() then
-    print("初始化后检测到GUI可见 - 关闭游戏")
-    game:Shutdown()
-    return
-end
-
+task.wait(7)
 -- 随机初始延迟（让30个号分散启动）- 0到8秒随机等待
 local initialDelay = math.random(0, 800) / 100  -- 0-8秒，精确到0.01秒
 if initialDelay > 0 then
@@ -169,7 +31,7 @@ local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:WaitForChild("Humanoid")
 Humanoid.PlatformStand = false
 -- 增加移动速度
-Humanoid.WalkSpeed = 64
+Humanoid.WalkSpeed = 74
 
 -- 检查水晶是否存在
 local function CheckCrystalExists()
@@ -341,7 +203,7 @@ local function MoveToTarget(targetModel)
     end
     
     -- 设置随机移动速度（增加随机性）- 扩大范围让30个号更分散
-    local baseWalkSpeed = math.random(55, 75)  -- 基础移动速度在55-75之间随机（扩大范围）
+    local baseWalkSpeed = 74  -- 基础移动速度在55-75之间随机（扩大范围）
     currentHumanoid.WalkSpeed = baseWalkSpeed
     
     -- 获取目标位置（使用固定坐标）
@@ -534,7 +396,7 @@ local function MoveToTarget(targetModel)
     local isRecalculating = false  -- 防止重复重新计算
     local moveStartTimeTable = {value = nil}  -- 用于存储移动开始时间的引用，以便死亡时重置
     -- 随机移动速度（增加随机性）- 扩大范围让30个号更分散
-    local baseWalkSpeed = math.random(55, 75)  -- 基础移动速度在55-75之间随机（扩大范围）
+    local baseWalkSpeed = 74  -- 基础移动速度在55-75之间随机（扩大范围）
     local waypointReachDistance = math.random(5, 9)  -- 路径点到达判断距离随机（5-9单位）
     local stuckCheckInterval = math.random(1.0, 4.0)  -- 卡住检测时间随机（1-4秒，扩大范围）
     local stuckDistanceThreshold = math.random(1.0, 4.0)  -- 卡住判断的移动距离阈值随机（1-4单位，扩大范围）
