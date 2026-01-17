@@ -6,12 +6,13 @@ local LocalPlayer = Players.LocalPlayer
 -- 配置常量
 -- =========================
 local CONFIG = {
-    MIN_EGG_COUNT = 2,              -- 最小蛋数量（背包+孵化中 >= 此值才继续孵蛋）
+    MIN_EGG_COUNT = 1,              -- 最小蛋数量（背包中有 >= 此值就可以孵蛋，设置为1表示有蛋就孵）
     HATCH_TIME = 600,               -- 孵化完成时间（秒）
+    LAST_EGG_HATCH_TIME = 630,      -- 最后一个蛋孵化时间（秒，10分30秒，用于无数据刷新时的强制开蛋）
     SERVER_REFRESH_INTERVAL = 10,   -- 服务器数据刷新间隔（秒）
     MAIN_LOOP_INTERVAL = 1,         -- 主循环检查间隔（秒）
     EGG_PLACE_WAIT_TIME = 2,        -- 放置蛋后等待时间（秒）再检查进度
-    DEBUG_MODE = false,             -- 是否开启调试输出
+    DEBUG_MODE = true,              -- 是否开启调试输出（开启以诊断问题）
 }
 
 -- =========================
@@ -65,6 +66,7 @@ local lastHatchTime = 0      -- 上次开蛋时间
 local lastPlaceTime = 0      -- 上次放置蛋时间
 local lastRefreshTime = 0    -- 上次刷新服务器数据时间
 local placeEggWaitTime = 0   -- 放置蛋后的等待截止时间（用于延迟检查进度）
+local lastEggPlaceTime = 0   -- 放置最后一个蛋的时间（背包为空时使用计时器开蛋）
 local OPERATION_COOLDOWN = 0.5  -- 操作冷却时间（秒）
 
 -- =========================
@@ -229,6 +231,8 @@ local function placeRandomEggIfNone()
     
     -- 随机选择蛋并放置
     local randomEgg = backpack[math.random(1, #backpack)]
+    local isLastEgg = #backpack == 1  -- 判断是否是最后一个蛋
+    
     local success, err = pcall(function()
         remotePlaceEgg:FireServer(randomEgg['索引'])
     end)
@@ -236,7 +240,14 @@ local function placeRandomEggIfNone()
     if success then
         lastPlaceTime = currentTime
         placeEggWaitTime = currentTime + CONFIG.EGG_PLACE_WAIT_TIME  -- 设置等待截止时间
-        print('随机放置孵化蛋索引:', randomEgg['索引'], '等待', CONFIG.EGG_PLACE_WAIT_TIME, '秒后检查进度')
+        
+        -- 如果是最后一个蛋，记录放置时间，用于后续计时开蛋
+        if isLastEgg then
+            lastEggPlaceTime = currentTime
+            print('随机放置孵化蛋索引:', randomEgg['索引'], '(最后一个蛋) 等待', CONFIG.EGG_PLACE_WAIT_TIME, '秒后检查进度，将在', CONFIG.LAST_EGG_HATCH_TIME, '秒后强制开蛋')
+        else
+            print('随机放置孵化蛋索引:', randomEgg['索引'], '等待', CONFIG.EGG_PLACE_WAIT_TIME, '秒后检查进度')
+        end
     else
         warn('放置蛋失败:', err)
     end
@@ -248,8 +259,12 @@ end
 local function hatchEgg()
     local currentTime = tick()
     if currentTime - lastHatchTime < OPERATION_COOLDOWN then
+        print('[开蛋] 冷却中，剩余', OPERATION_COOLDOWN - (currentTime - lastHatchTime), '秒')
         return
     end
+    
+    local incubatingProgress = getIncubatingProgress()
+    print('[开蛋] 尝试开蛋，当前孵化进度:', incubatingProgress, '秒，要求:', CONFIG.HATCH_TIME, '秒')
     
     local success, err = pcall(function()
         remoteHatch:FireServer()
@@ -257,11 +272,11 @@ local function hatchEgg()
     
     if success then
         lastHatchTime = currentTime
-        print('孵化完成，开蛋！')
+        print('[开蛋] 成功！孵化完成，开蛋！')
         -- 开蛋后短暂延迟，等待服务器更新数据
         wait(0.5)
     else
-        warn('开蛋失败:', err)
+        warn('[开蛋] 失败:', err)
     end
 end
 
@@ -311,24 +326,46 @@ spawn(function()
         
         local currentTime = tick()
         local backpackCount = getBackpackCount()
-        
-        -- 如果刚放置了蛋，在等待期内，跳过进度检查（等待服务器更新数据）
-        local isWaitingForUpdate = currentTime < placeEggWaitTime
-        if isWaitingForUpdate then
-            updateUI()
-            return  -- 等待期结束前不检查进度
-        end
-        
-        -- 等待期结束后，检查实际的孵化进度
         local incubatingProgress = getIncubatingProgress()
         local hasIncubatingEgg = incubatingProgress > 0
+        local remainingTime = math.max(0, CONFIG.HATCH_TIME - incubatingProgress)
         local totalEggCount = backpackCount + (hasIncubatingEgg and 1 or 0)
+        local isLastEggSituation = backpackCount == 0 and hasIncubatingEgg  -- 最后一个蛋的情况：背包为空且有孵化中的蛋
         
-        -- 检查是否可以开蛋（孵化进度达到要求）
+        -- 如果刚放置了蛋，在等待期内，跳过放置新蛋的检查（但开蛋检查不受影响）
+        local isWaitingForUpdate = currentTime < placeEggWaitTime
+        
+        -- 调试输出（每10秒输出一次）
+        if math.floor(currentTime) % 10 == 0 then
+            local timeSinceLastEgg = isLastEggSituation and (currentTime - lastEggPlaceTime) or 0
+            print(string.format('[主循环] 背包:%d 进度:%d秒 剩余:%d秒 等待期:%s 有蛋:%s 最后蛋:%s%s', 
+                backpackCount, incubatingProgress, remainingTime, 
+                tostring(isWaitingForUpdate), tostring(hasIncubatingEgg), tostring(isLastEggSituation),
+                isLastEggSituation and string.format(' 已过:%d秒', timeSinceLastEgg) or ''))
+        end
+        
+        -- 优先检查是否可以开蛋（不受等待期影响，因为开蛋是重要操作）
         if incubatingProgress >= CONFIG.HATCH_TIME then
+            print('[主循环] 检测到孵化完成，准备开蛋！进度:', incubatingProgress, '>=', CONFIG.HATCH_TIME)
             hatchEgg()
-        -- 检查是否可以孵蛋（总蛋数 >= 最小数量 且 当前没有正在孵化的蛋）
-        elseif totalEggCount >= CONFIG.MIN_EGG_COUNT and not hasIncubatingEgg then
+            lastEggPlaceTime = 0  -- 开蛋后重置最后蛋计时
+        -- 如果是最后一个蛋的情况，使用计时器判断是否到开蛋时间（10分30秒）
+        elseif isLastEggSituation and lastEggPlaceTime > 0 then
+            local timeSinceLastEgg = currentTime - lastEggPlaceTime
+            if timeSinceLastEgg >= CONFIG.LAST_EGG_HATCH_TIME then
+                print('[主循环] 最后一个蛋计时到达，强制开蛋！已过:', timeSinceLastEgg, '秒 >=', CONFIG.LAST_EGG_HATCH_TIME, '秒')
+                hatchEgg()
+                lastEggPlaceTime = 0  -- 开蛋后重置最后蛋计时
+            end
+        -- 如果剩余时间<=0但进度还没更新，也尝试开蛋（防止数据延迟）
+        elseif hasIncubatingEgg and remainingTime <= 0 and incubatingProgress > 0 then
+            print('[主循环] 剩余时间<=0，强制尝试开蛋！进度:', incubatingProgress, '剩余:', remainingTime)
+            hatchEgg()
+            lastEggPlaceTime = 0  -- 开蛋后重置最后蛋计时
+        -- 检查是否可以孵蛋（背包有蛋 >= 最小数量 且 当前没有正在孵化的蛋 且 不在等待更新期）
+        -- 注意：这里只检查背包数量，不检查总数量，这样即使只有1个蛋也能孵蛋
+        elseif not isWaitingForUpdate and backpackCount >= CONFIG.MIN_EGG_COUNT and not hasIncubatingEgg then
+            print('[主循环] 准备孵蛋，背包蛋数:', backpackCount, '总蛋数:', totalEggCount)
             placeRandomEggIfNone()
         end
         

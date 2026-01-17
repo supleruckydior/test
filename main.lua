@@ -542,7 +542,7 @@ if currentGameId == TARGET_GAME_ID then
     local finishworldnum
     local values = player:WaitForChild('值')
     local privileges = values:WaitForChild('特权')
-    local gowordlevels = 74
+    local gowordlevels = 78
     local isDetectionEnabled = true
     local playerInRange = false
     local timescheck = 0
@@ -1269,7 +1269,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         end)
         local Difficulty_choose =
-            features2:AddLabel('  當前選擇 關卡： 74') -- 初始化顯示為70
+            features2:AddLabel('  當前選擇 關卡： 78') -- 初始化顯示為70
         local function gowordlevelscheak(gowordlevels)
             if gowordlevels > worldnum then
                 if gowordlevels < 10 then
@@ -2860,6 +2860,16 @@ if currentGameId == TARGET_GAME_ID then
                         remote:FireServer(arg)
                     end
                 end
+            end
+        end)
+    end)
+    features6:AddButton('每星期竞技场水滴购买', function()
+        pcall(function()
+            for i = 1, 15 do
+                local args = {
+                    4
+                }
+                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\231\171\158\230\138\128\229\156\186"):WaitForChild("\232\180\173\228\185\176"):FireServer(unpack(args))
             end
         end)
     end)
