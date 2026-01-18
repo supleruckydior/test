@@ -143,8 +143,9 @@ local function FindAvailableCrystal()
                     WaypointSpacing = 4,
                 })
                 
-                -- 忽略垂直移动判断：将目标位置的Y坐标设置为起点的Y坐标
-                local flatTargetPos = Vector3.new(targetPosition.X, startPos.Y, targetPosition.Z)
+                -- 忽略垂直移动判断：将目标位置的Y坐标固定为10
+                local FIXED_PATH_HEIGHT = 10
+                local flatTargetPos = Vector3.new(targetPosition.X, FIXED_PATH_HEIGHT, targetPosition.Z)
                 local pathFound, pathError = pcall(function()
                     testPath:ComputeAsync(startPos, flatTargetPos)
                 end)
@@ -201,8 +202,9 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
                     WaypointSpacing = 8,  -- 使用较大的间距以提高成功率
                 })
                 
-                -- 忽略垂直移动判断：将测试位置的Y坐标设置为起点的Y坐标
-                local flatTestPos = Vector3.new(testPos.X, startPos.Y, testPos.Z)
+                -- 忽略垂直移动判断：将测试位置的Y坐标固定为10
+                local FIXED_PATH_HEIGHT = 10
+                local flatTestPos = Vector3.new(testPos.X, FIXED_PATH_HEIGHT, testPos.Z)
                 local success, err = pcall(function()
                     testPath:ComputeAsync(startPos, flatTestPos)
                 end)
@@ -258,8 +260,9 @@ local function MoveToTarget(targetModel)
     local endPos = targetPosition
     print("使用固定目标位置:", targetPosition)
     
-    -- 忽略垂直移动判断：将目标位置的Y坐标设置为起点的Y坐标，用于路径计算
-    local flatEndPos = Vector3.new(endPos.X, startPos.Y, endPos.Z)
+    -- 忽略垂直移动判断：将目标位置的Y坐标固定为10，用于路径计算
+    local FIXED_PATH_HEIGHT = 10
+    local flatEndPos = Vector3.new(endPos.X, FIXED_PATH_HEIGHT, endPos.Z)
     
     -- 检查距离（使用水平距离）
     local distance = (startPos - flatEndPos).Magnitude
@@ -415,16 +418,17 @@ local function MoveToTarget(targetModel)
         return false
     end
     
-    -- 创建调整后的路径点列表，所有路径点的Y坐标都设置为起点高度
+    -- 创建调整后的路径点列表，所有路径点的Y坐标都固定为10
+    local FIXED_PATH_HEIGHT = 10
     local waypoints = {}
     for i, waypoint in ipairs(rawWaypoints) do
-        local flatPos = Vector3.new(waypoint.Position.X, startPos.Y, waypoint.Position.Z)
+        local flatPos = Vector3.new(waypoint.Position.X, FIXED_PATH_HEIGHT, waypoint.Position.Z)
         table.insert(waypoints, {
             Position = flatPos,
             Action = waypoint.Action
         })
     end
-    print("已调整所有路径点的Y坐标为起点高度:", startPos.Y)
+    print("已调整所有路径点的Y坐标为固定高度:", FIXED_PATH_HEIGHT)
     
     -- 跳过第一个路径点（起始位置）
     local currentWaypointIndex = 1
@@ -535,8 +539,9 @@ local function MoveToTarget(targetModel)
         local newStartPos = currentHRP.Position
         print("新的起始位置:", newStartPos)
         
-        -- 忽略垂直移动判断：将目标位置的Y坐标设置为起点的Y坐标
-        local flatEndPos = Vector3.new(endPos.X, newStartPos.Y, endPos.Z)
+        -- 忽略垂直移动判断：将目标位置的Y坐标固定为10
+        local FIXED_PATH_HEIGHT = 10
+        local flatEndPos = Vector3.new(endPos.X, FIXED_PATH_HEIGHT, endPos.Z)
         local newDistance = (newStartPos - flatEndPos).Magnitude
         local newWaypointSpacing = 4  -- 使用默认的最佳间距
         
@@ -625,17 +630,18 @@ local function MoveToTarget(targetModel)
             return nil, nil
         end
         
-        -- 调整所有路径点的Y坐标为新的起点高度
+        -- 调整所有路径点的Y坐标固定为10
+        local FIXED_PATH_HEIGHT = 10
         local newWaypoints = {}
         for i, waypoint in ipairs(rawNewWaypoints) do
-            local flatPos = Vector3.new(waypoint.Position.X, newStartPos.Y, waypoint.Position.Z)
+            local flatPos = Vector3.new(waypoint.Position.X, FIXED_PATH_HEIGHT, waypoint.Position.Z)
             table.insert(newWaypoints, {
                 Position = flatPos,
                 Action = waypoint.Action
             })
         end
         
-        print("重新计算路径完成，共 " .. #newWaypoints .. " 个路径点 (Y已调整为" .. newStartPos.Y .. ")")
+        print("重新计算路径完成，共 " .. #newWaypoints .. " 个路径点 (Y已固定为" .. FIXED_PATH_HEIGHT .. ")")
         return newPath, newWaypoints
     end
     
