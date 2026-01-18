@@ -32,6 +32,13 @@ end
 print('[初始化] 等待GUI完全初始化...')
 task.wait(2)
 
+-- 销毁七日奖励和离线奖励界面（启动时自动删除，从main.lua移植）
+task.defer(function()
+    -- 延迟执行，确保GUI完全加载
+    task.wait(1)
+    RemoveRewardUI()
+end)
+
 -- 初始等待期间也要检查GUI（使用Heartbeat每帧检查）
 local initGuiCheckConnection
 initGuiCheckConnection = RunService.Heartbeat:Connect(function()
@@ -78,6 +85,44 @@ local Humanoid = Character:WaitForChild("Humanoid")
 Humanoid.PlatformStand = false
 -- 增加移动速度
 Humanoid.WalkSpeed = 74
+
+-- 销毁七日奖励和离线奖励界面（从main.lua移植）
+local function RemoveRewardUI()
+    local success, rewardUI = pcall(function()
+        return LocalPlayer.PlayerGui.GUI:WaitForChild("\228\186\140\231\186\167\231\149\140\233\157\162", 5)
+    end)
+    
+    if not success or not rewardUI then
+        print("[奖励界面] 未找到二级界面，跳过删除")
+        return false
+    end
+    
+    -- 定义需要删除的子对象名称
+        local rewardUINames = {
+            '离线奖励',
+            '版本说明',
+            '7日奖励',
+        }
+    local deletedCount = 0
+    
+    -- 遍历所有需要删除的子对象
+    for _, name in ipairs(rewardUINames) do
+        local child = rewardUI:FindFirstChild(name)
+        if child then
+            child:Destroy()
+            print("[奖励界面] 成功删除: " .. name)
+            deletedCount = deletedCount + 1
+        end
+    end
+    
+    if deletedCount > 0 then
+        print(string.format("[奖励界面] 共删除 %d 个奖励界面", deletedCount))
+    else
+        print("[奖励界面] 未找到需要删除的奖励界面")
+    end
+    
+    return deletedCount > 0
+end
 
 -- 检查水晶是否存在
 local function CheckCrystalExists()
@@ -1023,6 +1068,13 @@ end
 
 -- 主循环
 while true do
+    -- 定期尝试删除奖励界面（防止弹出）- 1%概率检查
+    if math.random() < 0.01 then
+        task.spawn(function()
+            RemoveRewardUI()
+        end)
+    end
+    
     -- 快速检查GUI可见性
     local guiVisible = CheckGUIVisibility()
     if guiVisible then
