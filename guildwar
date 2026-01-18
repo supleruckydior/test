@@ -505,12 +505,14 @@ local function MoveToTarget(targetModel)
         
         print(string.format("移动到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
         
-        -- 移动到目标位置
+        -- 移动到目标位置（忽略高度：使用路径点的X和Z，但使用当前角色的Y坐标）
+        local moveTargetPos = Vector3.new(targetPos.X, currentHRP.Position.Y, targetPos.Z)
+        
         -- 设置当前动态速度（初始化时currentWalkSpeed等于baseWalkSpeed）
         if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
             currentHumanoid.WalkSpeed = currentWalkSpeed
         end
-        currentHumanoid:MoveTo(targetPos)
+        currentHumanoid:MoveTo(moveTargetPos)
         isMoving = true
         stuckCheckTime = tick()
         lastPosition = currentHRP.Position
@@ -736,9 +738,12 @@ local function MoveToTarget(targetModel)
         
         local waypoint = waypoints[currentWaypointIndex]
         local targetPos = waypoint.Position
-        local distanceToWaypoint = (currentPos - targetPos).Magnitude
+        -- 忽略Y坐标判断：只使用水平距离（X和Z）来判断是否到达路径点
+        local flatCurrentPos = Vector3.new(currentPos.X, 0, currentPos.Z)
+        local flatTargetPos = Vector3.new(targetPos.X, 0, targetPos.Z)
+        local distanceToWaypoint = (flatCurrentPos - flatTargetPos).Magnitude
         
-        -- 检查是否到达当前路径点（使用随机判断距离以增加随机性）
+        -- 检查是否到达当前路径点（使用随机判断距离以增加随机性，忽略高度）
         if distanceToWaypoint < waypointReachDistance then
             -- 随机等待：有概率在路径点等待一小段时间 - 增强
             if waypointWaitDuration == 0 and math.random() < waypointWaitChance then
@@ -773,7 +778,8 @@ local function MoveToTarget(targetModel)
                 
                 stuckCheckTime = tick()
                 lastPosition = currentPos
-                print(string.format("切换到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
+                print(string.format("切换到路径点 %d/%d: %s (移动时将使用当前Y=%.2f)", 
+                    currentWaypointIndex, #waypoints, tostring(targetPos), currentPos.Y))
             else
                 print("已到达所有路径点")
                 moveComplete = true
@@ -800,11 +806,13 @@ local function MoveToTarget(targetModel)
             
             -- 持续调用MoveTo确保角色一直移动（每帧都调用）
             -- 使用当前动态速度
+            -- 忽略高度：使用路径点的X和Z，但使用当前角色的Y坐标
+            local moveTargetPos = Vector3.new(targetPos.X, currentHRP.Position.Y, targetPos.Z)
             if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
                 currentHumanoid.WalkSpeed = currentWalkSpeed
             end
             
-            currentHumanoid:MoveTo(targetPos)
+            currentHumanoid:MoveTo(moveTargetPos)
             isMoving = true
         end
         
