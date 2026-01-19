@@ -401,6 +401,59 @@ local function getHerbValue()
     return parseNumber(herbText, 0)
 end
 
+-- 丹药数据同步（用于统计总丹药数量）
+local elixirData
+local ELIXIR_BACKPACK_KEY = '\232\131\140\229\140\133'
+local ELIXIR_COUNT_KEY = '\230\149\176\233\135\143'
+
+local function bindElixirDataSync()
+    local syncEvent
+    pcall(function()
+        local elixirModule = ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182')
+        if not elixirModule then return end
+        local clientModule = elixirModule:FindFirstChild('\229\174\162\230\136\183\231\171\175')
+        if not clientModule then return end
+        local syncModule = clientModule:FindFirstChild('\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175')
+        if not syncModule then return end
+        syncEvent = syncModule:FindFirstChild('\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150')
+    end)
+
+    if syncEvent then
+        if syncEvent.Event then
+            syncEvent.Event:Connect(function(data)
+                elixirData = data
+            end)
+        elseif syncEvent.OnClientEvent then
+            syncEvent.OnClientEvent:Connect(function(data)
+                elixirData = data
+            end)
+        end
+    end
+end
+
+bindElixirDataSync()
+
+local function getElixirTotalCount()
+    if type(elixirData) ~= 'table' then
+        return nil
+    end
+    local backpack = elixirData[ELIXIR_BACKPACK_KEY]
+    if type(backpack) ~= 'table' then
+        return nil
+    end
+    local total = 0
+    for i = 1, #backpack do
+        local item = backpack[i]
+        if type(item) == 'table' then
+            local count = tonumber(item[ELIXIR_COUNT_KEY]) or 0
+            if count > 0 then
+                total = total + count
+            end
+        end
+    end
+    return total
+end
+
 local function getOREValue()
     local OREText = '0'
     pcall(function()
@@ -758,7 +811,7 @@ local function showTopRightNotice(text, lifetime)
     -- 草药数量显示
     local herbLabel = Instance.new('TextLabel')
     herbLabel.Name = 'HerbLabel'
-    herbLabel.Size = UDim2.new(1, 0, 0.2, 0)
+    herbLabel.Size = UDim2.new(1, 0, 0.18, 0)
     herbLabel.Position = UDim2.new(0, 0, 0.4, 0)
     herbLabel.BackgroundTransparency = 1
     herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
@@ -769,6 +822,21 @@ local function showTopRightNotice(text, lifetime)
     herbLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     herbLabel.Text = "获取中..."
     herbLabel.Parent = container
+
+    -- 总丹药数量显示
+    local elixirLabel = Instance.new('TextLabel')
+    elixirLabel.Name = 'ElixirLabel'
+    elixirLabel.Size = UDim2.new(1, 0, 0.18, 0)
+    elixirLabel.Position = UDim2.new(0, 0, 0.58, 0)
+    elixirLabel.BackgroundTransparency = 1
+    elixirLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+    elixirLabel.TextScaled = true
+    elixirLabel.Font = Enum.Font.SourceSansBold
+    elixirLabel.ZIndex = 100001
+    elixirLabel.TextStrokeTransparency = 0.3
+    elixirLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    elixirLabel.Text = "总丹药: 获取中..."
+    elixirLabel.Parent = container
 
     -- 更新草药数量
     local isFinished = false
@@ -785,6 +853,15 @@ local function showTopRightNotice(text, lifetime)
             herbLabel.Text = "当前草药: " .. formatNumber(currentHerbs)
             herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
         end
+
+        local totalElixirs = getElixirTotalCount()
+        if totalElixirs then
+            elixirLabel.Text = "总丹药: " .. formatNumber(totalElixirs)
+            elixirLabel.TextColor3 = Color3.fromRGB(120, 200, 255)
+        else
+            elixirLabel.Text = "总丹药: 获取中..."
+            elixirLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+        end
     end
 
     -- 更新循环
@@ -799,8 +876,8 @@ local function showTopRightNotice(text, lifetime)
     -- 按钮容器
     local buttonContainer = Instance.new('Frame')
     buttonContainer.Name = 'ButtonContainer'
-    buttonContainer.Size = UDim2.new(0.8, 0, 0.2, 0)
-    buttonContainer.Position = UDim2.new(0.1, 0, 0.7, 0)
+    buttonContainer.Size = UDim2.new(0.8, 0, 0.18, 0)
+    buttonContainer.Position = UDim2.new(0.1, 0, 0.78, 0)
     buttonContainer.BackgroundTransparency = 1
     buttonContainer.ZIndex = 100001
     buttonContainer.Parent = container

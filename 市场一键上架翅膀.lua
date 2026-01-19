@@ -292,3 +292,5 @@ print(string.format('上架价格：%s', SELL_PRICE))
 print('正在等待数据加载...')
 print('=' .. string.rep('=', 60))
 
+
+
