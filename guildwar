@@ -1,10 +1,15 @@
--- 检查游戏ID，如果是特定ID则不运行
-if game.PlaceId == 18645473062 then
-    return
-end
-
+-- 等待游戏加载完成（PlaceId 检查需要在游戏加载后进行）
 if not game:IsLoaded() then
     game.Loaded:Wait()
+end
+
+-- 检查游戏ID，如果是特定ID则不运行
+local currentPlaceId = game.PlaceId
+print("[PlaceId检查] 当前游戏 PlaceId:", currentPlaceId)
+
+if currentPlaceId == 18645473062 then
+    warn("[PlaceId检查] 检测到目标游戏ID (18645473062)，脚本将不运行")
+    return
 end
 task.wait(7)
 local Players = game:GetService("Players")
