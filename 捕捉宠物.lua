@@ -599,14 +599,12 @@ local autoEvolveRunning = false
 -- 打开/关闭宠物合成界面
 local function OpenPetEvolveView()
     if not PathTool or not PathTool.ViewManager then
-        warn("[自动合成] ViewManager 未找到，无法打开 PetEvolveView")
         return false
     end
     local ok, err = pcall(function()
         PathTool.ViewManager.OpenView("PetEvolveView")
     end)
     if not ok then
-        warn("[自动合成] 打开 PetEvolveView 失败: " .. tostring(err))
         return false
     end
     return true
@@ -614,14 +612,12 @@ end
 
 local function ClosePetEvolveView()
     if not PathTool or not PathTool.ViewManager then
-        warn("[自动合成] ViewManager 未找到，无法关闭 PetEvolveView")
         return false
     end
     local ok, err = pcall(function()
         PathTool.ViewManager.CloseView("PetEvolveView")
     end)
     if not ok then
-        warn("[自动合成] 关闭 PetEvolveView 失败: " .. tostring(err))
         return false
     end
     return true
@@ -685,7 +681,30 @@ local function GetEvolveGroups()
             if not evolveConfig then
                 return true
             end
-
+            
+            -- 如果本次进化需要额外碎片/道具（CommonItem），则跳过该等级的自动合成
+            -- CfgPetEvolve 中，当 Cost 里包含 { CostRes = "CommonItem", ... } 时，表示需要碎片
+            local needFragment = false
+            local costCfg = evolveConfig.Cost
+            if type(costCfg) == "table" then
+                -- 两种结构：单表 {CostRes=...} 或数组 { {CostRes=...}, {CostRes=...} }
+                if costCfg.CostRes == "CommonItem" then
+                    needFragment = true
+                else
+                    for _, c in pairs(costCfg) do
+                        if type(c) == "table" and c.CostRes == "CommonItem" then
+                            needFragment = true
+                            break
+                        end
+                    end
+                end
+            end
+            if needFragment then
+                -- 该进化需要额外碎片，自动合成直接跳过
+                --print(string.format("[自动合成] 跳过需要碎片的进化: %s 等级 %d", tostring(name), grade))
+                return true
+            end
+            
             local costTmplAmount = evolveConfig.CostTmplAmount or 0
             if costTmplAmount <= 0 then
                 return true
@@ -711,7 +730,6 @@ local function GetEvolveGroups()
     end)
 
     if not success then
-        warn("[自动合成] 遍历宠物时出错: " .. tostring(err))
         return {}
     end
 
@@ -806,28 +824,26 @@ end
 -- 执行一次合成
 local function PerformEvolve(mainPetItemId, materialIds)
     if not PathTool or not PathTool.DataPullManager then
-        warn("[自动合成] DataPullManager 未找到")
         return false
     end
 
     local channel = PathTool.DataPullManager.GetChannel("PetEvolveChannel")
     if not channel then
-        warn("[自动合成] PetEvolveChannel 未找到")
         return false
     end
-
+    
     local ok, result = pcall(function()
         return channel:DoRequest(tostring(mainPetItemId), materialIds)
     end)
 
     if ok then
-        if type(result) == "table" and result.Reward then
-            print("[自动合成] 奖励:", tostring(result.Reward))
+        if result == true or (type(result) == "table" and result.Reward) then
+            return true
+        else
+            return false
         end
-        return true
     end
 
-    warn("[自动合成] 合成失败: " .. tostring(result))
     return false
 end
 
@@ -838,30 +854,55 @@ local function AutoEvolveLoop()
     autoEvolveRunning = true
 
     while autoEvolveEnabled do
-        local groups = GetEvolveGroups()
-        if #groups == 0 then
+        -- 只有在非战斗状态下才进行合成
+        if IsInBattle() then
             task.wait(1)
         else
-            if OpenPetEvolveView() then
-                WaitForViewOpen("PetEvolveView", 6)
-                task.wait(0.5)
-            end
-
-            local performed = false
-            for _, group in ipairs(groups) do
-                local mainPetItemId, materialIds = BuildEvolveIds(group)
-                if mainPetItemId and materialIds then
-                    performed = PerformEvolve(mainPetItemId, materialIds)
-                    break
-                end
-            end
-
-            ClosePetEvolveView()
-
-            if performed then
+            local groups = GetEvolveGroups()
+            if #groups == 0 then
                 task.wait(1)
             else
-                task.wait(0.5)
+                if OpenPetEvolveView() then
+                    local viewOpened = WaitForViewOpen("PetEvolveView", 6)
+                    if viewOpened then
+                        task.wait(0.5)
+                    else
+                        ClosePetEvolveView()
+                        task.wait(1)
+                    end
+                else
+                    task.wait(1)
+                end
+                
+                -- 如果界面未打开，跳过本次循环
+                local viewOpen = false
+                if PathTool and PathTool.ViewManager and PathTool.ViewManager.IsViewOpen then
+                    local ok, isOpen = pcall(function()
+                        return PathTool.ViewManager.IsViewOpen("PetEvolveView")
+                    end)
+                    if ok and isOpen then
+                        viewOpen = true
+                    end
+                end
+                
+                local performed = false
+                if viewOpen then
+                    for i, group in ipairs(groups) do
+                        local mainPetItemId, materialIds = BuildEvolveIds(group)
+                        if mainPetItemId and materialIds then
+                            performed = PerformEvolve(mainPetItemId, materialIds)
+                            break
+                        end
+                    end
+
+                    ClosePetEvolveView()
+                end
+
+                if performed then
+                    task.wait(1)
+                else
+                    task.wait(0.5)
+                end
             end
         end
 
@@ -895,6 +936,8 @@ local RIFT_ENTER_COOLDOWN = 8  -- 自动进入裂缝的冷却（秒）
 local riftEntryPosition = nil  -- 进入裂缝前的入口位置
 local farmingPosition = nil  -- 刷怪点位置（记录按钮设置）
 local riftState = "idle" -- idle | entering | in_dungeon | recovering
+local failedRiftNodes = {}  -- 记录失败的裂缝节点，避免重复尝试
+local FAILED_RIFT_COOLDOWN = 60  -- 失败节点的冷却时间（秒）
 
 -- 裂缝统计
 local riftStats = {
@@ -970,12 +1013,76 @@ local function alreadyEnteredDungeon(node)
     end
     local dynamicKey = node:GetAttribute("DungeonDynamicKey")
     local startTick = node:GetAttribute("DungeonStartTick")
+    
+    -- 如果属性在父节点上，尝试从父节点获取
+    if not startTick then
+        local parent = node.Parent
+        if parent then
+            startTick = parent:GetAttribute("DungeonStartTick")
+            if not dynamicKey then
+                dynamicKey = parent:GetAttribute("DungeonDynamicKey")
+            end
+        end
+    end
+    
+    -- 动态地牢：使用 IsDynamicEntered 检查
     if dynamicKey and startTick and gp.dungeon.IsDynamicEntered then
         local ok, res = pcall(function()
             return gp.dungeon:IsDynamicEntered(dynamicKey, startTick)
         end)
-        return ok and res or false
+        if ok and res then
+            return true
+        end
     end
+    
+    -- 静态地牢：使用 GroupId、StartTick 和 UseMem 检查
+    -- 根据DungeonSystem代码，静态地牢使用 IsEntered(GroupId, StartTick, UseMem)
+    -- 注意：同一个静态地牢的StartTick可能会变化，所以每次检查时获取最新的StartTick
+    if not dynamicKey then
+        local groupId = node:GetAttribute("DungeonGroupId")
+        local useMem = node:GetAttribute("DungeonUseMem")
+        
+        -- 如果属性在父节点上，尝试从父节点获取
+        if not groupId or useMem == nil then
+            local parent = node.Parent
+            if parent then
+                if not groupId then
+                    groupId = parent:GetAttribute("DungeonGroupId")
+                end
+                if useMem == nil then
+                    useMem = parent:GetAttribute("DungeonUseMem")
+                end
+            end
+        end
+        
+        -- 静态地牢必须有 GroupId 才能检查
+        -- 注意：StartTick可能会变化，所以每次检查时重新获取最新的StartTick
+        if groupId then
+            -- 重新获取最新的StartTick（因为同一个地牢的StartTick可能会变化）
+            local latestStartTick = node:GetAttribute("DungeonStartTick")
+            if not latestStartTick then
+                local parent = node.Parent
+                if parent then
+                    latestStartTick = parent:GetAttribute("DungeonStartTick")
+                end
+            end
+            
+            if latestStartTick and gp.dungeon and gp.dungeon.IsEntered then
+                local ok, res = pcall(function()
+                    -- useMem 可能是 nil，需要处理
+                    return gp.dungeon:IsEntered(groupId, latestStartTick, useMem or false)
+                end)
+                if ok and res then
+                    return true
+                elseif ok then
+                    -- 检查成功但返回false，说明未进入
+                else
+                    -- 检查出错，静默失败
+                end
+            end
+        end
+    end
+    
     return false
 end
 
@@ -983,24 +1090,153 @@ local function TryOpenDungeonTeamView(node)
     if not PathTool or not PathTool.ViewManager then
         return false
     end
-    local showId = tonumber(string.sub(node.Name or "", 9))
-    local startTick = node:GetAttribute("DungeonStartTick")
-    local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+    
+    -- 如果节点名称不是 Dungeon_XXXX 格式，向上查找父节点
+    local actualNode = node
+    if string.sub(node.Name or "", 1, 8) ~= "Dungeon_" then
+        -- 向上查找，直到找到 Dungeon_XXXX 节点
+        local parent = node.Parent
+        while parent do
+            if string.sub(parent.Name or "", 1, 8) == "Dungeon_" then
+                actualNode = parent
+                break
+            end
+            parent = parent.Parent
+        end
+    end
+    
+    local showId = tonumber(string.sub(actualNode.Name or "", 9))
+    local startTick = actualNode:GetAttribute("DungeonStartTick")
+    local syncKey = actualNode:GetAttribute("DungeonSyncObjectKey")
+    
+    -- 如果属性仍然为空，尝试从父节点获取（对于静态地牢，属性可能在 Dungeon 文件夹上）
+    if not startTick or not syncKey then
+        local parent = actualNode.Parent
+        if parent then
+            if not startTick then
+                startTick = parent:GetAttribute("DungeonStartTick")
+            end
+            if not syncKey then
+                syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+            end
+        end
+    end
+    
     if not showId or not startTick or not syncKey then
+        warn("[自动刷裂缝] TryOpenDungeonTeamView: 缺少必要属性", 
+             "节点="..tostring(actualNode:GetFullName()),
+             "showId="..tostring(showId), 
+             "startTick="..tostring(startTick), 
+             "syncKey="..tostring(syncKey))
         return false
     end
-    local ok = pcall(function()
-        PathTool.ViewManager.OpenView("DungeonTeamView", {
-            Node = node,
-            DungeonShowId = showId,
-            _dungeonStartTick = startTick,
-            _dungeonTmplId = node:GetAttribute("DungeonTmplId"),
-            _dungeonEndTick = node:GetAttribute("DungeonEndTick"),
-            _dungeonGroupId = node:GetAttribute("DungeonGroupId"),
-            _dungeonUseMem = node:GetAttribute("DungeonUseMem"),
-            _dungeonDynamicKey = node:GetAttribute("DungeonDynamicKey"),
-        }, syncKey)
-    end)
+    
+    -- 检查是否为静态地牢（静态地牢都在 workspace.Area.xxx.Area.Dungeon. 这种路径）
+    -- 有Portal说明是开启状态
+    local groupId = actualNode:GetAttribute("DungeonGroupId")
+    local dynamicKey = actualNode:GetAttribute("DungeonDynamicKey")
+    local nodePath = actualNode:GetFullName()
+    
+    -- 如果节点在DynamicDungeon目录下，不是静态地牢（DynamicDungeon都在DynamicDungeon目录下）
+    local isStaticDungeon = false
+    if string.find(nodePath, "DynamicDungeon") then
+        -- DynamicDungeon：使用原有判断逻辑
+        isStaticDungeon = (groupId and not dynamicKey) or false
+    else
+        -- 静态地牢判断：检查路径是否为 workspace.Area.xxx.Area.Dungeon. 格式
+        -- 有Portal说明是开启状态，检查节点下是否有Portal子节点
+        local hasPortal = false
+        pcall(function()
+            for _, child in ipairs(actualNode:GetChildren()) do
+                if string.find(child.Name, "Portal") then
+                    hasPortal = true
+                    break
+                end
+            end
+        end)
+        
+        -- 静态地牢：路径包含 Area.*.Area.Dungeon（Portal只是辅助判断开启状态，不是必要条件）
+        -- 注意：有些裂缝可能没有Portal子节点（如501），但仍然是静态地牢
+        local pathMatches = string.find(nodePath, "Area") and string.find(nodePath, "Dungeon") and not string.find(nodePath, "DynamicDungeon")
+        isStaticDungeon = pathMatches
+    end
+    
+    local ok = false
+    if isStaticDungeon then
+        -- 静态地牢：尝试使用 AreaDungeonShower.Create 创建 DungeonShowInfo
+        ok = pcall(function()
+            local AreaDungeonShower = rawget(PathTool, "AreaDungeonShower")
+            if AreaDungeonShower and AreaDungeonShower.Create then
+                -- 尝试找到 ZoneKey（应该是 "Dungeon"）
+                local zoneKey = "Dungeon"
+                -- 尝试找到 ZoneCfg（从 ZoneConfig）
+                local zoneCfg = nil
+                if PathTool.Require then
+                    local ok2, cfg = pcall(function()
+                        return PathTool.Require(script:FindFirstChild("ZoneConfig") or script.Parent:FindFirstChild("ZoneConfig"))
+                    end)
+                    if ok2 and cfg and cfg[zoneKey] then
+                        zoneCfg = cfg[zoneKey]
+                    end
+                end
+                
+                -- 创建 ZoneNode 信息对象
+                local zoneInfo = {
+                    ZoneNode = actualNode,
+                    ZoneKey = zoneKey,
+                    ZoneCfg = zoneCfg
+                }
+                
+                -- 使用 AreaDungeonShower.Create 创建 DungeonShowInfo
+                local dungeonShowInfo = AreaDungeonShower.Create(zoneInfo)
+                if dungeonShowInfo then
+                    -- 确保属性已更新
+                    if dungeonShowInfo._onUpdateShow then
+                        dungeonShowInfo._onUpdateShow()
+                    end
+                    task.wait(0.2)  -- 等待属性更新
+                    -- 使用创建的 DungeonShowInfo 打开界面
+                    PathTool.ViewManager.OpenView("DungeonTeamView", dungeonShowInfo, syncKey)
+                    print("[自动刷裂缝] 静态地牢：使用 AreaDungeonShower.Create 打开界面")
+                    return true
+                else
+                    warn("[自动刷裂缝] AreaDungeonShower.Create 返回 nil")
+                end
+            else
+                warn("[自动刷裂缝] AreaDungeonShower 不可用")
+            end
+            
+            -- 如果 AreaDungeonShower 不可用，尝试直接打开（备用方案）
+            warn("[自动刷裂缝] 尝试直接打开静态地牢界面（备用方案）")
+            PathTool.ViewManager.OpenView("DungeonTeamView", {
+                Node = actualNode,
+                DungeonShowId = showId,
+                _dungeonStartTick = startTick,
+                _dungeonTmplId = actualNode:GetAttribute("DungeonTmplId"),
+                _dungeonEndTick = actualNode:GetAttribute("DungeonEndTick"),
+                _dungeonGroupId = groupId,
+                _dungeonUseMem = actualNode:GetAttribute("DungeonUseMem"),
+            }, syncKey)
+        end)
+    else
+        -- 动态地牢：使用原来的方式
+        ok = pcall(function()
+            PathTool.ViewManager.OpenView("DungeonTeamView", {
+                Node = actualNode,
+                DungeonShowId = showId,
+                _dungeonStartTick = startTick,
+                _dungeonTmplId = actualNode:GetAttribute("DungeonTmplId"),
+                _dungeonEndTick = actualNode:GetAttribute("DungeonEndTick"),
+                _dungeonGroupId = groupId,
+                _dungeonUseMem = actualNode:GetAttribute("DungeonUseMem"),
+                _dungeonDynamicKey = dynamicKey,
+            }, syncKey)
+        end)
+    end
+    
+    if not ok then
+        warn("[自动刷裂缝] TryOpenDungeonTeamView 失败")
+    end
     return ok
 end
 
@@ -1014,7 +1250,8 @@ local function TryCreateAndStartDungeon(node)
     if not okCreate then
         return false
     end
-    task.wait(0.3)
+    -- 创建队伍后增加1秒延迟再开始，避免太快导致的问题
+    task.wait(1)
     local okStart = DoDungeonRequest("DungeonStartChannel", showId, startTick)
     return okStart
 end
@@ -1058,10 +1295,6 @@ local function IsRiftNode(node, cfg)
 end
 
 local function IsRiftPresent()
-    local root = workspace:FindFirstChild("DynamicDungeon")
-    if not root then
-        return false
-    end
     local cfg = nil
     if PathTool then
         cfg = rawget(PathTool, "CfgDungeon")
@@ -1069,21 +1302,97 @@ local function IsRiftPresent()
             cfg = nil
         end
     end
-    for _, node in ipairs(root:GetChildren()) do
-        if IsRiftNode(node, cfg) then
-            lastRiftSeenTick = tick()
-            return true
+    
+    -- 方法1: 检查 DynamicDungeon 下的动态地牢
+    local root = workspace:FindFirstChild("DynamicDungeon")
+    if root then
+        for _, node in ipairs(root:GetChildren()) do
+            if IsRiftNode(node, cfg) then
+                -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                local startTick = node:GetAttribute("DungeonStartTick")
+                local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                if startTick and syncKey then
+                    lastRiftSeenTick = tick()
+                    return true
+                end
+            end
         end
     end
+    
+    -- 方法2: 检查 Area.*.Area.Dungeon 下的静态地牢（新路径格式）
+    local areaFolder = workspace:FindFirstChild("Area")
+    if areaFolder then
+        for _, areaChild in ipairs(areaFolder:GetChildren()) do
+            -- 检查 Area.*.Area.Dungeon 路径
+            local areaSubFolder = areaChild:FindFirstChild("Area")
+            if areaSubFolder then
+                local dungeonFolder = areaSubFolder:FindFirstChild("Dungeon")
+                if dungeonFolder then
+                    for _, node in ipairs(dungeonFolder:GetChildren()) do
+                        -- 检查名称格式是否为 Dungeon_XXXX
+                        if string.sub(node.Name, 1, 8) == "Dungeon_" and IsRiftNode(node, cfg) then
+                            -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                            local startTick = node:GetAttribute("DungeonStartTick")
+                            local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                            -- 如果属性在父节点上，尝试从父节点获取
+                            if not startTick or not syncKey then
+                                local parent = node.Parent
+                                if parent then
+                                    if not startTick then
+                                        startTick = parent:GetAttribute("DungeonStartTick")
+                                    end
+                                    if not syncKey then
+                                        syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                                    end
+                                end
+                            end
+                            if startTick and syncKey then
+                                lastRiftSeenTick = tick()
+                                return true
+                            end
+                        end
+                    end
+                end
+            end
+            -- 检查 Area.*.ServerZone.Dungeon 路径（旧格式，保持兼容）
+            local serverZone = areaChild:FindFirstChild("ServerZone")
+            if serverZone then
+                local dungeonFolder = serverZone:FindFirstChild("Dungeon")
+                if dungeonFolder then
+                    for _, node in ipairs(dungeonFolder:GetChildren()) do
+                        -- 检查名称格式是否为 Dungeon_XXXX
+                        if string.sub(node.Name, 1, 8) == "Dungeon_" and IsRiftNode(node, cfg) then
+                            -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                            local startTick = node:GetAttribute("DungeonStartTick")
+                            local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                            -- 如果属性在父节点上，尝试从父节点获取
+                            if not startTick or not syncKey then
+                                local parent = node.Parent
+                                if parent then
+                                    if not startTick then
+                                        startTick = parent:GetAttribute("DungeonStartTick")
+                                    end
+                                    if not syncKey then
+                                        syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                                    end
+                                end
+                            end
+                            if startTick and syncKey then
+                                lastRiftSeenTick = tick()
+                                return true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
     return false
 end
 
 local function getRiftNodeAndPos(skipEntered)
     skipEntered = skipEntered ~= false  -- 默认跳过已进入的
-    local root = workspace:FindFirstChild("DynamicDungeon")
-    if not root then
-        return nil, nil
-    end
     local cfg = nil
     if PathTool then
         cfg = rawget(PathTool, "CfgDungeon")
@@ -1099,29 +1408,217 @@ local function getRiftNodeAndPos(skipEntered)
     
     -- 收集所有未进入的裂缝节点
     local validNodes = {}
-    for _, node in ipairs(root:GetChildren()) do
-        local pos = node:GetPivot().Position
-        if not anyNode then
-            anyNode = node
-            anyPos = pos
+    
+    -- 方法1: 搜索 DynamicDungeon 下的动态地牢
+    local root = workspace:FindFirstChild("DynamicDungeon")
+    if root then
+        for _, node in ipairs(root:GetChildren()) do
+            local pos = node:GetPivot().Position
+            if not anyNode then
+                anyNode = node
+                anyPos = pos
+            end
+            if IsRiftNode(node, cfg) then
+                -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                local startTick = node:GetAttribute("DungeonStartTick")
+                local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                -- 如果属性在父节点上，尝试从父节点获取
+                if not startTick or not syncKey then
+                    local parent = node.Parent
+                    if parent then
+                        if not startTick then
+                            startTick = parent:GetAttribute("DungeonStartTick")
+                        end
+                        if not syncKey then
+                            syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                        end
+                    end
+                end
+                -- 只有当地牢激活且有 SyncKey 时才添加
+                if startTick and syncKey then
+                    -- 如果需要跳过已进入的，先检查
+                    if skipEntered and alreadyEnteredDungeon(node) then
+                        -- 跳过已进入的
+                    else
+                        table.insert(validNodes, {node = node, pos = pos})
+                    end
+                end
+            end
         end
-        if IsRiftNode(node, cfg) then
-            -- 如果需要跳过已进入的，先检查
-            if skipEntered and alreadyEnteredDungeon(node) then
-                -- 跳过已进入的
-            else
-                table.insert(validNodes, {node = node, pos = pos})
+    end
+    
+    -- 方法2: 搜索 Area.*.Area.Dungeon 下的静态地牢（新路径格式）
+    local areaFolder = workspace:FindFirstChild("Area")
+    if areaFolder then
+        for _, areaChild in ipairs(areaFolder:GetChildren()) do
+            -- 检查 Area.*.Area.Dungeon 路径
+            local areaSubFolder = areaChild:FindFirstChild("Area")
+            if areaSubFolder then
+                local dungeonFolder = areaSubFolder:FindFirstChild("Dungeon")
+                if dungeonFolder then
+                    for _, node in ipairs(dungeonFolder:GetChildren()) do
+                        -- 检查名称格式是否为 Dungeon_XXXX
+                        if string.sub(node.Name, 1, 8) == "Dungeon_" then
+                            local pos = node:GetPivot().Position
+                            if not anyNode then
+                                anyNode = node
+                                anyPos = pos
+                            end
+                            if IsRiftNode(node, cfg) then
+                                -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                                local startTick = node:GetAttribute("DungeonStartTick")
+                                local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                                -- 如果属性在父节点上，尝试从父节点获取
+                                if not startTick or not syncKey then
+                                    local parent = node.Parent
+                                    if parent then
+                                        if not startTick then
+                                            startTick = parent:GetAttribute("DungeonStartTick")
+                                        end
+                                        if not syncKey then
+                                            syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                                        end
+                                    end
+                                end
+                                -- 只有当地牢激活且有 SyncKey 时才添加
+                                if startTick and syncKey then
+                                    -- 如果需要跳过已进入的，先检查
+                                    if skipEntered and alreadyEnteredDungeon(node) then
+                                        -- 跳过已进入的
+                                    else
+                                        table.insert(validNodes, {node = node, pos = pos})
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            -- 检查 Area.*.ServerZone.Dungeon 路径（旧格式，保持兼容）
+            local serverZone = areaChild:FindFirstChild("ServerZone")
+            if serverZone then
+                local dungeonFolder = serverZone:FindFirstChild("Dungeon")
+                if dungeonFolder then
+                    for _, node in ipairs(dungeonFolder:GetChildren()) do
+                        -- 检查名称格式是否为 Dungeon_XXXX
+                        if string.sub(node.Name, 1, 8) == "Dungeon_" then
+                            local pos = node:GetPivot().Position
+                            if not anyNode then
+                                anyNode = node
+                                anyPos = pos
+                            end
+                            if IsRiftNode(node, cfg) then
+                                -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                                local startTick = node:GetAttribute("DungeonStartTick")
+                                local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                                -- 如果属性在父节点上，尝试从父节点获取
+                                if not startTick or not syncKey then
+                                    local parent = node.Parent
+                                    if parent then
+                                        if not startTick then
+                                            startTick = parent:GetAttribute("DungeonStartTick")
+                                        end
+                                        if not syncKey then
+                                            syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                                        end
+                                    end
+                                end
+                                -- 只有当地牢激活且有 SyncKey 时才添加
+                                if startTick and syncKey then
+                                    -- 如果需要跳过已进入的，先检查
+                                    if skipEntered and alreadyEnteredDungeon(node) then
+                                        -- 跳过已进入的
+                                    else
+                                        table.insert(validNodes, {node = node, pos = pos})
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
     end
     
     -- 如果没有找到未进入的节点，但skipEntered为true，尝试返回已进入的（作为后备）
     if #validNodes == 0 and skipEntered then
-        -- 重新遍历，这次包含已进入的
-        for _, node in ipairs(root:GetChildren()) do
-            if IsRiftNode(node, cfg) then
-                local pos = node:GetPivot().Position
-                table.insert(validNodes, {node = node, pos = pos})
+        -- 重新遍历动态地牢，这次包含已进入的
+        if root then
+            for _, node in ipairs(root:GetChildren()) do
+                if IsRiftNode(node, cfg) then
+                    -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                    local startTick = node:GetAttribute("DungeonStartTick")
+                    local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                    if startTick and syncKey then
+                        local pos = node:GetPivot().Position
+                        table.insert(validNodes, {node = node, pos = pos})
+                    end
+                end
+            end
+        end
+        -- 重新遍历静态地牢，这次包含已进入的
+        if areaFolder then
+            for _, areaChild in ipairs(areaFolder:GetChildren()) do
+                -- 检查 Area.*.Area.Dungeon 路径
+                local areaSubFolder = areaChild:FindFirstChild("Area")
+                if areaSubFolder then
+                    local dungeonFolder = areaSubFolder:FindFirstChild("Dungeon")
+                    if dungeonFolder then
+                        for _, node in ipairs(dungeonFolder:GetChildren()) do
+                            if string.sub(node.Name, 1, 8) == "Dungeon_" and IsRiftNode(node, cfg) then
+                                -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                                local startTick = node:GetAttribute("DungeonStartTick")
+                                local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                                -- 如果属性在父节点上，尝试从父节点获取
+                                if not startTick or not syncKey then
+                                    local parent = node.Parent
+                                    if parent then
+                                        if not startTick then
+                                            startTick = parent:GetAttribute("DungeonStartTick")
+                                        end
+                                        if not syncKey then
+                                            syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                                        end
+                                    end
+                                end
+                                if startTick and syncKey then
+                                    local pos = node:GetPivot().Position
+                                    table.insert(validNodes, {node = node, pos = pos})
+                                end
+                            end
+                        end
+                    end
+                end
+                -- 检查 Area.*.ServerZone.Dungeon 路径（旧格式，保持兼容）
+                local serverZone = areaChild:FindFirstChild("ServerZone")
+                if serverZone then
+                    local dungeonFolder = serverZone:FindFirstChild("Dungeon")
+                    if dungeonFolder then
+                        for _, node in ipairs(dungeonFolder:GetChildren()) do
+                            if string.sub(node.Name, 1, 8) == "Dungeon_" and IsRiftNode(node, cfg) then
+                                -- 检查地牢是否激活（必须有 StartTick 和 SyncKey）
+                                local startTick = node:GetAttribute("DungeonStartTick")
+                                local syncKey = node:GetAttribute("DungeonSyncObjectKey")
+                                -- 如果属性在父节点上，尝试从父节点获取
+                                if not startTick or not syncKey then
+                                    local parent = node.Parent
+                                    if parent then
+                                        if not startTick then
+                                            startTick = parent:GetAttribute("DungeonStartTick")
+                                        end
+                                        if not syncKey then
+                                            syncKey = parent:GetAttribute("DungeonSyncObjectKey")
+                                        end
+                                    end
+                                end
+                                if startTick and syncKey then
+                                    local pos = node:GetPivot().Position
+                                    table.insert(validNodes, {node = node, pos = pos})
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -1307,6 +1804,7 @@ local function MonitorRiftDungeon(node)
         LeaveArena()
         -- 设置状态为recovering，触发回血流程
         riftNeedRecover = true
+        healSource = "rift"  -- 标记回血来源是裂缝
         SetRiftState("recovering")
         return
     end
@@ -1322,10 +1820,12 @@ local function MonitorRiftDungeon(node)
     end
 
     -- 主循环：每 0.5 秒检测一次
+    local nodeDisappeared = false  -- 标记节点是否已消失
     while autoRiftEnabled and riftState == "in_dungeon" do
-        -- 检查节点是否消失
-        if node and not node.Parent then
-            print("[自动刷裂缝] 节点已消失，检查捕捉状态...")
+        -- 检查节点是否消失（只检查一次）
+        if not nodeDisappeared and node and not node.Parent then
+            print("[自动刷裂缝] 节点已消失，检查是否有怪物...")
+            nodeDisappeared = true
             task.wait(0.5)
             -- 重新检测是否有怪物（放宽限制）
             targetMonster = GetNearestMonsterInfo(500)
@@ -1333,8 +1833,8 @@ local function MonitorRiftDungeon(node)
                 targetMonster = GetNearestMonsterInfo(nil)  -- 无距离限制
             end
             if targetMonster then
-                print("[自动刷裂缝] 节点消失但仍有怪物，继续监控")
-                -- 继续循环
+                print("[自动刷裂缝] 节点消失但仍有怪物，继续监控怪物直到死亡")
+                -- 不再检查节点，继续监控怪物
             else
                 -- 没有怪物，检查是否有正在进行的捕捉
                 local catchEnd = GetCatchEndTick()
@@ -1355,6 +1855,7 @@ local function MonitorRiftDungeon(node)
         -- 检查宠物是否全死
         if AreAllEquippedPetsDeadSimple() then
             print("[自动刷裂缝] 装备宠物全死，准备退出")
+            exitReason = "failed"  -- 宠物全死，算失败
             break
         end
 
@@ -1420,8 +1921,10 @@ local function MonitorRiftDungeon(node)
                     local waitLeft = math.max(0, catchEnd - now)
                     print(string.format("[自动刷裂缝] 检测到捕捉进行中，等待捕捉结束 %.1f 秒", waitLeft))
                     task.wait(math.min(waitLeft, 12))
+                    exitReason = "success"  -- 怪物死亡并等待捕捉结束，算成功
                 else
                     print("[自动刷裂缝] 目标死亡且无捕捉，退出")
+                    exitReason = "success"  -- 怪物死亡（即使没有捕捉），也算成功完成地牢
                 end
                 break
             end
@@ -1495,17 +1998,37 @@ local function MonitorRiftDungeon(node)
     -- 根据退出原因更新统计
     if exitReason == "success" then
         riftStats.success = riftStats.success + 1
+        print(string.format("[自动刷裂缝] 地牢完成（成功）统计更新: 总=%d 成功=%d 失败=%d", 
+            riftStats.total, riftStats.success, riftStats.failed))
     elseif exitReason == "failed" then
         riftStats.failed = riftStats.failed + 1
+        print(string.format("[自动刷裂缝] 地牢完成（失败）统计更新: 总=%d 成功=%d 失败=%d", 
+            riftStats.total, riftStats.success, riftStats.failed))
     else
-        -- 未知原因，默认为失败
-        riftStats.failed = riftStats.failed + 1
-        warn("[自动刷裂缝] 未知退出原因，统计为失败")
+        -- 如果没有设置退出原因，但怪物已死亡，默认为成功
+        -- 如果真的是未知原因，才标记为失败
+        if exitReason == nil then
+            warn("[自动刷裂缝] 未设置退出原因，默认判断为成功")
+            exitReason = "success"
+            riftStats.success = riftStats.success + 1
+            print(string.format("[自动刷裂缝] 统计更新: 总=%d 成功=%d 失败=%d", 
+                riftStats.total, riftStats.success, riftStats.failed))
+        else
+            riftStats.failed = riftStats.failed + 1
+            warn(string.format("[自动刷裂缝] 未知退出原因: %s，统计为失败", tostring(exitReason)))
+        end
     end
-    UpdateRiftStats()
+    
+    -- 立即更新UI统计显示
+    pcall(function()
+        if UpdateRiftStats then
+            UpdateRiftStats()
+        end
+    end)
     
     -- 现在设置回血标志，让回血逻辑处理后续流程
     riftNeedRecover = true
+    healSource = "rift"  -- 标记回血来源是裂缝，确保回血后传送到刷怪点
     SetRiftState("recovering")
     print("[自动刷裂缝] 状态切换: in_dungeon -> recovering (等待回血)")
 end
@@ -1908,8 +2431,10 @@ local function AutoHealLoop()
                             SetRiftState("idle")
                         end
                     elseif savedPosition then
-                        -- 普通回血：传回原位置
-                        print(string.format("[自动回血] %s，TP回原位置（等待时间: %.1f秒）", reason, waitTime))
+                        -- 普通回血：优先使用刷怪点，否则传回原位置
+                        local targetPos = farmingPosition or savedPosition
+                        local targetName = farmingPosition and "刷怪点" or "原位置"
+                        print(string.format("[自动回血] %s，TP到%s（等待时间: %.1f秒）", reason, targetName, waitTime))
                         
                         -- 获取当前回血点位置，用于验证是否还在回血点
                         local recoverPos = GetRecoverPosition()
@@ -1922,7 +2447,7 @@ local function AutoHealLoop()
                         end
                         
                         -- 尝试回传（启用位置验证）
-                        local success = TeleportTo(savedPosition, true, "回血完成-回原位")
+                        local success = TeleportTo(targetPos, true, farmingPosition and "回血完成-回刷怪点" or "回血完成-回原位")
                         
                         if success then
                             -- 再次验证位置，确保真的离开了回血点
@@ -1932,7 +2457,7 @@ local function AutoHealLoop()
                             
                             if verifyPos and recoverPos then
                                 local finalDistanceToRecover = (verifyPos - recoverPos).Magnitude
-                                local distanceToSaved = (verifyPos - savedPosition).Magnitude
+                                local distanceToTarget = (verifyPos - targetPos).Magnitude
                                 
                                 -- 如果还在回血点附近（距离小于20），说明TP失败
                                 if finalDistanceToRecover < 20 then
@@ -1944,7 +2469,7 @@ local function AutoHealLoop()
                                         warn("[自动回血] ⚠ 多次TP失败，尝试强制TP...")
                                         for i = 1, 3 do
                                             pcall(function()
-                                                verifyCharacter.HumanoidRootPart.CFrame = CFrame.new(savedPosition)
+                                                verifyCharacter.HumanoidRootPart.CFrame = CFrame.new(targetPos)
                                             end)
                                             task.wait(0.2)
                                         end
@@ -1969,8 +2494,9 @@ local function AutoHealLoop()
                                     end
                                 else
                                     -- TP成功，离开回血点
-                                    print(string.format("[自动回血] ✓ 已TP回原位置（距离回血点: %.2f, 距离保存位置: %.2f）", 
-                                        finalDistanceToRecover, distanceToSaved))
+                                    local distanceToTarget = (verifyPos - targetPos).Magnitude
+                                    print(string.format("[自动回血] ✓ 已TP到%s（距离回血点: %.2f, 距离目标位置: %.2f）", 
+                                        targetName, finalDistanceToRecover, distanceToTarget))
                                     
                                     -- 恢复自动战斗状态
                                     if autoAttackWasEnabled then
@@ -2010,7 +2536,7 @@ local function AutoHealLoop()
                                 end
                             else
                                 -- 无法验证，假设成功
-                                print("[自动回血] ✓ 已TP回原位置（无法验证）")
+                                print(string.format("[自动回血] ✓ 已TP到%s（无法验证）", targetName))
                                 
                                 -- 恢复自动战斗状态
                                 if autoAttackWasEnabled then
@@ -2050,7 +2576,7 @@ local function AutoHealLoop()
                             end
                         else
                             teleportBackAttempts = teleportBackAttempts + 1
-                            warn(string.format("[自动回血] TP回原位置失败（尝试次数: %d）", teleportBackAttempts))
+                            warn(string.format("[自动回血] TP到%s失败（尝试次数: %d）", targetName, teleportBackAttempts))
                             
                             -- 如果多次失败，清除状态，避免卡住
                             if teleportBackAttempts >= 5 then
@@ -2120,7 +2646,11 @@ local function UpdateRiftStats()
         local successText = string.format("成功:%d", riftStats.success)
         local failedText = string.format("失败:%d", riftStats.failed)
         local totalText = string.format("总:%d", riftStats.total)
-        riftStatsLabel.Text = string.format("裂缝统计: %s %s %s", totalText, successText, failedText)
+        local newText = string.format("裂缝统计: %s %s %s", totalText, successText, failedText)
+        riftStatsLabel.Text = newText
+        print(string.format("[统计更新] %s", newText))
+    else
+        warn("[统计更新] riftStatsLabel 未找到，无法更新UI")
     end
 end
 
@@ -2276,19 +2806,24 @@ local function CreateUI()
     antiAFKCorner.CornerRadius = UDim.new(0, 6)
     antiAFKCorner.Parent = antiAFKButton
     
-    -- AntiAFK按钮点击事件
+    -- AntiAFK按钮点击事件（重新加载）
     antiAFKButton.MouseButton1Click:Connect(function()
-        antiAFKEnabled = not antiAFKEnabled
-        
         if antiAFKEnabled then
-            StartAntiAFK()
-            antiAFKButton.Text = "防挂机: ON"
+            antiAFKButton.Text = "防挂机: 已启用"
             antiAFKButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            print("[防挂机] AntiAFK已启用（从GitHub加载）")
         else
-            StopAntiAFK()
-            antiAFKButton.Text = "防挂机: OFF"
-            antiAFKButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+            LoadAntiAFK()
+            antiAFKButton.Text = antiAFKEnabled and "防挂机: ON" or "防挂机: OFF"
+            antiAFKButton.BackgroundColor3 = antiAFKEnabled and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(40, 40, 80)
         end
+    end)
+    
+    -- 初始化按钮状态
+    task.spawn(function()
+        task.wait(3)
+        antiAFKButton.Text = antiAFKEnabled and "防挂机: ON" or "防挂机: OFF"
+        antiAFKButton.BackgroundColor3 = antiAFKEnabled and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(40, 40, 80)
     end)
 
     -- 记录刷怪点按钮
@@ -2328,12 +2863,44 @@ local function CreateUI()
             farmingPosition.X, farmingPosition.Y, farmingPosition.Z)
         recordFarmingButton.BackgroundColor3 = Color3.fromRGB(40, 100, 40)
     end
+    
+    -- 传送到刷怪点按钮
+    local teleportToFarmingButton = Instance.new("TextButton")
+    teleportToFarmingButton.Name = "TeleportToFarmingButton"
+    teleportToFarmingButton.Size = UDim2.new(1, 0, 0, 40)
+    teleportToFarmingButton.Position = UDim2.new(0, 0, 0, 310)
+    teleportToFarmingButton.BackgroundColor3 = Color3.fromRGB(80, 60, 60)
+    teleportToFarmingButton.Text = "传送到刷怪点"
+    teleportToFarmingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teleportToFarmingButton.Font = Enum.Font.Gotham
+    teleportToFarmingButton.TextSize = 16
+    teleportToFarmingButton.BorderSizePixel = 0
+    teleportToFarmingButton.Parent = contentFrame
+    
+    local teleportToFarmingCorner = Instance.new("UICorner")
+    teleportToFarmingCorner.CornerRadius = UDim.new(0, 6)
+    teleportToFarmingCorner.Parent = teleportToFarmingButton
+    
+    -- 传送到刷怪点按钮点击事件
+    teleportToFarmingButton.MouseButton1Click:Connect(function()
+        if farmingPosition then
+            print(string.format("[传送到刷怪点] 开始传送: %s", tostring(farmingPosition)))
+            local success = TeleportTo(farmingPosition, true, "手动传送到刷怪点")
+            if success then
+                print("[传送到刷怪点] ✓ 传送成功")
+            else
+                warn("[传送到刷怪点] ✗ 传送失败")
+            end
+        else
+            warn("[传送到刷怪点] ⚠ 未设置刷怪点，请先点击'记录刷怪点'按钮")
+        end
+    end)
 
     -- 裂缝统计显示标签
     riftStatsLabel = Instance.new("TextLabel")
     riftStatsLabel.Name = "RiftStatsLabel"
     riftStatsLabel.Size = UDim2.new(1, 0, 0, 50)
-    riftStatsLabel.Position = UDim2.new(0, 0, 0, 310)
+    riftStatsLabel.Position = UDim2.new(0, 0, 0, 360)
     riftStatsLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
     riftStatsLabel.BorderSizePixel = 0
     riftStatsLabel.Text = "裂缝统计: 总:0 成功:0 失败:0"
@@ -2347,6 +2914,20 @@ local function CreateUI()
     local riftStatsCorner = Instance.new("UICorner")
     riftStatsCorner.CornerRadius = UDim.new(0, 6)
     riftStatsCorner.Parent = riftStatsLabel
+
+    -- 重新定义UpdateRiftStats函数，确保能访问到riftStatsLabel
+    UpdateRiftStats = function()
+        if riftStatsLabel then
+            local successText = string.format("成功:%d", riftStats.success)
+            local failedText = string.format("失败:%d", riftStats.failed)
+            local totalText = string.format("总:%d", riftStats.total)
+            local newText = string.format("裂缝统计: %s %s %s", totalText, successText, failedText)
+            riftStatsLabel.Text = newText
+            print(string.format("[统计更新] %s", newText))
+        else
+            warn("[统计更新] riftStatsLabel 未找到，无法更新UI")
+        end
+    end
 
     -- 初始化统计显示
     UpdateRiftStats()
@@ -2362,7 +2943,8 @@ local function CreateUI()
             if not IsRiftActive() then
                 riftNeedRecover = false
                 riftWasInBattle = nil
-                if riftState ~= "idle" and not isAtRecoverPoint then
+                -- 如果正在地牢中（MonitorRiftDungeon运行中），不要修改状态
+                if riftState ~= "idle" and riftState ~= "in_dungeon" and not isAtRecoverPoint then
                     SetRiftState("idle")
                 end
                 task.wait(0.5)
@@ -2379,76 +2961,135 @@ local function CreateUI()
                     end
                     
                     -- 双重检查：确保节点未进入（防止getRiftNodeAndPos的fallback返回已进入的节点）
-                    if alreadyEnteredDungeon(node) then
-                        print("[自动刷裂缝] 已进入过该地牢，所有裂缝均已进入，等待冷却...")
+                    local isEntered = alreadyEnteredDungeon(node)
+                    if isEntered then
+                        print(string.format("[自动刷裂缝] 节点 %s 已进入过（参数检查），跳过", node.Name))
                         lastRiftEnterTick = tick()
                         task.wait(2)  -- 增加等待时间，避免频繁检查
                         continue
                     end
                     
+                    -- 检查是否在失败冷却列表中
+                    local nodeKey = tostring(node)
+                    local failedTime = failedRiftNodes[nodeKey]
+                    if failedTime and (tick() - failedTime) < FAILED_RIFT_COOLDOWN then
+                        local remaining = FAILED_RIFT_COOLDOWN - (tick() - failedTime)
+                        print(string.format("[自动刷裂缝] 节点 %s 在失败冷却中，剩余 %.1f 秒，跳过", node.Name, remaining))
+                        task.wait(1)
+                        continue
+                    end
+                    
                     -- 找到未进入的裂缝，开始进入流程
                     lastRiftEnterTick = tick()
-                        SetRiftState("entering")
-                        print(string.format("[自动刷裂缝] 发现裂缝: %s，尝试传送进入", node.Name))
-                        TeleportTo(pos + Vector3.new(0, 3, 0), true, "裂缝-进入")
-                        task.wait(0.5)  -- 等待传送完成
+                    SetRiftState("entering")
+                    print(string.format("[自动刷裂缝] 发现裂缝: %s，尝试传送进入", node.Name))
+                    TeleportTo(pos + Vector3.new(0, 3, 0), true, "裂缝-进入")
+                    task.wait(0.5)  -- 等待传送完成
+                    
+                    -- 传送到裂缝后记录入口位置（裂缝位置）
+                    local character = player.Character
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        riftEntryPosition = character.HumanoidRootPart.Position
+                        print(string.format("[自动刷裂缝] 已传送到裂缝，记录入口位置: %s", tostring(riftEntryPosition)))
+                    else
+                        -- 如果角色未就绪，使用裂缝位置作为入口位置
+                        riftEntryPosition = pos
+                        print(string.format("[自动刷裂缝] 使用裂缝位置作为入口位置: %s", tostring(riftEntryPosition)))
+                    end
+                    
+                    task.wait(0.3)
+                    if TryOpenDungeonTeamView(node) then
+                        print("[自动刷裂缝] 已尝试打开裂缝界面")
+                    end
+                    if TryCreateAndStartDungeon(node) then
+                        print("[自动刷裂缝] 已尝试创建并进入裂缝")
+                        -- 增加总计数
+                        riftStats.total = riftStats.total + 1
                         
-                        -- 传送到裂缝后记录入口位置（裂缝位置）
-                        local character = player.Character
-                        if character and character:FindFirstChild("HumanoidRootPart") then
-                            riftEntryPosition = character.HumanoidRootPart.Position
-                            print(string.format("[自动刷裂缝] 已传送到裂缝，记录入口位置: %s", tostring(riftEntryPosition)))
-                        else
-                            -- 如果角色未就绪，使用裂缝位置作为入口位置
-                            riftEntryPosition = pos
-                            print(string.format("[自动刷裂缝] 使用裂缝位置作为入口位置: %s", tostring(riftEntryPosition)))
-                        end
+                        -- 等待一下确保地牢已进入
+                        task.wait(0.5)
                         
-                        task.wait(0.3)
-                        if TryOpenDungeonTeamView(node) then
-                            print("[自动刷裂缝] 已尝试打开裂缝界面")
-                        end
-                        if TryCreateAndStartDungeon(node) then
-                            print("[自动刷裂缝] 已尝试创建并进入裂缝")
-                            -- 增加总计数
-                            riftStats.total = riftStats.total + 1
-                            
-                            -- 等待一下确保地牢已进入
-                            task.wait(0.5)
-                            
-                            -- 关闭地牢队伍界面
-                            local closeOk, closeErr = pcall(function()
-                                if PathTool and PathTool.ViewManager then
-                                    PathTool.ViewManager.CloseView("DungeonTeamView")
-                                    print("[自动刷裂缝] 已关闭地牢队伍界面")
-                                end
-                            end)
-                            if not closeOk then
-                                warn("[自动刷裂缝] 关闭地牢队伍界面失败: " .. tostring(closeErr))
+                        -- 关闭地牢队伍界面
+                        local closeOk, closeErr = pcall(function()
+                            if PathTool and PathTool.ViewManager then
+                                PathTool.ViewManager.CloseView("DungeonTeamView")
+                                print("[自动刷裂缝] 已关闭地牢队伍界面")
                             end
-                            
-                            SetRiftState("in_dungeon")
-                            riftWasInBattle = nil
-                            spawn(function()
-                                MonitorRiftDungeon(node)
-                            end)
-                            UpdateRiftStats()
-                        else
-                            warn("[自动刷裂缝] 创建/进入失败")
-                            -- 增加总计数和失败计数
-                            riftStats.total = riftStats.total + 1
-                            riftStats.failed = riftStats.failed + 1
-                            -- 创建/进入失败时也尝试关闭界面
-                            task.wait(0.3)
-                            pcall(function()
-                                if PathTool and PathTool.ViewManager then
-                                    PathTool.ViewManager.CloseView("DungeonTeamView")
-                                    print("[自动刷裂缝] 已关闭地牢队伍界面（失败时）")
-                                end
-                            end)
-                            SetRiftState("idle")
-                            UpdateRiftStats()
+                        end)
+                        if not closeOk then
+                            warn("[自动刷裂缝] 关闭地牢队伍界面失败: " .. tostring(closeErr))
                         end
+                        
+                        SetRiftState("in_dungeon")
+                        riftWasInBattle = nil
+                        
+                        -- 进入地下城后，如果自动攻击未开启，则开启
+                        task.wait(0.5)  -- 等待地牢完全加载
+                        local currentAutoAttack = GetAutoAttackState()
+                        if not currentAutoAttack then
+                            print("[自动刷裂缝] 检测到自动攻击未开启，正在开启...")
+                            local enableResult = SetAutoAttackState(true)
+                            if enableResult then
+                                print("[自动刷裂缝] ✓ 已开启自动攻击")
+                            else
+                                warn("[自动刷裂缝] ⚠ 开启自动攻击失败")
+                            end
+                        else
+                            print("[自动刷裂缝] 自动攻击已开启，无需操作")
+                        end
+                        
+                        spawn(function()
+                            MonitorRiftDungeon(node)
+                        end)
+                        -- 更新统计UI
+                        pcall(function()
+                            if UpdateRiftStats then
+                                UpdateRiftStats()
+                            end
+                        end)
+                    else
+                        warn("[自动刷裂缝] 创建/进入失败")
+                        -- 增加总计数和失败计数
+                        riftStats.total = riftStats.total + 1
+                        riftStats.failed = riftStats.failed + 1
+                        -- 记录失败的节点，避免短时间内重复尝试
+                        local nodeKey = tostring(node)
+                        failedRiftNodes[nodeKey] = tick()
+                        print(string.format("[自动刷裂缝] 节点 %s 进入失败，已加入冷却列表（%d 秒）", node.Name, FAILED_RIFT_COOLDOWN))
+                        -- 清理过期的失败记录
+                        for key, time in pairs(failedRiftNodes) do
+                            if (tick() - time) >= FAILED_RIFT_COOLDOWN then
+                                failedRiftNodes[key] = nil
+                            end
+                        end
+                        -- 创建/进入失败时也尝试关闭界面
+                        task.wait(0.3)
+                        pcall(function()
+                            if PathTool and PathTool.ViewManager then
+                                PathTool.ViewManager.CloseView("DungeonTeamView")
+                                print("[自动刷裂缝] 已关闭地牢队伍界面（失败时）")
+                            end
+                        end)
+                        -- 失败后传送回刷怪点，防止卡死
+                        if farmingPosition then
+                            print(string.format("[自动刷裂缝] 进入失败，传送回刷怪点: %s", tostring(farmingPosition)))
+                            task.wait(0.5)  -- 等待界面关闭
+                            local farmingSuccess = TeleportTo(farmingPosition, true, "裂缝失败-回刷怪点")
+                            if farmingSuccess then
+                                print("[自动刷裂缝] ✓ 已传送回刷怪点")
+                            else
+                                warn("[自动刷裂缝] ⚠ 传送回刷怪点失败")
+                            end
+                        else
+                            warn("[自动刷裂缝] ⚠ 未设置刷怪点，无法传送回刷怪点")
+                        end
+                        SetRiftState("idle")
+                        -- 更新统计UI
+                        pcall(function()
+                            if UpdateRiftStats then
+                                UpdateRiftStats()
+                            end
+                        end)
                     end
                 end
             end
@@ -2503,12 +3144,10 @@ local function CreateUI()
         if autoEvolveEnabled then
             autoEvolveButton.Text = "自动合成: ON"
             autoEvolveButton.BackgroundColor3 = Color3.fromRGB(80, 120, 40)
-            print("[自动合成] 已启用")
             spawn(AutoEvolveLoop)
         else
             autoEvolveButton.Text = "自动合成: OFF"
             autoEvolveButton.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
-            print("[自动合成] 已禁用")
         end
     end)
     
