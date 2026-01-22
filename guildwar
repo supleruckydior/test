@@ -185,9 +185,9 @@ local function FindAvailableCrystal()
             
             -- 如果成功获取位置，尝试计算路径
             if targetPosition then
-                -- 尝试计算路径
+                -- 尝试计算路径（使用较大的半径，避免通过人体无法通过的缝隙）
                 local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 3.5,  -- 增大半径到3.5，确保能检测到墙壁缝隙（半个人大小约1.5单位）
+                    AgentRadius = 4.0,  -- 增大半径到4.0，确保不会尝试通过人体无法通过的缝隙
                     AgentHeight = 8,    -- 合理高度，允许跳跃
                     AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
                     WaypointSpacing = 4,
@@ -228,8 +228,9 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
     local searchRadius = maxRadius or 100  -- 放宽限制：默认增大到100
     local searchStep = 6  -- 减小步长到2，增加搜索密度
     
-    -- 放宽限制：尝试更多的AgentRadius值
-    local agentRadiusOptions = {3.5, 3, 2.5, 2, 1.5, 1.0, 0.75}
+    -- 尝试多个AgentRadius值（从大到小，避免通过人体无法通过的缝隙）
+    -- 移除过小的值（0.75, 1.0, 1.5），这些会导致路径通过人体无法通过的缝隙
+    local agentRadiusOptions = {4.0, 3.5, 3.0, 2.5}
     
     for _, agentRadius in ipairs(agentRadiusOptions) do
         -- 忽略高度判断，只使用原始目标位置的Y坐标
@@ -322,11 +323,11 @@ local function MoveToTarget(targetModel)
     local waypointSpacing = 4
     print("使用路径点间距:", waypointSpacing)
     
-    -- 创建路径对象（AgentRadius固定为2.5）
+    -- 创建路径对象（AgentRadius使用较大值，避免通过人体无法通过的缝隙）
     local path = nil
     local pathFound = false
     local noPathMessage = "未知错误"
-    local agentRadius = 2.5  -- 固定为2.5
+    local agentRadius = 4.0  -- 增大到4.0，确保不会尝试通过人体无法通过的缝隙
     
     print(string.format("开始计算路径，起始位置:%s 目标位置:%s 路径点间距:%s AgentRadius:%.2f",
         tostring(startPos), tostring(endPos), tostring(waypointSpacing), agentRadius))
@@ -380,7 +381,7 @@ local function MoveToTarget(targetModel)
             for _, spacing in ipairs(spacingOptions) do
                 print("尝试使用路径点间距:", spacing)
                 local longerPath = PathfindingService:CreatePath({
-                    AgentRadius = 2.5,  -- 固定为2.5
+                    AgentRadius = 4.0,  -- 增大到4.0，避免通过人体无法通过的缝隙
                     AgentHeight = 8,  -- 合理高度，允许跳跃
                     AgentCanJump = true,  -- 路径计算时允许跳跃
                     WaypointSpacing = spacing,
@@ -598,7 +599,7 @@ local function MoveToTarget(targetModel)
         local newWaypointSpacing = 4  -- 使用默认的最佳间距
         
         local newPath = PathfindingService:CreatePath({
-            AgentRadius = 2.5,  -- 固定为2.5
+            AgentRadius = 4.0,  -- 增大到4.0，避免通过人体无法通过的缝隙
             AgentHeight = 8,    -- 合理高度，允许跳跃
             AgentCanJump = true,  -- 路径计算时允许跳跃
             WaypointSpacing = newWaypointSpacing,
@@ -619,7 +620,7 @@ local function MoveToTarget(targetModel)
                 
                 for _, spacing in ipairs(spacingOptions) do
                     local longerPath = PathfindingService:CreatePath({
-                        AgentRadius = 2.5,  -- 固定为2.5
+                        AgentRadius = 4.0,  -- 增大到4.0，避免通过人体无法通过的缝隙
                         AgentHeight = 8,    -- 合理高度，允许跳跃
                         AgentCanJump = true,  -- 路径计算时允许跳跃
                         WaypointSpacing = spacing,

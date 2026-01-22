@@ -2052,6 +2052,12 @@ local function MonitorRiftDungeon(node)
     -- 执行退出
     print("[自动刷裂缝] 执行退出地牢...")
     for attempt = 1, 3 do
+        -- 如果自动刷裂缝已关闭，立即退出
+        if not autoRiftEnabled then
+            print("[自动刷裂缝] 检测到已关闭，停止退出地牢")
+            return
+        end
+        
         if LeaveArena() then
             print("[自动刷裂缝] 退出成功")
             break
@@ -2068,6 +2074,12 @@ local function MonitorRiftDungeon(node)
         local maxWaitTime = 10  -- 最多等待 10 秒
         
         while (tick() - waitStart) < maxWaitTime do
+            -- 如果自动刷裂缝已关闭，立即退出
+            if not autoRiftEnabled then
+                print("[自动刷裂缝] 检测到已关闭，停止等待回到入口位置")
+                return
+            end
+            
             local character = player.Character
             if character and character:FindFirstChild("HumanoidRootPart") then
                 local currentPos = character.HumanoidRootPart.Position
@@ -2098,7 +2110,20 @@ local function MonitorRiftDungeon(node)
         end
     else
         warn("[自动刷裂缝] ⚠ 未保存入口位置，直接进入回血流程")
-        task.wait(2)  -- 至少等待 2 秒让退出完成
+        -- 等待退出完成，但如果已关闭则立即退出
+        for i = 1, 4 do  -- 2秒，每次0.5秒
+            if not autoRiftEnabled then
+                print("[自动刷裂缝] 检测到已关闭，停止等待")
+                return
+            end
+            task.wait(0.5)
+        end
+    end
+
+    -- 如果自动刷裂缝已关闭，不再执行后续逻辑
+    if not autoRiftEnabled then
+        print("[自动刷裂缝] 检测到已关闭，停止执行后续逻辑")
+        return
     end
 
     -- 根据退出原因更新统计
@@ -3175,7 +3200,12 @@ local function CreateUI()
             task.wait(0.5)
             end
         end
+        -- 循环退出时，重置状态和标志
         autoRiftRunning = false
+        if riftState ~= "idle" then
+            SetRiftState("idle")
+            print("[自动刷裂缝] 循环退出，状态已重置为idle")
+        end
     end
 
     -- 自动刷裂缝按钮点击事件
@@ -3204,7 +3234,9 @@ local function CreateUI()
             autoRiftButton.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
             riftNeedRecover = false
             riftWasInBattle = nil
-            print("[自动刷裂缝] 已禁用")
+            autoRiftRunning = false  -- 立即重置运行标志
+            SetRiftState("idle")  -- 立即重置状态为idle，避免卡死
+            print("[自动刷裂缝] 已禁用，状态已重置为idle")
 
             if autoHealForcedByRift then
                 autoHealForcedByRift = false
