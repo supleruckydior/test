@@ -185,9 +185,9 @@ local function FindAvailableCrystal()
             
             -- 如果成功获取位置，尝试计算路径
             if targetPosition then
-                -- 尝试计算路径（使用较大的半径，避免通过人体无法通过的缝隙）
+                -- 尝试计算路径（使用更大的半径，避免通过人体无法通过的缝隙）
                 local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 4.0,  -- 增大半径到4.0，确保不会尝试通过人体无法通过的缝隙
+                    AgentRadius = 6.0,  -- 增大半径到6.0，确保不会尝试通过人体无法通过的缝隙
                     AgentHeight = 8,    -- 合理高度，允许跳跃
                     AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
                     WaypointSpacing = 4,
@@ -229,8 +229,8 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
     local searchStep = 6  -- 减小步长到2，增加搜索密度
     
     -- 尝试多个AgentRadius值（从大到小，避免通过人体无法通过的缝隙）
-    -- 移除过小的值（0.75, 1.0, 1.5），这些会导致路径通过人体无法通过的缝隙
-    local agentRadiusOptions = {4.0, 3.5, 3.0, 2.5}
+    -- 移除所有过小的值，只保留足够大的值，确保不会通过人体无法通过的缝隙
+    local agentRadiusOptions = {6.0, 5.5, 5.0, 4.5, 4.0}
     
     for _, agentRadius in ipairs(agentRadiusOptions) do
         -- 忽略高度判断，只使用原始目标位置的Y坐标
@@ -280,6 +280,70 @@ local function findReachablePosition(targetPos, startPos, maxRadius)
     return nil, nil
 end
 
+-- 验证路径点之间的通道是否足够宽（避免通过人体无法通过的缝隙）
+local function ValidatePathWidth(waypoints, minWidth)
+    minWidth = minWidth or 6.0  -- 默认最小宽度为6.0（与AgentRadius一致）
+    
+    if #waypoints < 2 then
+        return true  -- 少于2个路径点，无法验证
+    end
+    
+    local Workspace = game:GetService("Workspace")
+    
+    -- 检查每对相邻路径点之间的通道
+    for i = 1, #waypoints - 1 do
+        local wp1 = waypoints[i].Position
+        local wp2 = waypoints[i + 1].Position
+        
+        -- 计算两点之间的方向
+        local direction = (wp2 - wp1)
+        local distance = direction.Magnitude
+        
+        if distance > 0 then
+            direction = direction.Unit
+            
+            -- 在路径中点进行射线检测，检查是否有足够的空间
+            local midPoint = wp1 + direction * (distance / 2)
+            
+            -- 在多个高度进行检测，确保垂直方向也有足够空间
+            for heightOffset = -2, 2, 1 do
+                local testPos = midPoint + Vector3.new(0, heightOffset, 0)
+                
+                -- 使用射线检测检查周围是否有障碍物
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+                
+                -- 检查四个方向（前后左右）是否有足够的空间
+                local directions = {
+                    Vector3.new(1, 0, 0),   -- 右
+                    Vector3.new(-1, 0, 0),  -- 左
+                    Vector3.new(0, 0, 1),   -- 前
+                    Vector3.new(0, 0, -1),  -- 后
+                }
+                
+                for _, dir in ipairs(directions) do
+                    local rayOrigin = testPos + dir * (minWidth / 2)
+                    local rayDirection = dir * minWidth
+                    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+                    
+                    if raycastResult then
+                        -- 检测到障碍物，检查距离是否太近
+                        local hitDistance = (raycastResult.Position - rayOrigin).Magnitude
+                        if hitDistance < minWidth then
+                            print(string.format("[路径验证] 路径点 %d-%d 之间通道过窄 (检测到障碍物距离: %.2f < %.2f)", 
+                                i, i + 1, hitDistance, minWidth))
+                            return false
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return true  -- 所有路径点之间的通道都足够宽
+end
+
 -- 路径寻找函数
 local function MoveToTarget(targetModel)
     if not targetModel then
@@ -323,11 +387,11 @@ local function MoveToTarget(targetModel)
     local waypointSpacing = 4
     print("使用路径点间距:", waypointSpacing)
     
-    -- 创建路径对象（AgentRadius使用较大值，避免通过人体无法通过的缝隙）
+    -- 创建路径对象（AgentRadius使用更大值，避免通过人体无法通过的缝隙）
     local path = nil
     local pathFound = false
     local noPathMessage = "未知错误"
-    local agentRadius = 4.0  -- 增大到4.0，确保不会尝试通过人体无法通过的缝隙
+    local agentRadius = 6.0  -- 增大到6.0，确保不会尝试通过人体无法通过的缝隙
     
     print(string.format("开始计算路径，起始位置:%s 目标位置:%s 路径点间距:%s AgentRadius:%.2f",
         tostring(startPos), tostring(endPos), tostring(waypointSpacing), agentRadius))
@@ -381,7 +445,7 @@ local function MoveToTarget(targetModel)
             for _, spacing in ipairs(spacingOptions) do
                 print("尝试使用路径点间距:", spacing)
                 local longerPath = PathfindingService:CreatePath({
-                    AgentRadius = 4.0,  -- 增大到4.0，避免通过人体无法通过的缝隙
+                    AgentRadius = 6.0,  -- 增大到6.0，避免通过人体无法通过的缝隙
                     AgentHeight = 8,  -- 合理高度，允许跳跃
                     AgentCanJump = true,  -- 路径计算时允许跳跃
                     WaypointSpacing = spacing,
@@ -480,6 +544,47 @@ local function MoveToTarget(targetModel)
         })
     end
     print("已调整所有路径点的Y坐标为固定高度:", FIXED_PATH_HEIGHT)
+    
+    -- 验证路径点之间的通道宽度（避免通过人体无法通过的缝隙）
+    if not ValidatePathWidth(waypoints, agentRadius) then
+        warn("[路径验证] 检测到路径包含过窄的通道，尝试重新计算路径...")
+        -- 尝试使用更大的AgentRadius重新计算
+        local largerRadius = agentRadius + 2.0
+        local retryPath = PathfindingService:CreatePath({
+            AgentRadius = largerRadius,
+            AgentHeight = 8,
+            AgentCanJump = true,
+            WaypointSpacing = waypointSpacing,
+            Costs = { Water = 1 }
+        })
+        
+        local retrySuccess, retryError = pcall(function()
+            retryPath:ComputeAsync(startPos, flatEndPos)
+        end)
+        
+        if retrySuccess and retryPath.Status ~= Enum.PathStatus.NoPath then
+            local retryWaypoints = retryPath:GetWaypoints()
+            if #retryWaypoints > 0 then
+                -- 重新创建路径点列表
+                waypoints = {}
+                for i, waypoint in ipairs(retryWaypoints) do
+                    local flatPos = Vector3.new(waypoint.Position.X, FIXED_PATH_HEIGHT, waypoint.Position.Z)
+                    table.insert(waypoints, {
+                        Position = flatPos,
+                        Action = waypoint.Action
+                    })
+                end
+                path = retryPath
+                print(string.format("[路径验证] 使用更大的AgentRadius (%.2f) 重新计算路径成功", largerRadius))
+            else
+                warn("[路径验证] 重新计算路径失败，使用原路径（可能包含狭窄通道）")
+            end
+        else
+            warn("[路径验证] 重新计算路径失败，使用原路径（可能包含狭窄通道）")
+        end
+    else
+        print("[路径验证] 路径通道宽度验证通过")
+    end
     
     -- 跳过第一个路径点（起始位置）
     local currentWaypointIndex = 1
@@ -620,7 +725,7 @@ local function MoveToTarget(targetModel)
                 
                 for _, spacing in ipairs(spacingOptions) do
                     local longerPath = PathfindingService:CreatePath({
-                        AgentRadius = 4.0,  -- 增大到4.0，避免通过人体无法通过的缝隙
+                        AgentRadius = 6.0,  -- 增大到6.0，避免通过人体无法通过的缝隙
                         AgentHeight = 8,    -- 合理高度，允许跳跃
                         AgentCanJump = true,  -- 路径计算时允许跳跃
                         WaypointSpacing = spacing,
