@@ -16,6 +16,7 @@ local environment = {
 }
 
 local enabled = true  -- 自动启用
+local isWindowFocused = true  -- 窗口焦点状态
 
 local function randRange(a, b)
     return a + math.random() * (b - a)
@@ -126,11 +127,11 @@ local function performAction()
     end)
 end
 
--- 连接 Idled 事件
+-- 连接 Idled 事件（只在窗口失去焦点时触发）
 local function connectIdled()
     pcall(function()
         player.Idled:Connect(function()
-            if enabled then
+            if enabled and not isWindowFocused then
                 task.spawn(performAction)
             end
         end)
@@ -144,22 +145,33 @@ player.CharacterAdded:Connect(function()
     connectIdled()
 end)
 
--- 主循环：每60秒执行一次
+-- 监听窗口焦点状态
+UserInputService.WindowFocusReleased:Connect(function()
+    isWindowFocused = false
+    print("[Anti-AFK] 窗口失去焦点，开始防挂机")
+end)
+
+UserInputService.WindowFocused:Connect(function()
+    isWindowFocused = true
+    print("[Anti-AFK] 窗口获得焦点，停止防挂机")
+end)
+
+-- 主循环：每60秒执行一次（只在窗口失去焦点时）
 task.spawn(function()
     while task.wait(60) do
-        if enabled then
+        if enabled and not isWindowFocused then
             performAction()
         end
     end
 end)
 
--- Heartbeat 随机触发
+-- Heartbeat 随机触发（只在窗口失去焦点时）
 local lastActionTime = tick()
 local nextActionInterval = 60 + randRange(-10, 10)
 
 task.spawn(function()
     RunService.Heartbeat:Connect(function()
-        if not enabled then return end
+        if not enabled or isWindowFocused then return end
         
         local currentTime = tick()
         if currentTime - lastActionTime >= nextActionInterval then
@@ -170,5 +182,5 @@ task.spawn(function()
     end)
 end)
 
-print("[Anti-AFK] 已自动启用")
+print("[Anti-AFK] 已自动启用（仅在窗口失去焦点时激活）")
 

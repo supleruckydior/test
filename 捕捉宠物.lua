@@ -1006,6 +1006,73 @@ local function LeaveArena()
     return ok
 end
 
+-- 辅助函数：格式化打印值（处理table等复杂类型）
+local function formatValue(value)
+    if value == nil then
+        return "nil"
+    elseif type(value) == "table" then
+        local result = "{"
+        local count = 0
+        for k, v in pairs(value) do
+            count = count + 1
+            if count > 10 then  -- 限制table打印长度
+                result = result .. "...(更多)"
+                break
+            end
+            if type(k) == "string" then
+                result = result .. string.format('["%s"]=', k)
+            else
+                result = result .. string.format("[%s]=", tostring(k))
+            end
+            result = result .. formatValue(v) .. ", "
+        end
+        result = result:gsub(", $", "") .. "}"
+        return result
+    elseif type(value) == "string" then
+        return string.format('"%s"', value)
+    else
+        return tostring(value)
+    end
+end
+
+-- 辅助函数：打印节点的所有属性
+local function printNodeAttributes(node, label)
+    local attrs = {}
+    for _, attrName in ipairs(node:GetAttributes()) do
+        local attrValue = node:GetAttribute(attrName)
+        attrs[attrName] = attrValue
+    end
+    
+    print(string.format("[%s] 节点属性:", label))
+    print(string.format("  节点名称: %s", node.Name))
+    print(string.format("  节点路径: %s", node:GetFullName()))
+    print(string.format("  节点类型: %s", node.ClassName))
+    if next(attrs) then
+        print("  属性列表:")
+        for attrName, attrValue in pairs(attrs) do
+            print(string.format("    %s = %s", attrName, formatValue(attrValue)))
+        end
+    else
+        print("  属性列表: (无)")
+    end
+    
+    -- 检查父节点的属性
+    local parent = node.Parent
+    if parent then
+        local parentAttrs = {}
+        for _, attrName in ipairs(parent:GetAttributes()) do
+            local attrValue = parent:GetAttribute(attrName)
+            parentAttrs[attrName] = attrValue
+        end
+        if next(parentAttrs) then
+            print(string.format("  父节点 (%s) 属性:", parent.Name))
+            for attrName, attrValue in pairs(parentAttrs) do
+                print(string.format("    %s = %s", attrName, formatValue(attrValue)))
+            end
+        end
+    end
+end
+
 local function alreadyEnteredDungeon(node)
     local gp = GetGamePlayer()
     if not gp or not gp.dungeon or not node then
@@ -1058,27 +1125,45 @@ local function alreadyEnteredDungeon(node)
         -- 静态地牢必须有 GroupId 才能检查
         -- 注意：StartTick可能会变化，所以每次检查时重新获取最新的StartTick
         if groupId then
+            -- 打印静态地牢的源数据（打印所有属性，不做任何提取）
+            print("\n========== 静态地牢检测 ==========")
+            printNodeAttributes(node, "静态地牢节点")
+            
             -- 重新获取最新的StartTick（因为同一个地牢的StartTick可能会变化）
             local latestStartTick = node:GetAttribute("DungeonStartTick")
+            local latestStartTickSource = "节点本身"
             if not latestStartTick then
                 local parent = node.Parent
                 if parent then
                     latestStartTick = parent:GetAttribute("DungeonStartTick")
+                    latestStartTickSource = "父节点: " .. parent.Name
                 end
             end
             
             if latestStartTick and gp.dungeon and gp.dungeon.IsEntered then
+                print(string.format("\n调用 gp.dungeon:IsEntered(%s, %s, %s)", 
+                    formatValue(groupId), formatValue(latestStartTick), formatValue(useMem or false)))
                 local ok, res = pcall(function()
                     -- useMem 可能是 nil，需要处理
                     return gp.dungeon:IsEntered(groupId, latestStartTick, useMem or false)
                 end)
+                print(string.format("  返回结果: ok=%s, res=%s", tostring(ok), formatValue(res)))
                 if ok and res then
+                    print("========== 检测结果: 已进入过 ==========\n")
                     return true
                 elseif ok then
+                    print("========== 检测结果: 未进入 ==========\n")
                     -- 检查成功但返回false，说明未进入
                 else
+                    print(string.format("========== 检测结果: 错误 ==========\n"))
                     -- 检查出错，静默失败
                 end
+            else
+                print(string.format("\n无法检查: latestStartTick=%s, gp.dungeon=%s, gp.dungeon.IsEntered=%s", 
+                    formatValue(latestStartTick), 
+                    gp and gp.dungeon and "存在" or "不存在",
+                    gp and gp.dungeon and gp.dungeon.IsEntered and "存在" or "不存在"))
+                print("==========\n")
             end
         end
     end
@@ -1436,8 +1521,13 @@ local function getRiftNodeAndPos(skipEntered)
                 end
                 -- 只有当地牢激活且有 SyncKey 时才添加
                 if startTick and syncKey then
-                    -- 如果需要跳过已进入的，先检查
-                    if skipEntered and alreadyEnteredDungeon(node) then
+                    -- 检查是否在失败冷却列表中
+                    local nodeKey = tostring(node)
+                    local failedTime = failedRiftNodes[nodeKey]
+                    local isInCooldown = failedTime and (tick() - failedTime) < FAILED_RIFT_COOLDOWN
+                    if isInCooldown then
+                        -- 跳过冷却中的节点
+                    elseif skipEntered and alreadyEnteredDungeon(node) then
                         -- 跳过已进入的
                     else
                         table.insert(validNodes, {node = node, pos = pos})
@@ -1482,8 +1572,13 @@ local function getRiftNodeAndPos(skipEntered)
                                 end
                                 -- 只有当地牢激活且有 SyncKey 时才添加
                                 if startTick and syncKey then
-                                    -- 如果需要跳过已进入的，先检查
-                                    if skipEntered and alreadyEnteredDungeon(node) then
+                                    -- 检查是否在失败冷却列表中
+                                    local nodeKey = tostring(node)
+                                    local failedTime = failedRiftNodes[nodeKey]
+                                    local isInCooldown = failedTime and (tick() - failedTime) < FAILED_RIFT_COOLDOWN
+                                    if isInCooldown then
+                                        -- 跳过冷却中的节点
+                                    elseif skipEntered and alreadyEnteredDungeon(node) then
                                         -- 跳过已进入的
                                     else
                                         table.insert(validNodes, {node = node, pos = pos})
@@ -1525,8 +1620,13 @@ local function getRiftNodeAndPos(skipEntered)
                                 end
                                 -- 只有当地牢激活且有 SyncKey 时才添加
                                 if startTick and syncKey then
-                                    -- 如果需要跳过已进入的，先检查
-                                    if skipEntered and alreadyEnteredDungeon(node) then
+                                    -- 检查是否在失败冷却列表中
+                                    local nodeKey = tostring(node)
+                                    local failedTime = failedRiftNodes[nodeKey]
+                                    local isInCooldown = failedTime and (tick() - failedTime) < FAILED_RIFT_COOLDOWN
+                                    if isInCooldown then
+                                        -- 跳过冷却中的节点
+                                    elseif skipEntered and alreadyEnteredDungeon(node) then
                                         -- 跳过已进入的
                                     else
                                         table.insert(validNodes, {node = node, pos = pos})
@@ -1550,8 +1650,14 @@ local function getRiftNodeAndPos(skipEntered)
                     local startTick = node:GetAttribute("DungeonStartTick")
                     local syncKey = node:GetAttribute("DungeonSyncObjectKey")
                     if startTick and syncKey then
-                        local pos = node:GetPivot().Position
-                        table.insert(validNodes, {node = node, pos = pos})
+                        -- 检查是否在失败冷却列表中
+                        local nodeKey = tostring(node)
+                        local failedTime = failedRiftNodes[nodeKey]
+                        local isInCooldown = failedTime and (tick() - failedTime) < FAILED_RIFT_COOLDOWN
+                        if not isInCooldown then
+                            local pos = node:GetPivot().Position
+                            table.insert(validNodes, {node = node, pos = pos})
+                        end
                     end
                 end
             end
@@ -2043,144 +2149,49 @@ local function IsRiftActive()
     return false
 end
 
--- AntiAFK状态（增强版 - 使用多种方法防止被踢）
+-- AntiAFK状态 - 从GitHub加载
 local antiAFKEnabled = false
-local antiAFKConnections = {}  -- 存储所有连接，方便清理
 
--- 启动AntiAFK（增强版 - 使用多种方法）
-local function StartAntiAFK()
+-- 从GitHub加载并启用AntiAFK
+local function LoadAntiAFK()
     if antiAFKEnabled then
         return
     end
     
-    antiAFKEnabled = true
+    local success, err = pcall(function()
+        -- GitHub raw 链接
+        local antiAFKUrl = "https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/SimpleAntiAFK.lua"
+        local script = game:HttpGetAsync(antiAFKUrl)
+        if script then
+            loadstring(script)()
+            antiAFKEnabled = true
+            print("[防挂机] 已从GitHub加载并自动启用")
+        else
+            warn("[防挂机] 从GitHub加载失败: 脚本为空")
+        end
+    end)
     
-    -- 方法1: VirtualUser Idled事件（基础方法）
-    local idledConnection = player.Idled:Connect(function()
+    if not success then
+        warn("[防挂机] 从GitHub加载失败:", err)
+        -- 如果GitHub加载失败，使用简单的备用方法
         pcall(function()
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new())
+            local idledConnection = player.Idled:Connect(function()
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+            end)
+            antiAFKEnabled = true
+            print("[防挂机] 使用备用方法（VirtualUser）")
         end)
-    end)
-    table.insert(antiAFKConnections, idledConnection)
-    
-    -- 方法2: 定期移动角色（模拟玩家活动）
-    local moveConnection = RunService.Heartbeat:Connect(function()
-        if not antiAFKEnabled then
-            return
-        end
-        
-        pcall(function()
-            local character = player.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
-                local rootPart = character.HumanoidRootPart
-                local humanoid = character:FindFirstChild("Humanoid")
-                
-                -- 每30秒微调位置（模拟玩家活动）
-                if math.random() < 0.033 then  -- 约每30秒触发一次
-                    local currentPos = rootPart.Position
-                    local offset = Vector3.new(
-                        math.random(-5, 5),
-                        0,
-                        math.random(-5, 5)
-                    )
-                    rootPart.CFrame = CFrame.new(currentPos + offset)
-                end
-            end
-        end)
-    end)
-    table.insert(antiAFKConnections, moveConnection)
-    
-    -- 方法3: 定期模拟鼠标移动（通过UserInputService）
-    local UserInputService = game:GetService("UserInputService")
-    local mouseMoveConnection = RunService.Heartbeat:Connect(function()
-        if not antiAFKEnabled then
-            return
-        end
-        
-        -- 每60秒模拟一次鼠标移动
-        if math.random() < 0.017 then  -- 约每60秒触发一次
-            pcall(function()
-                -- 模拟鼠标移动事件
-                local mouse = player:GetMouse()
-                if mouse then
-                    -- 触发鼠标移动（通过改变鼠标位置）
-                    local currentPos = mouse.Hit.Position
-                    local offset = Vector3.new(
-                        math.random(-10, 10),
-                        math.random(-5, 5),
-                        math.random(-10, 10)
-                    )
-                    -- 注意：无法直接设置鼠标位置，但可以通过其他方式模拟
-                end
-            end)
-        end
-    end)
-    table.insert(antiAFKConnections, mouseMoveConnection)
-    
-    -- 方法4: 定期模拟键盘输入（通过UserInputService）
-    local keyPressConnection = RunService.Heartbeat:Connect(function()
-        if not antiAFKEnabled then
-            return
-        end
-        
-        -- 每90秒模拟一次键盘输入
-        if math.random() < 0.011 then  -- 约每90秒触发一次
-            pcall(function()
-                -- 模拟按下空格键（跳跃）
-                local character = player.Character
-                if character and character:FindFirstChild("Humanoid") then
-                    local humanoid = character.Humanoid
-                    if humanoid then
-                        humanoid.Jump = true
-                    end
-                end
-            end)
-        end
-    end)
-    table.insert(antiAFKConnections, keyPressConnection)
-    
-    -- 方法5: 定期触发游戏内活动（如果PathTool可用）
-    local gameActivityConnection = RunService.Heartbeat:Connect(function()
-        if not antiAFKEnabled then
-            return
-        end
-        
-        -- 每120秒触发一次游戏活动
-        if math.random() < 0.008 then  -- 约每120秒触发一次
-            pcall(function()
-                -- 尝试触发一些游戏内活动
-                if PathTool and PathTool.EventSystem then
-                    -- 触发一个无害的事件，模拟玩家活动
-                    PathTool.EventSystem.Execute("PetHealthChange")
-                end
-            end)
-        end
-    end)
-    table.insert(antiAFKConnections, gameActivityConnection)
-    
-    print("[防挂机] ✓ 已启动（增强版 - 使用5种方法）")
-    print("[防挂机] 方法: VirtualUser + 角色移动 + 鼠标模拟 + 键盘模拟 + 游戏活动")
+    end
 end
 
--- 停止AntiAFK
-local function StopAntiAFK()
-    if not antiAFKEnabled then
-        return
-    end
-    
-    antiAFKEnabled = false
-    
-    -- 断开所有连接
-    for _, connection in ipairs(antiAFKConnections) do
-        if connection and connection.Disconnect then
-            connection:Disconnect()
-        end
-    end
-    antiAFKConnections = {}
-    
-    print("[防挂机] 已停止（已清理所有连接）")
-end
+-- 启动时自动加载AntiAFK
+task.spawn(function()
+    task.wait(2)  -- 等待游戏加载完成
+    LoadAntiAFK()
+end)
 
 -- 自动回血主循环
 local function AutoHealLoop()
@@ -2414,10 +2425,45 @@ local function AutoHealLoop()
                             recoverPointArrivalTime = nil
                             teleportBackAttempts = 0
                             riftEntryPosition = nil
-                            riftNeedRecover = false
                             healSource = nil
-                            task.wait(0.5)
-                            SetRiftState("idle")
+                            
+                            -- 等待传送完成并稳定
+                            task.wait(1.0)
+                            
+                            -- 再次确认所有宠物都满血（防止在传送过程中血量变化）
+                            UpdateEquippedSlots()
+                            local slotCount = GetEquippedSlotCount()
+                            local verifyDeadCount = 0
+                            local verifyFullHealthCount = 0
+                            for _, slotData in pairs(equippedSlots) do
+                                if slotData.petInfo then
+                                    if IsPetDead(slotData.petInfo) then
+                                        verifyDeadCount = verifyDeadCount + 1
+                                    elseif IsPetFullHealth(slotData.petInfo) then
+                                        verifyFullHealthCount = verifyFullHealthCount + 1
+                                    end
+                                else
+                                    verifyDeadCount = verifyDeadCount + 1
+                                end
+                            end
+                            local verifyFullHealth = verifyFullHealthCount >= 3 and verifyDeadCount == 0
+                            if verifyFullHealth then
+                                print("[自动刷裂缝] ✓ 回血完成，所有宠物已满血，准备下一次循环")
+                                riftNeedRecover = false
+                                SetRiftState("idle")
+                            else
+                                warn(string.format("[自动刷裂缝] ⚠ 回血验证失败：满血数=%d，死亡数=%d，继续等待回血", verifyFullHealthCount, verifyDeadCount))
+                                -- 回血验证失败，重新设置回血状态
+                                riftNeedRecover = true
+                                SetRiftState("recovering")
+                                -- 重新传送到回血点
+                                local recoverPos = GetRecoverPosition()
+                                if recoverPos then
+                                    TeleportTo(recoverPos, true, "裂缝-回血验证失败-重新回血")
+                                    isAtRecoverPoint = true
+                                    recoverPointArrivalTime = tick()
+                                end
+                            end
                         else
                             warn("[自动刷裂缝] ⚠ 未设置刷怪点，请先点击'记录刷怪点'按钮")
                             -- 未设置刷怪点，清除状态避免卡住
@@ -2426,9 +2472,45 @@ local function AutoHealLoop()
                             recoverPointArrivalTime = nil
                             teleportBackAttempts = 0
                             riftEntryPosition = nil
-                            riftNeedRecover = false
                             healSource = nil
-                            SetRiftState("idle")
+                            
+                            -- 等待传送完成并稳定
+                            task.wait(1.0)
+                            
+                            -- 再次确认所有宠物都满血（防止在传送过程中血量变化）
+                            UpdateEquippedSlots()
+                            local slotCount = GetEquippedSlotCount()
+                            local verifyDeadCount = 0
+                            local verifyFullHealthCount = 0
+                            for _, slotData in pairs(equippedSlots) do
+                                if slotData.petInfo then
+                                    if IsPetDead(slotData.petInfo) then
+                                        verifyDeadCount = verifyDeadCount + 1
+                                    elseif IsPetFullHealth(slotData.petInfo) then
+                                        verifyFullHealthCount = verifyFullHealthCount + 1
+                                    end
+                                else
+                                    verifyDeadCount = verifyDeadCount + 1
+                                end
+                            end
+                            local verifyFullHealth = verifyFullHealthCount >= 3 and verifyDeadCount == 0
+                            if verifyFullHealth then
+                                print("[自动刷裂缝] ✓ 回血完成，所有宠物已满血，准备下一次循环")
+                                riftNeedRecover = false
+                                SetRiftState("idle")
+                            else
+                                warn(string.format("[自动刷裂缝] ⚠ 回血验证失败：满血数=%d，死亡数=%d，继续等待回血", verifyFullHealthCount, verifyDeadCount))
+                                -- 回血验证失败，重新设置回血状态
+                                riftNeedRecover = true
+                                SetRiftState("recovering")
+                                -- 重新传送到回血点
+                                local recoverPos = GetRecoverPosition()
+                                if recoverPos then
+                                    TeleportTo(recoverPos, true, "裂缝-回血验证失败-重新回血")
+                                    isAtRecoverPoint = true
+                                    recoverPointArrivalTime = tick()
+                                end
+                            end
                         end
                     elseif savedPosition then
                         -- 普通回血：优先使用刷怪点，否则传回原位置
@@ -2941,10 +3023,14 @@ local function CreateUI()
         riftWasInBattle = nil
         while autoRiftEnabled do
             if not IsRiftActive() then
-                riftNeedRecover = false
                 riftWasInBattle = nil
+                -- 如果正在回血中，不要清除回血状态
+                if riftState ~= "recovering" then
+                    riftNeedRecover = false
+                end
                 -- 如果正在地牢中（MonitorRiftDungeon运行中），不要修改状态
-                if riftState ~= "idle" and riftState ~= "in_dungeon" and not isAtRecoverPoint then
+                -- 如果正在回血中，也不要修改状态
+                if riftState ~= "idle" and riftState ~= "in_dungeon" and riftState ~= "recovering" and not isAtRecoverPoint then
                     SetRiftState("idle")
                 end
                 task.wait(0.5)
@@ -2969,15 +3055,7 @@ local function CreateUI()
                         continue
                     end
                     
-                    -- 检查是否在失败冷却列表中
-                    local nodeKey = tostring(node)
-                    local failedTime = failedRiftNodes[nodeKey]
-                    if failedTime and (tick() - failedTime) < FAILED_RIFT_COOLDOWN then
-                        local remaining = FAILED_RIFT_COOLDOWN - (tick() - failedTime)
-                        print(string.format("[自动刷裂缝] 节点 %s 在失败冷却中，剩余 %.1f 秒，跳过", node.Name, remaining))
-                        task.wait(1)
-                        continue
-                    end
+                    -- 注意：失败冷却检查已在 getRiftNodeAndPos 中处理，这里不需要再次检查
                     
                     -- 找到未进入的裂缝，开始进入流程
                     lastRiftEnterTick = tick()
