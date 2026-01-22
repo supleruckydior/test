@@ -16,12 +16,34 @@ local environment = {
 }
 
 local enabled = true  -- 自动启用
-local isWindowFocused = true  -- 窗口焦点状态
+
+-- 用户操作检测
+local lastUserActivity = tick()  -- 记录最后一次用户操作时间
+local IDLE_THRESHOLD = 20  -- 空闲阈值（秒），超过这个时间没有操作才执行anti-afk
 
 local function randRange(a, b)
     return a + math.random() * (b - a)
 end
 
+-- 检测用户是否有操作
+local function hasUserActivity()
+    return (tick() - lastUserActivity) < IDLE_THRESHOLD
+end
+
+-- 监听用户输入，更新最后操作时间
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed then
+        lastUserActivity = tick()
+    end
+end)
+
+-- 监听鼠标移动
+UserInputService.InputChanged:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseMovement then
+        lastUserActivity = tick()
+    end
+end)
+ 
 -- 相机微动
 local function cameraNudge()
     if not environment.hasCamera then return end
@@ -106,6 +128,11 @@ end
 local function performAction()
     if not enabled then return end
     
+    -- 只有在用户空闲时才执行
+    if hasUserActivity() then
+        return
+    end
+    
     pcall(function()
         local action = math.random(1, 3)
         
@@ -127,11 +154,11 @@ local function performAction()
     end)
 end
 
--- 连接 Idled 事件（只在窗口失去焦点时触发）
+-- 连接 Idled 事件
 local function connectIdled()
     pcall(function()
         player.Idled:Connect(function()
-            if enabled and not isWindowFocused then
+            if enabled then
                 task.spawn(performAction)
             end
         end)
@@ -145,33 +172,28 @@ player.CharacterAdded:Connect(function()
     connectIdled()
 end)
 
--- 监听窗口焦点状态
-UserInputService.WindowFocusReleased:Connect(function()
-    isWindowFocused = false
-    print("[Anti-AFK] 窗口失去焦点，开始防挂机")
-end)
-
-UserInputService.WindowFocused:Connect(function()
-    isWindowFocused = true
-    print("[Anti-AFK] 窗口获得焦点，停止防挂机")
-end)
-
--- 主循环：每60秒执行一次（只在窗口失去焦点时）
+-- 主循环：每60秒检查一次，但只在用户空闲时执行
 task.spawn(function()
     while task.wait(60) do
-        if enabled and not isWindowFocused then
+        if enabled and not hasUserActivity() then
             performAction()
         end
     end
 end)
 
--- Heartbeat 随机触发（只在窗口失去焦点时）
+-- Heartbeat 随机触发（只在用户空闲时）
 local lastActionTime = tick()
 local nextActionInterval = 60 + randRange(-10, 10)
 
 task.spawn(function()
     RunService.Heartbeat:Connect(function()
-        if not enabled or isWindowFocused then return end
+        if not enabled then return end
+        
+        -- 如果用户有操作，重置计时器
+        if hasUserActivity() then
+            lastActionTime = tick()
+            return
+        end
         
         local currentTime = tick()
         if currentTime - lastActionTime >= nextActionInterval then
@@ -182,5 +204,5 @@ task.spawn(function()
     end)
 end)
 
-print("[Anti-AFK] 已自动启用（仅在窗口失去焦点时激活）")
+print("[Anti-AFK] 已自动启用")
 
