@@ -928,10 +928,26 @@ local herbBuyFinished = false
 local herbCollectFinished = false
 local farmReady = false
 local hasShownCompletionNotice = false
+local completionFileWritten = false
+
+local function writeCompletionMarkerOnce()
+    if completionFileWritten then
+        return
+    end
+    if not writefile then
+        return
+    end
+    local path = player.Name .. ".txt"
+    pcall(function()
+        writefile(path, "Yummytool")
+        completionFileWritten = true
+    end)
+end
 
 local function checkAllTasksFinished()
     if donationFinished and herbBuyFinished and herbCollectFinished and farmReady and not hasShownCompletionNotice then
         hasShownCompletionNotice = true
+        writeCompletionMarkerOnce()
         showTopRightNotice('收菜完成！', 99999)
         print('[系统] 所有任务完成，显示完成通知')
         -- 收菜完成后开始每3秒保存数据
@@ -1579,6 +1595,7 @@ local function herbLoop()
                     print('[系统] 进入高成本模式，结束草药购买任务')
                     herbController.highCostMode = true
                     if not herbBuyFinished then
+                        task.wait(5)
                         herbBuyFinished = true
                         checkAllTasksFinished()
                     end
@@ -1600,6 +1617,7 @@ local function herbLoop()
                 task.wait(1.5)
             else
                 if not herbBuyFinished then
+                    task.wait(5)
                     herbBuyFinished = true
                     checkAllTasksFinished()
                 end
