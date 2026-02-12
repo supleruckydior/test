@@ -405,57 +405,131 @@ local function getHerbValue()
     return parseNumber(herbText, 0)
 end
 
--- 丹药数据同步（用于统计总丹药数量）
-local elixirData
+-- 丹药数据同步（用于统计总丹药数量，参考丹药交易脚本）
+local elixirData = {}
 local ELIXIR_BACKPACK_KEY = '\232\131\140\229\140\133'
 local ELIXIR_COUNT_KEY = '\230\149\176\233\135\143'
+local ELIXIR_QUALITY_KEY = '品质'
+local ELIXIR_INDEX_KEY = '索引'
+local ELIXIR_QUALITY_POINTS = {
+    [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5,
+    [6] = 6, [7] = 8, [8] = 10, [9] = 14, [10] = 20,
+    [11] = 28
+}
 
-local function bindElixirDataSync()
-    local syncEvent
-    pcall(function()
-        local elixirModule = ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182')
-        if not elixirModule then return end
-        local clientModule = elixirModule:FindFirstChild('\229\174\162\230\136\183\231\171\175')
-        if not clientModule then return end
-        local syncModule = clientModule:FindFirstChild('\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175')
-        if not syncModule then return end
-        syncEvent = syncModule:FindFirstChild('\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150')
-    end)
+-- 使用与丹药交易相同的直接路径获取同步事件
+local elixirSyncEvent
+local syncSuccess, syncResult = pcall(function()
+    return ReplicatedStorage
+        ["\228\186\139\228\187\182"]
+        ["\229\174\162\230\136\183\231\171\175"]
+        ["\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175"]
+        ["\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150"]
+end)
 
-    if syncEvent then
-        if syncEvent.Event then
-            syncEvent.Event:Connect(function(data)
-                elixirData = data
-            end)
-        elseif syncEvent.OnClientEvent then
-            syncEvent.OnClientEvent:Connect(function(data)
-                elixirData = data
-            end)
-        end
+local function mergeElixirSyncData(data)
+    if type(data) ~= 'table' then
+        return false
     end
-end
 
-bindElixirDataSync()
-
-local function getElixirTotalCount()
-    if type(elixirData) ~= 'table' then
-        return nil
+    local fullBackpack = data[ELIXIR_BACKPACK_KEY]
+    if type(fullBackpack) == 'table' then
+        elixirData = data
+        return true
     end
+
     local backpack = elixirData[ELIXIR_BACKPACK_KEY]
     if type(backpack) ~= 'table' then
-        return nil
+        backpack = {}
+        elixirData = {
+            [ELIXIR_BACKPACK_KEY] = backpack
+        }
     end
-    local total = 0
-    for i = 1, #backpack do
-        local item = backpack[i]
+
+    local function upsertItem(item)
+        if type(item) ~= 'table' then
+            return
+        end
+
+        local itemIndex = item[ELIXIR_INDEX_KEY]
+        if itemIndex == nil then
+            return
+        end
+
+        local numericIndex = tonumber(itemIndex)
+        if numericIndex then
+            backpack[numericIndex] = item
+            return
+        end
+
+        local normalizedIndex = tostring(itemIndex)
+        for slot, existing in pairs(backpack) do
+            if type(existing) == 'table' and tostring(existing[ELIXIR_INDEX_KEY]) == normalizedIndex then
+                backpack[slot] = item
+                return
+            end
+        end
+
+        backpack[#backpack + 1] = item
+    end
+
+    if data[ELIXIR_INDEX_KEY] ~= nil then
+        upsertItem(data)
+        return true
+    end
+
+    local merged = false
+    for _, item in pairs(data) do
         if type(item) == 'table' then
-            local count = tonumber(item[ELIXIR_COUNT_KEY]) or 0
+            upsertItem(item)
+            merged = true
+        end
+    end
+
+    return merged
+end
+
+if syncSuccess and syncResult then
+    elixirSyncEvent = syncResult
+    elixirSyncEvent.Event:Connect(function(data)
+        mergeElixirSyncData(data)
+    end)
+    print('[丹药同步] 已连接 elixirSyncEvent，实时监听丹药数据')
+else
+    warn('[丹药同步] 无法获取同步事件，丹药数量显示可能不可用:', syncResult)
+end
+
+-- 计算总丹药数量（兼容数组和字典两种背包结构，参考丹药交易）
+local function getElixirTotals()
+    if type(elixirData) ~= 'table' then
+        return nil, nil
+    end
+
+    local backpack = elixirData[ELIXIR_BACKPACK_KEY]
+    if type(backpack) ~= 'table' then
+        return nil, nil
+    end
+
+    local totalCount = 0
+    local totalPoints = 0
+
+    -- 使用 pairs 同时支持数组和字典结构
+    for _, item in pairs(backpack) do
+        if type(item) == 'table' then
+            local count = parseNumber(item[ELIXIR_COUNT_KEY], 0)
             if count > 0 then
-                total = total + count
+                totalCount = totalCount + count
+
+                local quality = tonumber(item[ELIXIR_QUALITY_KEY]) or 0
+                local pointPerItem = ELIXIR_QUALITY_POINTS[quality]
+                if pointPerItem then
+                    totalPoints = totalPoints + (count * pointPerItem)
+                end
             end
         end
     end
-    return total
+
+    return totalCount, totalPoints
 end
 
 local function getOREValue()
@@ -858,9 +932,10 @@ local function showTopRightNotice(text, lifetime)
             herbLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
         end
 
-        local totalElixirs = getElixirTotalCount()
-        if totalElixirs then
-            elixirLabel.Text = "总丹药: " .. formatNumber(totalElixirs)
+        local totalElixirs, totalElixirPoints = getElixirTotals()
+        if totalElixirs ~= nil then
+            local displayValue = (totalElixirPoints and totalElixirPoints > 0) and totalElixirPoints or totalElixirs
+            elixirLabel.Text = "总丹药: " .. formatNumber(displayValue)
             elixirLabel.TextColor3 = Color3.fromRGB(120, 200, 255)
         else
             elixirLabel.Text = "总丹药: 获取中..."
