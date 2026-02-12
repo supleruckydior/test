@@ -6,6 +6,10 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
+-- 收菜/炼丹完成时写入 yummytool 的时机：true=收菜完成时写入，false=炼丹完成时写入
+if G_colectherb == nil then
+    G_colectherb = true  -- 默认收菜完成时写入，兼容旧用法
+end
 
 local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
@@ -947,7 +951,9 @@ end
 local function checkAllTasksFinished()
     if donationFinished and herbBuyFinished and herbCollectFinished and farmReady and not hasShownCompletionNotice then
         hasShownCompletionNotice = true
-        writeCompletionMarkerOnce()
+        if G_colectherb then
+            writeCompletionMarkerOnce()
+        end
         showTopRightNotice('收菜完成！', 99999)
         print('[系统] 所有任务完成，显示完成通知')
         -- 收菜完成后开始每3秒保存数据
@@ -1342,6 +1348,9 @@ local function elixirLoop()
     while elixirController.enabled do
         local currentHerbs = getHerbValue()
         if currentHerbs < 5000 then
+            if not G_colectherb then
+                writeCompletionMarkerOnce()
+            end
             print('[系统] 草药数量低于5000，停止自动炼丹')
             elixirController.enabled = false
             AutoelixirSwitch:Set(false)
@@ -1694,6 +1703,9 @@ local function smartMonitor()
                 task.spawn(startElixirLoop)
             end
         elseif currentHerbs < 5000 and lowcontrol then
+            if not G_colectherb then
+                writeCompletionMarkerOnce()
+            end
             Autoelixir = false
             hasExecutedTrade = false
             herbprint = false
