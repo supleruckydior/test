@@ -1,1257 +1,677 @@
--- 等待游戏加载完成（PlaceId 检查需要在游戏加载后进行）
+--!strict
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
--- 检查游戏ID，如果是特定ID则不运行
-local currentPlaceId = game.PlaceId
-print("[PlaceId检查] 当前游戏 PlaceId:", currentPlaceId)
-
-if currentPlaceId == 18645473062 then
-    warn("[PlaceId检查] 检测到目标游戏ID (18645473062)，脚本将不运行")
-    return
-end
-task.wait(7)
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-
-
-
--- 检查GUI可见性（需要在MoveToTarget之前定义）
-local function CheckGUIVisibility()
-    local success, result = pcall(function()
-        return game:GetService("Players").LocalPlayer.PlayerGui.GUI["\228\186\140\231\186\167\231\149\140\233\157\162"]["\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"].Visible
-    end)
-    if not success then
-        -- GUI路径不存在，返回false（不shutdown）
-        return false
-    end
-    return result == true
-end
-
-
--- 额外等待确保GUI完全初始化（避免菜单加载不正确）
-print('[初始化] 等待GUI完全初始化...')
-task.wait(2)
-
--- 销毁七日奖励和离线奖励界面（启动时自动删除，从main.lua移植）
-task.defer(function()
-    -- 延迟执行，确保GUI完全加载
-    task.wait(1)
-    RemoveRewardUI()
-end)
-
--- 初始等待期间也要检查GUI（使用Heartbeat每帧检查）
-local initGuiCheckConnection
-initGuiCheckConnection = RunService.Heartbeat:Connect(function()
-    if CheckGUIVisibility() then
-        if initGuiCheckConnection then
-            initGuiCheckConnection:Disconnect()
-        end
-        print("初始化等待期间检测到GUI可见 - 关闭游戏")
-        game:Shutdown()
-    end
-end)
-
-local initStartTime = tick()
-while tick() - initStartTime < 2 do
-    wait(0.1)
-end
-
-if initGuiCheckConnection then
-    initGuiCheckConnection:Disconnect()
-end
-
--- 再次检查GUI（防止在断开连接后GUI才变为可见）
-if CheckGUIVisibility() then
-    print("初始化后检测到GUI可见 - 关闭游戏")
-    game:Shutdown()
+if not LocalPlayer then
+    warn("[初始化] LocalPlayer 不存在，脚本终止")
     return
 end
 
--- 随机初始延迟（让30个号分散启动）- 0到8秒随机等待
-local initialDelay = math.random(0, 800) / 100  -- 0-8秒，精确到0.01秒
-if initialDelay > 0 then
-    print(string.format("[初始化] 随机初始延迟: %.2f 秒", initialDelay))
-    task.wait(initialDelay)
+local BLOCKED_PLACE_ID = 18645473062
+local STARTUP_DELAY_SECONDS = 7
+local GUI_INIT_WAIT_SECONDS = 2
+local INITIAL_DELAY_MIN = 0
+local INITIAL_DELAY_MAX = 8
+local MAIN_COOLDOWN_MIN = 10
+local MAIN_COOLDOWN_MAX = 18
+
+local BASE_WALK_SPEED = 68
+local MIN_DYNAMIC_SPEED = 66
+local MAX_DYNAMIC_SPEED = 70
+local SPEED_CHANGE_MIN = 4
+local SPEED_CHANGE_MAX = 8
+
+local FIXED_PATH_HEIGHT = 10
+local FIXED_TARGET_POSITION = Vector3.new(-513, 10, -511)
+local USE_FIXED_TARGET = true
+
+local MOVE_TIMEOUT_SECONDS = 210
+local WAYPOINT_TIMEOUT_SECONDS = 12
+local WAYPOINT_REACH_DISTANCE = 5.0
+local STUCK_CHECK_INTERVAL = 1.8
+local STUCK_DISTANCE_THRESHOLD = 1.0
+local STUCK_CONFIRM_COUNT = 2
+local POSITION_JUMP_THRESHOLD = 90
+local MAX_REPATH_ATTEMPTS = 6
+local REPATH_DELAY_SECONDS = 0.6
+
+local SEARCH_RADIUS = 110
+local SEARCH_STEP = 8
+local SEARCH_ANGLE_STEP = 20
+
+local REWARD_UI_REMOVE_CHANCE = 0.005
+local SHORT_IDLE_SECONDS = 1.2
+
+local SECONDARY_GUI_NAME = "\228\186\140\231\186\167\231\149\140\233\157\162"
+local REWARD_VISIBLE_GUI_NAME = "\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"
+local CRYSTAL_CONTAINER_NAME = "\229\141\149\228\189\141\229\175\185\232\177\161"
+
+local EVENTS_FOLDER_NAME = "\228\186\139\228\187\182"
+local CLIENT_FOLDER_NAME = "\229\174\162\230\136\183\231\171\175"
+local CLIENT_UI_FOLDER_NAME = "\229\174\162\230\136\183\231\171\175UI"
+local RETURN_TO_CITY_EVENT_NAME = "\229\155\158\229\159\142"
+
+local REWARD_UI_NAMES = {
+    "离线奖励",
+    "版本说明",
+    "7日奖励",
+}
+
+type PathProfile = {
+    agentRadius: number,
+    agentHeight: number,
+    waypointSpacing: number,
+    agentCanJump: boolean,
+}
+
+type MoveFailureReason =
+    "gui_visible"
+    | "character_invalid"
+    | "humanoid_dead"
+    | "move_timeout"
+    | "waypoint_timeout"
+    | "position_jump"
+    | "stuck"
+    | "path_blocked"
+
+type CrystalCandidate = {
+    instance: Instance,
+    distance: number,
+}
+
+local PATH_PROFILES: { PathProfile } = {
+    { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 4.0, agentCanJump = true },
+    { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 8.0, agentCanJump = true },
+    { agentRadius = 5.5, agentHeight = 8.0, waypointSpacing = 8.0, agentCanJump = true },
+    { agentRadius = 5.0, agentHeight = 8.0, waypointSpacing = 12.0, agentCanJump = true },
+    { agentRadius = 4.5, agentHeight = 8.0, waypointSpacing = 12.0, agentCanJump = true },
+}
+
+local RNG = Random.new(math.floor(os.clock() * 1000) + LocalPlayer.UserId)
+local cachedCrystal: Instance? = nil
+
+local function flat(v: Vector3): Vector3
+    return Vector3.new(v.X, 0, v.Z)
 end
 
--- 等待角色加载
-local Character = LocalPlayer.Character
-if not Character then
-    Character = LocalPlayer.CharacterAdded:Wait()
+local function flattenPathTarget(v: Vector3): Vector3
+    return Vector3.new(v.X, FIXED_PATH_HEIGHT, v.Z)
 end
 
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-local Humanoid = Character:WaitForChild("Humanoid")
-Humanoid.PlatformStand = false
--- 增加移动速度
-Humanoid.WalkSpeed = 74
+local function getCurrentRig(): (Model?, Humanoid?, BasePart?)
+    local character = LocalPlayer.Character
+    if not character or not character.Parent then
+        return nil, nil, nil
+    end
 
--- 销毁七日奖励和离线奖励界面（从main.lua移植）
-local function RemoveRewardUI()
-    local success, rewardUI = pcall(function()
-        return LocalPlayer.PlayerGui.GUI:WaitForChild("\228\186\140\231\186\167\231\149\140\233\157\162", 5)
-    end)
-    
-    if not success or not rewardUI then
-        print("[奖励界面] 未找到二级界面，跳过删除")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp or not hrp:IsA("BasePart") then
+        return character, nil, nil
+    end
+
+    return character, humanoid, hrp
+end
+
+local function waitForRig(timeoutSeconds: number): (Model?, Humanoid?, BasePart?)
+    local deadline = os.clock() + timeoutSeconds
+    while os.clock() < deadline do
+        local character, humanoid, hrp = getCurrentRig()
+        if character and humanoid and hrp then
+            return character, humanoid, hrp
+        end
+        task.wait(0.1)
+    end
+    return nil, nil, nil
+end
+
+local function isAbortGuiVisible(): boolean
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
         return false
     end
-    
-    -- 定义需要删除的子对象名称
-        local rewardUINames = {
-            '离线奖励',
-            '版本说明',
-            '7日奖励',
-        }
-    local deletedCount = 0
-    
-    -- 遍历所有需要删除的子对象
-    for _, name in ipairs(rewardUINames) do
-        local child = rewardUI:FindFirstChild(name)
+
+    local rootGui = playerGui:FindFirstChild("GUI")
+    if not rootGui then
+        return false
+    end
+
+    local secondLayer = rootGui:FindFirstChild(SECONDARY_GUI_NAME)
+    if not secondLayer then
+        return false
+    end
+
+    local rewardGui = secondLayer:FindFirstChild(REWARD_VISIBLE_GUI_NAME)
+    return rewardGui ~= nil and rewardGui:IsA("GuiObject") and rewardGui.Visible
+end
+
+local function shutdownIfAbortGuiVisible(context: string): boolean
+    if not isAbortGuiVisible() then
+        return false
+    end
+
+    warn(string.format("[%s] 检测到奖励GUI可见，执行 Shutdown", context))
+    game:Shutdown()
+    return true
+end
+
+local function waitWithGuiAbort(seconds: number, context: string): boolean
+    local deadline = os.clock() + seconds
+    while os.clock() < deadline do
+        if shutdownIfAbortGuiVisible(context) then
+            return false
+        end
+        task.wait(0.1)
+    end
+    return true
+end
+
+local function removeRewardUI(): boolean
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
+        return false
+    end
+
+    local rootGui = playerGui:FindFirstChild("GUI")
+    if not rootGui then
+        return false
+    end
+
+    local rewardRoot = rootGui:FindFirstChild(SECONDARY_GUI_NAME)
+    if not rewardRoot then
+        return false
+    end
+
+    local removed = 0
+    for _, name in ipairs(REWARD_UI_NAMES) do
+        local child = rewardRoot:FindFirstChild(name)
         if child then
             child:Destroy()
-            print("[奖励界面] 成功删除: " .. name)
-            deletedCount = deletedCount + 1
+            removed += 1
         end
     end
-    
-    if deletedCount > 0 then
-        print(string.format("[奖励界面] 共删除 %d 个奖励界面", deletedCount))
-    else
-        print("[奖励界面] 未找到需要删除的奖励界面")
+
+    if removed > 0 then
+        print(string.format("[奖励界面] 已删除 %d 个节点", removed))
     end
-    
-    return deletedCount > 0
+    return removed > 0
 end
 
--- 检查水晶是否存在
-local function CheckCrystalExists()
-    return pcall(function()
-        local crystals = workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]:GetChildren()
-        return #crystals > 0
-    end)
+local function getCrystalContainer(): Instance?
+    return Workspace:FindFirstChild(CRYSTAL_CONTAINER_NAME)
 end
 
--- 缓存的可用水晶
-local cachedCrystal = nil
+local function checkCrystalExists(): boolean
+    local container = getCrystalContainer()
+    if not container then
+        return false
+    end
+    return #container:GetChildren() > 0
+end
 
--- 查找可用的水晶（能成功计算路径的水晶）
-local function FindAvailableCrystal()
-    -- 如果已缓存的水晶仍然有效，直接返回
-    if cachedCrystal and cachedCrystal.Parent then
-        return cachedCrystal
+local function getInstancePosition(instance: Instance): Vector3?
+    if instance:IsA("BasePart") then
+        return instance.Position
     end
-    
-    local success, crystalContainer = pcall(function()
-        return workspace["\229\141\149\228\189\141\229\175\185\232\177\161"]
-    end)
-    
-    if not success or not crystalContainer then
-        return nil
+    if instance:IsA("Model") then
+        return instance:GetPivot().Position
     end
-    
-    local crystals = crystalContainer:GetChildren()
-    if #crystals == 0 then
-        return nil
+    local part = instance:FindFirstChildWhichIsA("BasePart", true)
+    if part then
+        return part.Position
     end
-    
-    -- 获取当前角色位置
-    local currentChar = LocalPlayer.Character
-    if not currentChar or not currentChar.Parent then
-        return nil
-    end
-    local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
-    if not currentHRP then
-        return nil
-    end
-    local startPos = currentHRP.Position
-    
-    -- 尝试每个水晶，找到第一个可以计算路径的
-    for _, crystal in ipairs(crystals) do
-        if crystal and crystal.Parent then
-            -- 获取水晶位置
-            local targetPosition
-            if crystal:IsA("Model") then
-                local pivotCFrame = crystal:GetPivot()
-                targetPosition = pivotCFrame.Position
-            elseif crystal:IsA("BasePart") then
-                targetPosition = crystal.Position
-            end
-            
-            -- 如果成功获取位置，尝试计算路径
-            if targetPosition then
-                -- 尝试计算路径（使用更大的半径，避免通过人体无法通过的缝隙）
-                local testPath = PathfindingService:CreatePath({
-                    AgentRadius = 6.0,  -- 增大半径到6.0，确保不会尝试通过人体无法通过的缝隙
-                    AgentHeight = 8,    -- 合理高度，允许跳跃
-                    AgentCanJump = true,  -- 路径计算时允许跳跃，以便能获取路径
-                    WaypointSpacing = 4,
-                })
-                
-                -- 忽略垂直移动判断：将目标位置的Y坐标固定为10
-                local FIXED_PATH_HEIGHT = 10
-                local flatTargetPos = Vector3.new(targetPosition.X, FIXED_PATH_HEIGHT, targetPosition.Z)
-                local pathFound, pathError = pcall(function()
-                    testPath:ComputeAsync(startPos, flatTargetPos)
-                end)
-                
-                if pathFound and testPath.Status ~= Enum.PathStatus.NoPath then
-                    local waypoints = testPath:GetWaypoints()
-                    if #waypoints > 0 then
-                        -- 找到可用的水晶，缓存并返回
-                        cachedCrystal = crystal
-                        print("找到可用的水晶:", crystal.Name)
-                        return crystal
-                    end
-                end
-            end
-        end
-    end
-    
-    -- 如果所有水晶都无法计算路径，返回第一个水晶（作为备选）
-    if #crystals > 0 then
-        cachedCrystal = crystals[1]
-        print("使用第一个水晶作为备选:", crystals[1].Name)
-        return crystals[1]
-    end
-    
     return nil
 end
 
--- 函数：在目标位置周围搜索可到达的点
-local function findReachablePosition(targetPos, startPos, maxRadius)
-    local searchRadius = maxRadius or 100  -- 放宽限制：默认增大到100
-    local searchStep = 6  -- 减小步长到2，增加搜索密度
-    
-    -- 尝试多个AgentRadius值（从大到小，避免通过人体无法通过的缝隙）
-    -- 移除所有过小的值，只保留足够大的值，确保不会通过人体无法通过的缝隙
-    local agentRadiusOptions = {6.0, 5.5, 5.0, 4.5, 4.0}
-    
-    for _, agentRadius in ipairs(agentRadiusOptions) do
-        -- 忽略高度判断，只使用原始目标位置的Y坐标
-        for radius = 0, searchRadius, searchStep do
-            for angle = 0, 360, 30 do  -- 减小角度步长到30度，增加搜索密度
-                local rad = math.rad(angle)
-                local offsetX = math.cos(rad) * radius
-                local offsetZ = math.sin(rad) * radius
-                
-                local testPos = Vector3.new(
-                    targetPos.X + offsetX,
-                    targetPos.Y,  -- 使用原始Y坐标，忽略高度判断
-                    targetPos.Z + offsetZ
-                )
-                
-                local testPath = PathfindingService:CreatePath({
-                    AgentRadius = agentRadius,  -- 尝试不同的半径
-                    AgentHeight = 8,  -- 合理高度，允许跳跃
-                    AgentCanJump = true,  -- 路径计算时允许跳跃
-                    WaypointSpacing = 8,  -- 使用较大的间距以提高成功率
-                })
-                
-                -- 忽略垂直移动判断：将测试位置的Y坐标固定为10
-                local FIXED_PATH_HEIGHT = 10
-                local flatTestPos = Vector3.new(testPos.X, FIXED_PATH_HEIGHT, testPos.Z)
-                local success, err = pcall(function()
-                    testPath:ComputeAsync(startPos, flatTestPos)
-                end)
-                
-                if success then
-                    local status = testPath.Status
-                    if status == Enum.PathStatus.Success or 
-                       status == Enum.PathStatus.ClosestNoPath or
-                       status == Enum.PathStatus.ClosestOutOfRange then
-                        local waypoints = testPath:GetWaypoints()
-                        if #waypoints > 0 then
-                            print("找到可到达位置，使用AgentRadius=" .. agentRadius)
-                            -- 返回原始目标位置（包含正确的Y坐标），但使用计算出的路径
-                            return targetPos, testPath
-                        end
-                    end
-                end
-            end  -- 结束 for angle
-        end  -- 结束 for radius
-    end  -- 结束 for agentRadius
-    
+local function findAvailableCrystal(startPos: Vector3): Instance?
+    if cachedCrystal and cachedCrystal.Parent then
+        return cachedCrystal
+    end
+
+    local container = getCrystalContainer()
+    if not container then
+        return nil
+    end
+
+    local children = container:GetChildren()
+    if #children == 0 then
+        return nil
+    end
+
+    local candidates: { CrystalCandidate } = {}
+    local startFlat = flat(startPos)
+
+    for _, crystal in ipairs(children) do
+        local pos = getInstancePosition(crystal)
+        if pos then
+            table.insert(candidates, {
+                instance = crystal,
+                distance = (startFlat - flat(pos)).Magnitude,
+            })
+        end
+    end
+
+    if #candidates == 0 then
+        cachedCrystal = children[1]
+        return cachedCrystal
+    end
+
+    table.sort(candidates, function(a, b)
+        return a.distance < b.distance
+    end)
+
+    cachedCrystal = candidates[1].instance
+    return cachedCrystal
+end
+
+local function resolveTargetPosition(targetModel: Instance?): Vector3?
+    if USE_FIXED_TARGET then
+        return FIXED_TARGET_POSITION
+    end
+    if not targetModel then
+        return nil
+    end
+    return getInstancePosition(targetModel)
+end
+
+local function fireReturnToCity()
+    local ok, err = pcall(function()
+        ((ReplicatedStorage :: any)[EVENTS_FOLDER_NAME][CLIENT_FOLDER_NAME][CLIENT_UI_FOLDER_NAME][RETURN_TO_CITY_EVENT_NAME] :: any):Fire()
+    end)
+
+    if not ok then
+        warn("[回城] 触发失败:", err)
+    else
+        print("[回城] 已触发回城事件")
+    end
+end
+
+local function computePathWithProfile(startPos: Vector3, targetPos: Vector3, profile: PathProfile): (Path?, string?)
+    local path = PathfindingService:CreatePath({
+        AgentRadius = profile.agentRadius,
+        AgentHeight = profile.agentHeight,
+        AgentCanJump = profile.agentCanJump,
+        WaypointSpacing = profile.waypointSpacing,
+        Costs = { Water = 1 },
+    })
+
+    local ok, err = pcall(function()
+        path:ComputeAsync(startPos, flattenPathTarget(targetPos))
+    end)
+
+    if not ok then
+        return nil, tostring(err)
+    end
+
+    if path.Status == Enum.PathStatus.NoPath then
+        return nil, "NoPath"
+    end
+
+    local waypoints = path:GetWaypoints()
+    if #waypoints <= 1 then
+        return nil, "NotEnoughWaypoints"
+    end
+
+    return path, nil
+end
+
+local function tryBuildDirectPath(startPos: Vector3, targetPos: Vector3): (Path?, string)
+    local lastError = "UnknownError"
+    for _, profile in ipairs(PATH_PROFILES) do
+        local path, err = computePathWithProfile(startPos, targetPos, profile)
+        if path then
+            return path, "ok"
+        end
+        if err then
+            lastError = err
+        end
+    end
+    return nil, lastError
+end
+
+local function findNearbyReachablePath(startPos: Vector3, targetPos: Vector3): (Path?, Vector3?)
+    for radius = SEARCH_STEP, SEARCH_RADIUS, SEARCH_STEP do
+        for angle = 0, 359, SEARCH_ANGLE_STEP do
+            local rad = math.rad(angle)
+            local probe = Vector3.new(
+                targetPos.X + math.cos(rad) * radius,
+                targetPos.Y,
+                targetPos.Z + math.sin(rad) * radius
+            )
+
+            local path, _ = tryBuildDirectPath(startPos, probe)
+            if path then
+                return path, probe
+            end
+        end
+    end
+
     return nil, nil
 end
 
--- 验证路径点之间的通道是否足够宽（避免通过人体无法通过的缝隙）
-local function ValidatePathWidth(waypoints, minWidth)
-    minWidth = minWidth or 6.0  -- 默认最小宽度为6.0（与AgentRadius一致）
-    
-    if #waypoints < 2 then
-        return true  -- 少于2个路径点，无法验证
+local function buildPath(startPos: Vector3, targetPos: Vector3): (Path?, Vector3?, string)
+    local directPath, directError = tryBuildDirectPath(startPos, targetPos)
+    if directPath then
+        return directPath, targetPos, "direct"
     end
-    
-    local Workspace = game:GetService("Workspace")
-    
-    -- 检查每对相邻路径点之间的通道
-    for i = 1, #waypoints - 1 do
-        local wp1 = waypoints[i].Position
-        local wp2 = waypoints[i + 1].Position
-        
-        -- 计算两点之间的方向
-        local direction = (wp2 - wp1)
-        local distance = direction.Magnitude
-        
-        if distance > 0 then
-            direction = direction.Unit
-            
-            -- 在路径中点进行射线检测，检查是否有足够的空间
-            local midPoint = wp1 + direction * (distance / 2)
-            
-            -- 在多个高度进行检测，确保垂直方向也有足够空间
-            for heightOffset = -2, 2, 1 do
-                local testPos = midPoint + Vector3.new(0, heightOffset, 0)
-                
-                -- 使用射线检测检查周围是否有障碍物
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-                raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
-                
-                -- 检查四个方向（前后左右）是否有足够的空间
-                local directions = {
-                    Vector3.new(1, 0, 0),   -- 右
-                    Vector3.new(-1, 0, 0),  -- 左
-                    Vector3.new(0, 0, 1),   -- 前
-                    Vector3.new(0, 0, -1),  -- 后
-                }
-                
-                for _, dir in ipairs(directions) do
-                    local rayOrigin = testPos + dir * (minWidth / 2)
-                    local rayDirection = dir * minWidth
-                    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-                    
-                    if raycastResult then
-                        -- 检测到障碍物，检查距离是否太近
-                        local hitDistance = (raycastResult.Position - rayOrigin).Magnitude
-                        if hitDistance < minWidth then
-                            print(string.format("[路径验证] 路径点 %d-%d 之间通道过窄 (检测到障碍物距离: %.2f < %.2f)", 
-                                i, i + 1, hitDistance, minWidth))
-                            return false
-                        end
-                    end
-                end
-            end
-        end
+
+    local nearbyPath, nearbyTarget = findNearbyReachablePath(startPos, targetPos)
+    if nearbyPath and nearbyTarget then
+        return nearbyPath, nearbyTarget, "nearby"
     end
-    
-    return true  -- 所有路径点之间的通道都足够宽
+
+    return nil, nil, directError
 end
 
--- 路径寻找函数
-local function MoveToTarget(targetModel)
-    if not targetModel then
-        print("MoveToTarget: targetModel为空")
-        return false
+local function followPath(path: Path): (boolean, MoveFailureReason?)
+    local waypoints = path:GetWaypoints()
+    if #waypoints <= 1 then
+        return false, "waypoint_timeout"
     end
-    
-    -- 确保角色仍然有效
-    local currentChar = LocalPlayer.Character
-    if not currentChar or not currentChar.Parent then
-        print("MoveToTarget: 角色无效")
-        return false
+
+    local _, humanoid, hrp = getCurrentRig()
+    if not humanoid or not hrp then
+        return false, "character_invalid"
     end
-    
-    local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
-    local currentHumanoid = currentChar:FindFirstChild("Humanoid")
-    if not currentHRP or not currentHumanoid then
-        print("MoveToTarget: 角色组件缺失")
-        return false
-    end
-    
-    -- 设置随机移动速度（增加随机性）- 扩大范围让30个号更分散
-    local baseWalkSpeed = 74  -- 基础移动速度在55-75之间随机（扩大范围）
-    currentHumanoid.WalkSpeed = baseWalkSpeed
-    
-    -- 获取目标位置（使用固定坐标）
-    local targetPosition = Vector3.new(-513, 10, -511)
-    local startPos = currentHRP.Position
-    local endPos = targetPosition
-    print("使用固定目标位置:", targetPosition)
-    
-    -- 忽略垂直移动判断：将目标位置的Y坐标固定为10，用于路径计算
-    local FIXED_PATH_HEIGHT = 10
-    local flatEndPos = Vector3.new(endPos.X, FIXED_PATH_HEIGHT, endPos.Z)
-    
-    -- 检查距离（使用水平距离）
-    local distance = (startPos - flatEndPos).Magnitude
-    print("起点到终点的水平距离:", distance)
-    
-    -- 使用老版本的路径间距（固定值4）
-    local waypointSpacing = 4
-    print("使用路径点间距:", waypointSpacing)
-    
-    -- 创建路径对象（AgentRadius使用更大值，避免通过人体无法通过的缝隙）
-    local path = nil
-    local pathFound = false
-    local noPathMessage = "未知错误"
-    local agentRadius = 6.0  -- 增大到6.0，确保不会尝试通过人体无法通过的缝隙
-    
-    print(string.format("开始计算路径，起始位置:%s 目标位置:%s 路径点间距:%s AgentRadius:%.2f",
-        tostring(startPos), tostring(endPos), tostring(waypointSpacing), agentRadius))
-    
-    local testPath = PathfindingService:CreatePath({
-        AgentRadius = agentRadius,
-        AgentHeight = 8,   -- 使用合理高度，允许跳跃
-        AgentCanJump = true,
-        WaypointSpacing = waypointSpacing,
-        Costs = {
-            Water = 1,
-        }
-    })
-    
-    local success, errorMsg = pcall(function()
-        -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-        testPath:ComputeAsync(startPos, flatEndPos)
+
+    humanoid.PlatformStand = false
+    local currentSpeed = BASE_WALK_SPEED
+    local nextSpeedUpdateAt = 0.0
+    local moveStart = os.clock()
+    local lastStuckProbeAt = os.clock()
+    local lastStuckProbePos = hrp.Position
+    local stuckStrikeCount = 0
+    local lastStepPos = hrp.Position
+
+    local blockedIndex = math.huge
+    local blockedConn = path.Blocked:Connect(function(index: number)
+        blockedIndex = math.min(blockedIndex, index)
     end)
-    
-    if success then
-        local status = testPath.Status
-        if status ~= Enum.PathStatus.NoPath then
-            local waypoints = testPath:GetWaypoints()
-            if #waypoints > 0 then
-                path = testPath
-                pathFound = true
-                print(string.format("成功计算路径, status=%s, 路径点=%d", tostring(status), #waypoints))
-            else
-                noPathMessage = "路径点为空"
-            end
-        else
-            noPathMessage = "PathStatus.NoPath"
+
+    local function updateSpeed(forceBase: boolean)
+        local now = os.clock()
+        if forceBase then
+            currentSpeed = BASE_WALK_SPEED
+            nextSpeedUpdateAt = now + RNG:NextNumber(SPEED_CHANGE_MIN, SPEED_CHANGE_MAX)
+        elseif now >= nextSpeedUpdateAt then
+            currentSpeed = RNG:NextNumber(MIN_DYNAMIC_SPEED, MAX_DYNAMIC_SPEED)
+            nextSpeedUpdateAt = now + RNG:NextNumber(SPEED_CHANGE_MIN, SPEED_CHANGE_MAX)
         end
-    else
-        noPathMessage = errorMsg or "ComputeAsync失败"
+
+        if humanoid and humanoid.WalkSpeed ~= currentSpeed then
+            humanoid.WalkSpeed = currentSpeed
+        end
     end
-    
-    -- 如果路径计算失败，不再尝试其他选项
-    
-    if not pathFound then
-        local errorMsg = tostring(noPathMessage or "未知错误")
-        print("路径计算异常:", errorMsg)
-        
-        -- 检查是否是"path request is too long"错误
-        if string.find(errorMsg:lower(), "too long") or string.find(errorMsg:lower(), "path.*long") then
-            print("检测到路径请求过长错误，尝试使用更大的路径点间距...")
-            -- 使用老版本的WaypointSpacing范围
-            local spacingOptions = {4, 8, 12, 16, 20}
-            local success = false
-            
-            for _, spacing in ipairs(spacingOptions) do
-                print("尝试使用路径点间距:", spacing)
-                local longerPath = PathfindingService:CreatePath({
-                    AgentRadius = 6.0,  -- 增大到6.0，避免通过人体无法通过的缝隙
-                    AgentHeight = 8,  -- 合理高度，允许跳跃
-                    AgentCanJump = true,  -- 路径计算时允许跳跃
-                    WaypointSpacing = spacing,
-                    Costs = { Water = 1 }
-                })
-                local retrySuccess, retryError = pcall(function()
-                    -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-                    longerPath:ComputeAsync(startPos, flatEndPos)
-                end)
-                -- 放宽限制：接受所有非NoPath状态
-                if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
-                    path = longerPath
-                    pathFound = true
-                    success = true
-                    local waypointCount = #longerPath:GetWaypoints()
-                    print(string.format("使用路径点间距 %d 成功计算路径, status=%s, 路径点=%d", 
-                        spacing, tostring(longerPath.Status), waypointCount))
-                    break
-                end
+
+    updateSpeed(true)
+
+    for i = 2, #waypoints do
+        if blockedIndex <= i then
+            blockedConn:Disconnect()
+            return false, "path_blocked"
+        end
+
+        if shutdownIfAbortGuiVisible("移动") then
+            blockedConn:Disconnect()
+            return false, "gui_visible"
+        end
+
+        local _, humNow, hrpNow = getCurrentRig()
+        if not humNow or not hrpNow then
+            blockedConn:Disconnect()
+            return false, "character_invalid"
+        end
+        humanoid = humNow
+        hrp = hrpNow
+
+        if humanoid.Health <= 0 then
+            blockedConn:Disconnect()
+            return false, "humanoid_dead"
+        end
+
+        updateSpeed(false)
+
+        local waypoint = waypoints[i]
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            humanoid.Jump = true
+        end
+
+        local moveTarget = Vector3.new(waypoint.Position.X, hrp.Position.Y, waypoint.Position.Z)
+        local waypointStart = os.clock()
+        humanoid:MoveTo(moveTarget)
+
+        while true do
+            if shutdownIfAbortGuiVisible("移动循环") then
+                blockedConn:Disconnect()
+                return false, "gui_visible"
             end
-            
-            if not success then
-                print("即使使用更大的路径点间距仍然失败，尝试在周围搜索可到达的点...")
-                -- 使用更大的搜索范围
-                local reachablePos, reachablePath = findReachablePosition(endPos, startPos, 80)
-                if reachablePos and reachablePath then
-                    endPos = reachablePos
-                    path = reachablePath
-                    pathFound = true
-                    print("找到可到达的替代位置")
+
+            local _, humLoop, hrpLoop = getCurrentRig()
+            if not humLoop or not hrpLoop then
+                blockedConn:Disconnect()
+                return false, "character_invalid"
+            end
+            humanoid = humLoop
+            hrp = hrpLoop
+
+            if humanoid.Health <= 0 then
+                blockedConn:Disconnect()
+                return false, "humanoid_dead"
+            end
+
+            updateSpeed(false)
+
+            local dist = (flat(hrp.Position) - flat(moveTarget)).Magnitude
+            if dist <= WAYPOINT_REACH_DISTANCE then
+                break
+            end
+
+            local now = os.clock()
+
+            if blockedIndex <= i then
+                blockedConn:Disconnect()
+                return false, "path_blocked"
+            end
+
+            if now - moveStart >= MOVE_TIMEOUT_SECONDS then
+                blockedConn:Disconnect()
+                return false, "move_timeout"
+            end
+
+            if now - waypointStart >= WAYPOINT_TIMEOUT_SECONDS then
+                blockedConn:Disconnect()
+                return false, "waypoint_timeout"
+            end
+
+            if (hrp.Position - lastStepPos).Magnitude >= POSITION_JUMP_THRESHOLD then
+                blockedConn:Disconnect()
+                return false, "position_jump"
+            end
+            lastStepPos = hrp.Position
+
+            if now - lastStuckProbeAt >= STUCK_CHECK_INTERVAL then
+                local moved = (hrp.Position - lastStuckProbePos).Magnitude
+                if moved <= STUCK_DISTANCE_THRESHOLD then
+                    stuckStrikeCount += 1
+                    if stuckStrikeCount >= STUCK_CONFIRM_COUNT then
+                        blockedConn:Disconnect()
+                        return false, "stuck"
+                    end
                 else
-                    print("无法找到任何可到达的路径")
-                    return false
+                    stuckStrikeCount = 0
                 end
+
+                lastStuckProbeAt = now
+                lastStuckProbePos = hrp.Position
             end
-        else
-            print("尝试在周围搜索可到达的点...")
-            -- 使用更大的搜索范围
-            local reachablePos, reachablePath = findReachablePosition(endPos, startPos, 80)
-            if reachablePos and reachablePath then
-                endPos = reachablePos
-                path = reachablePath
-                pathFound = true
-                print("找到可到达的替代位置")
-            else
-                print("无法找到任何可到达的路径")
-                return false
-            end
+
+            task.wait(0.1)
         end
     end
-    
-    -- 安全检查：确保path不为nil
-    if not path then
-        print("路径计算失败：path为nil")
-        return false
-    end
-    
-    local pathStatus = path.Status
-    print("路径状态:", pathStatus)
-    
-    -- 接受Success、ClosestNoPath和ClosestOutOfRange状态（这些都能到达接近目标的位置）
-    if pathStatus == Enum.PathStatus.NoPath then
-        print("无法找到路径，尝试在周围搜索...")
-        -- 放宽限制：使用更大的搜索范围
-        local searchRadius = distance > 500 and 150 or 120  -- 进一步增大搜索范围
-        local reachablePos, reachablePath = findReachablePosition(endPos, startPos, searchRadius)
-        if reachablePos and reachablePath then
-            endPos = reachablePos
-            path = reachablePath
-            pathStatus = reachablePath.Status
-            print("找到可到达的替代位置")
-        else
-            print("无法找到任何可到达的路径")
+
+    blockedConn:Disconnect()
+    return true, nil
+end
+
+local function navigateTo(targetPos: Vector3): boolean
+    for attempt = 0, MAX_REPATH_ATTEMPTS do
+        if shutdownIfAbortGuiVisible("导航前") then
             return false
         end
-    elseif pathStatus == Enum.PathStatus.ClosestNoPath or pathStatus == Enum.PathStatus.ClosestOutOfRange then
-        print("路径状态为", pathStatus, "- 将到达最接近目标的位置")
-    end
-    
-    -- 获取路径点并调整所有路径点的Y坐标为起点高度（忽略高度）
-    local rawWaypoints = path:GetWaypoints()
-    print("路径点数量:", #rawWaypoints)
-    if #rawWaypoints == 0 then
-        print("路径点为空")
-        return false
-    end
-    
-    -- 创建调整后的路径点列表，所有路径点的Y坐标都固定为10
-    local FIXED_PATH_HEIGHT = 10
-    local waypoints = {}
-    for i, waypoint in ipairs(rawWaypoints) do
-        local flatPos = Vector3.new(waypoint.Position.X, FIXED_PATH_HEIGHT, waypoint.Position.Z)
-        table.insert(waypoints, {
-            Position = flatPos,
-            Action = waypoint.Action
-        })
-    end
-    print("已调整所有路径点的Y坐标为固定高度:", FIXED_PATH_HEIGHT)
-    
-    -- 验证路径点之间的通道宽度（避免通过人体无法通过的缝隙）
-    if not ValidatePathWidth(waypoints, agentRadius) then
-        warn("[路径验证] 检测到路径包含过窄的通道，尝试重新计算路径...")
-        -- 尝试使用更大的AgentRadius重新计算
-        local largerRadius = agentRadius + 2.0
-        local retryPath = PathfindingService:CreatePath({
-            AgentRadius = largerRadius,
-            AgentHeight = 8,
-            AgentCanJump = true,
-            WaypointSpacing = waypointSpacing,
-            Costs = { Water = 1 }
-        })
-        
-        local retrySuccess, retryError = pcall(function()
-            retryPath:ComputeAsync(startPos, flatEndPos)
-        end)
-        
-        if retrySuccess and retryPath.Status ~= Enum.PathStatus.NoPath then
-            local retryWaypoints = retryPath:GetWaypoints()
-            if #retryWaypoints > 0 then
-                -- 重新创建路径点列表
-                waypoints = {}
-                for i, waypoint in ipairs(retryWaypoints) do
-                    local flatPos = Vector3.new(waypoint.Position.X, FIXED_PATH_HEIGHT, waypoint.Position.Z)
-                    table.insert(waypoints, {
-                        Position = flatPos,
-                        Action = waypoint.Action
-                    })
-                end
-                path = retryPath
-                print(string.format("[路径验证] 使用更大的AgentRadius (%.2f) 重新计算路径成功", largerRadius))
-            else
-                warn("[路径验证] 重新计算路径失败，使用原路径（可能包含狭窄通道）")
-            end
+
+        local _, humanoid, hrp = waitForRig(10)
+        if not humanoid or not hrp then
+            warn("[导航] 未拿到角色组件，等待后重试")
+            task.wait(REPATH_DELAY_SECONDS)
+            continue
+        end
+
+        humanoid.PlatformStand = false
+        humanoid.WalkSpeed = BASE_WALK_SPEED
+
+        local path, resolvedTarget, mode = buildPath(hrp.Position, targetPos)
+        if not path or not resolvedTarget then
+            warn(string.format("[导航] 路径计算失败 (attempt=%d)", attempt + 1))
+            task.wait(REPATH_DELAY_SECONDS)
+            continue
+        end
+
+        print(string.format(
+            "[导航] attempt=%d mode=%s status=%s target=(%.1f, %.1f, %.1f)",
+            attempt + 1,
+            mode,
+            tostring(path.Status),
+            resolvedTarget.X,
+            resolvedTarget.Y,
+            resolvedTarget.Z
+        ))
+
+        local moved, reason = followPath(path)
+        if moved then
+            print("[导航] 到达目标")
+            return true
+        end
+
+        warn(string.format("[导航] 移动失败，原因=%s，准备重算", tostring(reason)))
+
+        if reason == "stuck" then
+            fireReturnToCity()
+            task.wait(1.0)
         else
-            warn("[路径验证] 重新计算路径失败，使用原路径（可能包含狭窄通道）")
+            task.wait(REPATH_DELAY_SECONDS)
         end
-    else
-        print("[路径验证] 路径通道宽度验证通过")
     end
-    
-    -- 跳过第一个路径点（起始位置）
-    local currentWaypointIndex = 1
-    if #waypoints > 1 then
-        currentWaypointIndex = 2
-    end
-    
-    local isMoving = false
-    local stuckCheckTime = 0
-    local lastPosition = currentHRP.Position
-    local moveComplete = false
-    local moveConnection
-    local lastCheckPosition = currentHRP.Position  -- 用于死亡检测
-    local lastCheckTime = tick()  -- 用于死亡检测
-    local isRecalculating = false  -- 防止重复重新计算
-    local moveStartTimeTable = {value = nil}  -- 用于存储移动开始时间的引用，以便死亡时重置
-    -- 随机移动速度（增加随机性）- 扩大范围让30个号更分散
-    local baseWalkSpeed = 74  -- 基础移动速度在55-75之间随机（扩大范围）
-    local waypointReachDistance = math.random(5, 9)  -- 路径点到达判断距离随机（5-9单位）
-    local stuckCheckInterval = math.random(1.0, 4.0)  -- 卡住检测时间随机（1-4秒，扩大范围）
-    local stuckDistanceThreshold = math.random(1.0, 4.0)  -- 卡住判断的移动距离阈值随机（1-4单位，扩大范围）
-    
-    -- 新增随机性：动态速度变化 - 增强
-    local lastSpeedChangeTime = tick()  -- 上次改变速度的时间
-    local speedChangeInterval = math.random(2, 10)  -- 速度变化间隔（2-10秒随机，扩大范围）
-    local speedVariationRange = math.random(3, 5)  -- 速度变化幅度随机（±3到±5）
-    local currentWalkSpeed = baseWalkSpeed  -- 当前使用的速度
-    
-    -- 新增随机性：路径点等待 - 增强
-    local lastWaypointWaitTime = 0  -- 上次路径点等待的时间
-    local waypointWaitChance = math.random(5, 20) / 100  -- 10-25%的概率在到达路径点后等待（随机化）
-    local waypointWaitDuration = 0  -- 等待时长（0表示不等待）
-    local waypointWaitStartTime = 0  -- 等待开始时间
-    
-    -- 新增随机性：路径点位置随机偏移 - 增强
-    local waypointOffsetChance = math.random(3, 15) / 100  -- 20-40%的概率对路径点添加偏移（随机化）
-    local waypointOffsetRange = math.random(3, 8)  -- 偏移范围3-8单位（扩大范围）
-    
-    local function moveToNextWaypoint()
-        -- 确保角色仍然有效（重新获取引用以确保最新）
-        local currentChar = LocalPlayer.Character
-        if not currentChar or not currentChar.Parent then
-            print("移动中角色失效")
-            moveComplete = true
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            return false
-        end
-        
-        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
-        local currentHumanoid = currentChar:FindFirstChild("Humanoid")
-        
-        if not currentHRP or not currentHumanoid then
-            print("移动中角色组件缺失")
-            moveComplete = true
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            return false
-        end
-        
-        if currentWaypointIndex > #waypoints then
-            print("已到达所有路径点")
-            moveComplete = true
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            return false
-        end
-        
-        local waypoint = waypoints[currentWaypointIndex]
-        local targetPos = waypoint.Position
-        
-        print(string.format("移动到路径点 %d/%d: %s", currentWaypointIndex, #waypoints, tostring(targetPos)))
-        
-        -- 移动到目标位置（忽略高度：使用路径点的X和Z，但使用当前角色的Y坐标）
-        local moveTargetPos = Vector3.new(targetPos.X, currentHRP.Position.Y, targetPos.Z)
-        
-        -- 设置当前动态速度（初始化时currentWalkSpeed等于baseWalkSpeed）
-        if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
-            currentHumanoid.WalkSpeed = currentWalkSpeed
-        end
-        currentHumanoid:MoveTo(moveTargetPos)
-        isMoving = true
-        stuckCheckTime = tick()
-        lastPosition = currentHRP.Position
-        
-        return true
-    end
-    
-    -- 重新计算路径的函数（用于死亡后重新找路）
-    local function recalculatePathForMove()
-        print("重新计算路径...")
-        task.wait(0.5)  -- 等待角色完全加载
-        
-        local currentChar = LocalPlayer.Character
-        if not currentChar or not currentChar.Parent then
-            return nil, nil
-        end
-        
-        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
-        local currentHumanoid = currentChar:FindFirstChild("Humanoid")
-        if not currentHRP or not currentHumanoid then
-            return nil, nil
-        end
-        
-        currentHumanoid.WalkSpeed = baseWalkSpeed  -- 使用随机移动速度
-        
-        local newStartPos = currentHRP.Position
-        print("新的起始位置:", newStartPos)
-        
-        -- 忽略垂直移动判断：将目标位置的Y坐标固定为10
-        local FIXED_PATH_HEIGHT = 10
-        local flatEndPos = Vector3.new(endPos.X, FIXED_PATH_HEIGHT, endPos.Z)
-        local newDistance = (newStartPos - flatEndPos).Magnitude
-        local newWaypointSpacing = 4  -- 使用默认的最佳间距
-        
-        local newPath = PathfindingService:CreatePath({
-            AgentRadius = 4.0,  -- 增大到4.0，避免通过人体无法通过的缝隙
-            AgentHeight = 8,    -- 合理高度，允许跳跃
-            AgentCanJump = true,  -- 路径计算时允许跳跃
-            WaypointSpacing = newWaypointSpacing,
-            Costs = { Water = 1 }
-        })
-        
-        local pathFound, pathError = pcall(function()
-            -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-            newPath:ComputeAsync(newStartPos, flatEndPos)
-        end)
-        
-        if not pathFound then
-            local errorMsg = tostring(pathError)
-            if string.find(errorMsg:lower(), "too long") or string.find(errorMsg:lower(), "path.*long") then
-                -- 使用老版本的WaypointSpacing范围
-                local spacingOptions = {4, 8, 12, 16, 20}
-                local success = false
-                
-                for _, spacing in ipairs(spacingOptions) do
-                    local longerPath = PathfindingService:CreatePath({
-                        AgentRadius = 6.0,  -- 增大到6.0，避免通过人体无法通过的缝隙
-                        AgentHeight = 8,    -- 合理高度，允许跳跃
-                        AgentCanJump = true,  -- 路径计算时允许跳跃
-                        WaypointSpacing = spacing,
-                        Costs = { Water = 1 }
-                    })
-                    local retrySuccess = pcall(function()
-                        -- 使用相同Y坐标的位置计算路径，完全忽略垂直移动
-                        longerPath:ComputeAsync(newStartPos, flatEndPos)
-                    end)
-                    if retrySuccess and longerPath.Status ~= Enum.PathStatus.NoPath then
-                        newPath = longerPath
-                        pathFound = true
-                        success = true
-                        break
-                    end
-                end
-                
-                if not success then
-                    local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
-                    if reachablePos and reachablePath then
-                        endPos = reachablePos
-                        newPath = reachablePath
-                        pathFound = true
-                    else
-                        return nil, nil
-                    end
-                end
-            else
-                local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
-                if reachablePos and reachablePath then
-                    endPos = reachablePos
-                    newPath = reachablePath
-                    pathFound = true
-                else
-                    return nil, nil
-                end
-            end
-        end
-        
-        -- 安全检查：确保newPath不为nil
-        if not newPath then
-            print("重新计算路径失败：newPath为nil")
-            return nil, nil
-        end
-        
-        local newPathStatus = newPath.Status
-        if newPathStatus == Enum.PathStatus.NoPath then
-            local reachablePos, reachablePath = findReachablePosition(endPos, newStartPos)
-            if reachablePos and reachablePath then
-                endPos = reachablePos
-                newPath = reachablePath
-                newPathStatus = reachablePath.Status
-            else
-                return nil, nil
-            end
-        end
-        
-        local rawNewWaypoints = newPath:GetWaypoints()
-        if #rawNewWaypoints == 0 then
-            return nil, nil
-        end
-        
-        -- 调整所有路径点的Y坐标固定为10
-        local FIXED_PATH_HEIGHT = 10
-        local newWaypoints = {}
-        for i, waypoint in ipairs(rawNewWaypoints) do
-            local flatPos = Vector3.new(waypoint.Position.X, FIXED_PATH_HEIGHT, waypoint.Position.Z)
-            table.insert(newWaypoints, {
-                Position = flatPos,
-                Action = waypoint.Action
-            })
-        end
-        
-        print("重新计算路径完成，共 " .. #newWaypoints .. " 个路径点 (Y已固定为" .. FIXED_PATH_HEIGHT .. ")")
-        return newPath, newWaypoints
-    end
-    
-    -- 创建移动循环
-    moveConnection = RunService.Heartbeat:Connect(function()
-        -- 检查GUI可见性（在移动循环中也要检查）
-        if CheckGUIVisibility() then
-            print("移动循环中检测到GUI可见 - 停止移动并关闭游戏")
-            moveComplete = true
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            game:Shutdown()
-            return
-        end
-        
-        -- 检查角色是否仍然有效（重新获取引用以确保最新）
-        local currentChar = LocalPlayer.Character
-        if not currentChar or not currentChar.Parent then
-            print("移动循环中角色失效，停止移动")
-            moveComplete = true
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            return
-        end
-        
-        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
-        if not currentHRP then
-            return  -- 等待HumanoidRootPart加载
-        end
-        
-        if moveComplete or currentWaypointIndex > #waypoints then
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            return
-        end
-        
-        -- 如果正在重新计算路径，暂时跳过移动
-        if isRecalculating then
-            return
-        end
-        
-        local currentPos = currentHRP.Position
-        local currentTime = tick()
-        
-        -- 死亡检测：如果位置突然发生大变化（超过100单位），说明角色死亡并重生
-        -- 判断逻辑：每0.5秒检查一次位置变化，如果当前位置和上次记录位置的直线距离超过100单位，
-        -- 说明角色可能已经死亡并重生到了新位置（通常在出生点），这时需要重新计算路径
-        if currentTime - lastCheckTime > 0.5 and not isRecalculating then  -- 每0.5秒检查一次
-            local positionChange = (currentPos - lastCheckPosition).Magnitude
-            if positionChange > 60 then
-                warn(string.format("检测到位置突然大变化 (%.1f 单位)，角色可能已死亡并重生，重新计算路径", positionChange))
-                
-                -- 重新计算路径
-                isRecalculating = true
-                local newPath, newWaypoints = recalculatePathForMove()
-                if newPath and newWaypoints and #newWaypoints > 0 then
-                    path = newPath
-                    waypoints = newWaypoints
-                    currentWaypointIndex = 1
-                    if #waypoints > 1 then
-                        currentWaypointIndex = 2
-                    end
-                    print("重新计算路径完成，共 " .. #waypoints .. " 个路径点，从路径点 " .. currentWaypointIndex .. " 开始")
-                end
-                isRecalculating = false
-                
-                -- 重置移动计时器（死亡后重新开始计时）
-                if moveStartTimeTable.value then
-                    moveStartTimeTable.value = tick()
-                end
-                
-                -- 重置位置检查
-                lastCheckPosition = currentPos
-                lastCheckTime = currentTime
-            else
-                lastCheckPosition = currentPos
-                lastCheckTime = currentTime
-            end
-        end
-        
-        -- 安全检查：确保路径点索引有效
-        if currentWaypointIndex > #waypoints then
-            moveComplete = true
-            if moveConnection then
-                moveConnection:Disconnect()
-            end
-            return
-        end
-        
-        local waypoint = waypoints[currentWaypointIndex]
-        local targetPos = waypoint.Position
-        -- 忽略Y坐标判断：只使用水平距离（X和Z）来判断是否到达路径点
-        local flatCurrentPos = Vector3.new(currentPos.X, 0, currentPos.Z)
-        local flatTargetPos = Vector3.new(targetPos.X, 0, targetPos.Z)
-        local distanceToWaypoint = (flatCurrentPos - flatTargetPos).Magnitude
-        
-        -- 检查是否到达当前路径点（使用随机判断距离以增加随机性，忽略高度）
-        if distanceToWaypoint < waypointReachDistance then
-            -- 随机等待：有概率在路径点等待一小段时间 - 增强
-            if waypointWaitDuration == 0 and math.random() < waypointWaitChance then
-                waypointWaitDuration = math.random(0.1, 0.3)  -- 随机等待0.1-1.0秒（扩大范围）
-                waypointWaitStartTime = tick()
-                print(string.format("在路径点 %d/%d 随机等待 %.2f 秒", currentWaypointIndex, #waypoints, waypointWaitDuration))
-            end
-            
-            -- 如果正在等待，继续等待
-            if waypointWaitDuration > 0 then
-                if tick() - waypointWaitStartTime < waypointWaitDuration then
-                    return  -- 继续等待，不切换路径点
-                else
-                    waypointWaitDuration = 0  -- 等待结束
-                end
-            end
-            
-            currentWaypointIndex = currentWaypointIndex + 1
-            
-            if currentWaypointIndex <= #waypoints then
-                -- 立即切换到下一个路径点
-                waypoint = waypoints[currentWaypointIndex]
-                targetPos = waypoint.Position
-                
-                -- 随机路径点偏移：有概率对路径点添加小的随机偏移
-                if math.random() < waypointOffsetChance then
-                    local offsetX = (math.random() - 0.5) * waypointOffsetRange * 2
-                    local offsetZ = (math.random() - 0.5) * waypointOffsetRange * 2
-                    targetPos = targetPos + Vector3.new(offsetX, 0, offsetZ)
-                    print(string.format("路径点 %d/%d 添加随机偏移", currentWaypointIndex, #waypoints))
-                end
-                
-                stuckCheckTime = tick()
-                lastPosition = currentPos
-                print(string.format("切换到路径点 %d/%d: %s (移动时将使用当前Y=%.2f)", 
-                    currentWaypointIndex, #waypoints, tostring(targetPos), currentPos.Y))
-            else
-                print("已到达所有路径点")
-                moveComplete = true
-                if moveConnection then
-                    moveConnection:Disconnect()
-                end
-                return
-            end
-        end
-        
-        -- 获取Humanoid以确保可以持续移动
-        local currentHumanoid = currentChar:FindFirstChild("Humanoid")
-        if currentHumanoid then
-            -- 动态速度变化：随机改变移动速度（增加随机性）- 增强
-            if currentTime - lastSpeedChangeTime > speedChangeInterval then
-                -- 速度在基础速度的±speedVariationRange范围内波动（动态变化幅度）
-                local speedVariation = math.random(-speedVariationRange, speedVariationRange)
-                currentWalkSpeed = math.clamp(baseWalkSpeed + speedVariation, 50, 80)  -- 限制在50-80之间（扩大范围）
-                lastSpeedChangeTime = currentTime
-                speedChangeInterval = math.random(2, 10)  -- 重新随机下一次速度变化间隔（2-10秒）
-                speedVariationRange = math.random(3, 5)  -- 重新随机速度变化幅度
-                print(string.format("动态调整速度: %.1f (基础: %.1f)", currentWalkSpeed, baseWalkSpeed))
-            end
-            
-            -- 持续调用MoveTo确保角色一直移动（每帧都调用）
-            -- 使用当前动态速度
-            -- 忽略高度：使用路径点的X和Z，但使用当前角色的Y坐标
-            local moveTargetPos = Vector3.new(targetPos.X, currentHRP.Position.Y, targetPos.Z)
-            if currentHumanoid.WalkSpeed ~= currentWalkSpeed then
-                currentHumanoid.WalkSpeed = currentWalkSpeed
-            end
-            
-            currentHumanoid:MoveTo(moveTargetPos)
-            isMoving = true
-        end
-        
-        -- 卡住检测（使用随机检测时间以增加随机性）
-        if isMoving and tick() - stuckCheckTime > stuckCheckInterval and not isRecalculating then
-            local movedDistance = (currentPos - lastPosition).Magnitude
-            if movedDistance < stuckDistanceThreshold then
-                -- 卡住了，停止移动，清空全部移动，然后回到出生点
-                print(string.format("检测到卡住（路径点 %d/%d），停止移动并回到出生点", currentWaypointIndex, #waypoints))
-                
-                -- 设置重新计算标志，防止重复触发
-                isRecalculating = true
-                
-                -- 停止移动
-                local currentHumanoidForStop = currentChar:FindFirstChild("Humanoid")
-                if currentHumanoidForStop then
-                    currentHumanoidForStop:MoveTo(currentHRP.Position)  -- 停止移动到当前位置
-                    currentHumanoidForStop.WalkSpeed = 0  -- 设置速度为0
-                end
-                
-                -- 清空全部移动状态
-                isMoving = false
-                
-                -- 执行远程事件回到出生点
-                local success, errorMsg = pcall(function()
-                    game:GetService("ReplicatedStorage")["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175UI"]["\229\155\158\229\159\142"]:Fire()
-                end)
-                
-                if not success then
-                    print("执行回到出生点事件失败:", errorMsg)
-                else
-                    print("已执行回到出生点事件")
-                end
-                
-                -- 在后台任务中等待1秒后重新判断路径
-                task.spawn(function()
-                    task.wait(1)  -- 等待1秒
-                    
-                    -- 重新计算路径
-                    local newPath, newWaypoints = recalculatePathForMove()
-                    if newPath and newWaypoints and #newWaypoints > 0 then
-                        -- 更新路径和路径点
-                        path = newPath
-                        waypoints = newWaypoints
-                        currentWaypointIndex = 1
-                        if #waypoints > 1 then
-                            currentWaypointIndex = 2
-                        end
-                        
-                        -- 重新启动移动
-                        moveComplete = false
-                        isMoving = false
-                        stuckCheckTime = tick()
-                        
-                        -- 重新获取当前位置作为lastPosition，并恢复移动速度
-                        local currentCharCheck = LocalPlayer.Character
-                        if currentCharCheck and currentCharCheck.Parent then
-                            local currentHRPCheck = currentCharCheck:FindFirstChild("HumanoidRootPart")
-                            local currentHumanoidCheck = currentCharCheck:FindFirstChild("Humanoid")
-                            if currentHRPCheck then
-                                lastPosition = currentHRPCheck.Position
-                            end
-                            -- 恢复移动速度（确保可以重新移动）
-                            if currentHumanoidCheck then
-                                currentHumanoidCheck.WalkSpeed = currentWalkSpeed
-                                print("已恢复移动速度:", currentWalkSpeed)
-                            end
-                        end
-                        
-                        -- 重置重新计算标志
-                        isRecalculating = false
-                        
-                        print("重新计算路径完成，共 " .. #waypoints .. " 个路径点，从路径点 " .. currentWaypointIndex .. " 开始")
-                    else
-                        print("重新计算路径失败")
-                        isRecalculating = false
-                    end
-                end)
-            else
-                stuckCheckTime = tick()
-                lastPosition = currentPos
-            end
-        end
-    end)
-    
-        -- 开始移动
-        print("开始移动到第一个路径点")
-        if moveToNextWaypoint() then
-            -- 等待移动完成（最多150秒）
-            print("移动中，等待完成...")
-            local MAX_MOVE_TIME = 150  -- 移动超时时间（秒）
-            moveStartTimeTable.value = tick()  -- 设置移动开始时间，让Heartbeat回调可以重置
-            
-            -- 使用Heartbeat每帧检查GUI，确保第一时间退出
-            local waitGuiCheckConnection
-            waitGuiCheckConnection = RunService.Heartbeat:Connect(function()
-                if CheckGUIVisibility() then
-                    if waitGuiCheckConnection then
-                        waitGuiCheckConnection:Disconnect()
-                    end
-                    print("等待移动完成时检测到GUI可见 - 停止移动并关闭游戏")
-                    moveComplete = true
-                    if moveConnection then
-                        moveConnection:Disconnect()
-                    end
-                    game:Shutdown()
-                end
-            end)
-            
-            while not moveComplete and tick() - moveStartTimeTable.value < MAX_MOVE_TIME do
-                wait(0.1)
-                
-                -- 检查角色是否仍然有效
-                local currentChar = LocalPlayer.Character
-                if not currentChar or not currentChar.Parent then
-                    print("角色已消失，停止移动")
-                    moveComplete = true
-                    break
-                end
-            end
-            
-            if waitGuiCheckConnection then
-                waitGuiCheckConnection:Disconnect()
-            end
-        if moveConnection then
-            moveConnection:Disconnect()
-        end
-        if moveComplete then
-            print("移动完成")
-        else
-            print("移动超时")
-        end
-        return moveComplete
-    else
-        print("无法开始移动")
-    end
-    
-    if moveConnection then
-        moveConnection:Disconnect()
-    end
+
+    warn("[导航] 超过最大重算次数")
     return false
 end
 
--- 执行路径寻找操作（替代原来的传送操作）
-local function ExecutePathfindingOperation()
-    -- 检查GUI可见性
-    if CheckGUIVisibility() then
-        print("执行路径寻找前检测到GUI可见 - 关闭游戏")
-        game:Shutdown()
+local function executePathfindingOperation()
+    if shutdownIfAbortGuiVisible("执行前") then
         return
     end
-    
-    -- 查找可用的水晶
-    local targetModel = FindAvailableCrystal()
-    
-    if targetModel then
-        print("找到目标水晶，开始路径寻找...")
-        -- 如果移动失败（可能是死亡导致），重试一次
-        local moveSuccess = MoveToTarget(targetModel)
-        if not moveSuccess then
-            -- 清除缓存，重新查找可用水晶
-            cachedCrystal = nil
-            
-            -- 等待一下，可能是角色死亡需要重生（使用Heartbeat每帧检查GUI）
-            local waitStartTime = tick()
-            local retryGuiCheckConnection
-            retryGuiCheckConnection = RunService.Heartbeat:Connect(function()
-                if CheckGUIVisibility() then
-                    if retryGuiCheckConnection then
-                        retryGuiCheckConnection:Disconnect()
-                    end
-                    print("重试等待期间检测到GUI可见 - 关闭游戏")
-                    game:Shutdown()
-                end
-            end)
-            
-            while tick() - waitStartTime < 2 do
-                wait(0.1)
-            end
-            
-            if retryGuiCheckConnection then
-                retryGuiCheckConnection:Disconnect()
-            end
-            
-            -- 再次检查GUI（防止在断开连接后GUI才变为可见）
-            if CheckGUIVisibility() then
-                print("重试前检测到GUI可见 - 关闭游戏")
-                game:Shutdown()
-                return
-            end
-            
-            -- 重新查找可用水晶并重试
-            local targetModel2 = FindAvailableCrystal()
-            if targetModel2 then
-                print("重试路径寻找...")
-                moveSuccess = MoveToTarget(targetModel2)
-            end
-        end
-        if moveSuccess then
-            print("路径寻找完成")
-        else
-            print("路径寻找失败")
-        end
-    else
-        print("未找到可用的水晶")
+
+    local _, _, hrp = waitForRig(6)
+    if not hrp then
+        warn("[执行] 角色未加载完成，跳过本轮")
+        return
+    end
+
+    local crystal = findAvailableCrystal(hrp.Position)
+    if not crystal then
+        print("[执行] 未找到可用水晶")
+        return
+    end
+
+    local targetPos = resolveTargetPosition(crystal)
+    if not targetPos then
+        warn("[执行] 目标坐标解析失败")
+        cachedCrystal = nil
+        return
+    end
+
+    local ok = navigateTo(targetPos)
+    if ok then
+        return
+    end
+
+    cachedCrystal = nil
+    if not waitWithGuiAbort(1.0, "重试等待") then
+        return
+    end
+
+    local _, _, retryHrp = waitForRig(6)
+    if not retryHrp then
+        return
+    end
+
+    local retryCrystal = findAvailableCrystal(retryHrp.Position)
+    local retryTarget = resolveTargetPosition(retryCrystal)
+    if retryTarget then
+        navigateTo(retryTarget)
     end
 end
 
--- 主循环
-while true do
-    -- 定期尝试删除奖励界面（防止弹出）- 1%概率检查
-    if math.random() < 0.01 then
-        task.spawn(function()
-            RemoveRewardUI()
-        end)
-    end
-    
-    -- 快速检查GUI可见性
-    local guiVisible = CheckGUIVisibility()
-    if guiVisible then
-        print("检测到GUI可见 - 关闭游戏")
-        game:Shutdown()
+print("[PlaceId检查] 当前游戏 PlaceId:", game.PlaceId)
+if game.PlaceId == BLOCKED_PLACE_ID then
+    warn(string.format("[PlaceId检查] 检测到目标游戏ID (%d)，脚本不运行", BLOCKED_PLACE_ID))
+    return
+end
+
+task.wait(STARTUP_DELAY_SECONDS)
+print("[初始化] 等待GUI完全初始化...")
+task.wait(GUI_INIT_WAIT_SECONDS)
+
+removeRewardUI()
+
+if shutdownIfAbortGuiVisible("初始化") then
+    return
+end
+
+local initialDelay = RNG:NextNumber(INITIAL_DELAY_MIN, INITIAL_DELAY_MAX)
+if initialDelay > 0 then
+    print(string.format("[初始化] 随机初始延迟: %.2f 秒", initialDelay))
+    if not waitWithGuiAbort(initialDelay, "初始化延迟") then
         return
     end
-    
-    -- 检查水晶是否存在
-    local crystalSuccess, crystalExists = CheckCrystalExists()
-    
-    if crystalSuccess and crystalExists then
-        -- 水晶存在时才检查GUI可见性
-        if CheckGUIVisibility() then
-            print("检测到GUI可见 - 关闭游戏")
-            game:Shutdown()
+end
+
+local _, startupHumanoid = waitForRig(15)
+if not startupHumanoid then
+    warn("[初始化] 角色加载失败，脚本终止")
+    return
+end
+startupHumanoid.PlatformStand = false
+startupHumanoid.WalkSpeed = BASE_WALK_SPEED
+
+while true do
+    if shutdownIfAbortGuiVisible("主循环") then
+        return
+    end
+
+    if RNG:NextNumber(0, 1) < REWARD_UI_REMOVE_CHANCE then
+        task.spawn(removeRewardUI)
+    end
+
+    if checkCrystalExists() then
+        executePathfindingOperation()
+
+        local cooldown = RNG:NextNumber(MAIN_COOLDOWN_MIN, MAIN_COOLDOWN_MAX)
+        print(string.format("[冷却] %.2f 秒", cooldown))
+        if not waitWithGuiAbort(cooldown, "冷却") then
             return
         end
-        
-        -- 执行路径寻找操作（替代传送）
-        ExecutePathfindingOperation()
-        
-        -- 随机冷却周期（8-15秒随机，让30个号分散）- 持续检查GUI，使用Heartbeat每帧检查以确保第一时间退出
-        local cooldownTime = math.random(8, 15)  -- 8-15秒随机冷却
-        print(string.format("[冷却] 随机冷却时间: %d 秒", cooldownTime))
-        local startTime = tick()
-        local guiCheckConnection
-        guiCheckConnection = RunService.Heartbeat:Connect(function()
-            if CheckGUIVisibility() then
-                if guiCheckConnection then
-                    guiCheckConnection:Disconnect()
-                end
-                print("冷却期间检测到GUI可见 - 关闭游戏")
-                game:Shutdown()
-            end
-        end)
-        
-        -- 等待随机冷却时间或GUI可见（GUI检查由上面的Heartbeat处理）
-        while tick() - startTime < cooldownTime do
-            wait(0.1)
-        end
-        
-        if guiCheckConnection then
-            guiCheckConnection:Disconnect()
-        end
     else
-        -- 水晶不存在时短暂等待（但仍持续检查GUI，使用Heartbeat每帧检查以确保第一时间退出）
-        local startTime = tick()
-        local guiCheckConnection
-        guiCheckConnection = RunService.Heartbeat:Connect(function()
-            if CheckGUIVisibility() then
-                if guiCheckConnection then
-                    guiCheckConnection:Disconnect()
-                end
-                print("等待期间检测到GUI可见 - 关闭游戏")
-                game:Shutdown()
-            end
-        end)
-        
-        -- 等待1秒或GUI可见（GUI检查由上面的Heartbeat处理）
-        while tick() - startTime < 1 do
-            wait(0.1)
-        end
-        
-        if guiCheckConnection then
-            guiCheckConnection:Disconnect()
+        if not waitWithGuiAbort(SHORT_IDLE_SECONDS, "待机") then
+            return
         end
     end
 end
