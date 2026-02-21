@@ -82,11 +82,6 @@ type MoveFailureReason =
     | "stuck"
     | "path_blocked"
 
-type CrystalCandidate = {
-    instance: Instance,
-    distance: number,
-}
-
 local PATH_PROFILES: { PathProfile } = {
     { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 4.0, agentCanJump = true },
     { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 8.0, agentCanJump = true },
@@ -97,6 +92,37 @@ local PATH_PROFILES: { PathProfile } = {
 
 local RNG = Random.new(math.floor(os.clock() * 1000) + LocalPlayer.UserId)
 local cachedCrystal: Instance? = nil
+local cachedCrystalContainer: Instance? = nil
+local cachedPlayerGui: PlayerGui? = nil
+local cachedRootGui: Instance? = nil
+local cachedRewardRoot: Instance? = nil
+local preferredProfileIndex = 1
+
+local SEARCH_ANGLE_OFFSETS: { number } = { 0 }
+do
+    for offset = SEARCH_ANGLE_STEP, 180, SEARCH_ANGLE_STEP do
+        table.insert(SEARCH_ANGLE_OFFSETS, offset)
+        table.insert(SEARCH_ANGLE_OFFSETS, -offset)
+    end
+end
+
+local cachedCharacter: Model? = nil
+local cachedHumanoid: Humanoid? = nil
+local cachedHrp: BasePart? = nil
+
+local function invalidateRigCache()
+    cachedCharacter = nil
+    cachedHumanoid = nil
+    cachedHrp = nil
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    invalidateRigCache()
+end)
+
+LocalPlayer.CharacterRemoving:Connect(function()
+    invalidateRigCache()
+end)
 
 local function flat(v: Vector3): Vector3
     return Vector3.new(v.X, 0, v.Z)
@@ -107,16 +133,30 @@ local function flattenPathTarget(v: Vector3): Vector3
 end
 
 local function getCurrentRig(): (Model?, Humanoid?, BasePart?)
+    local currentCharacter = LocalPlayer.Character
+    if cachedCharacter and cachedHumanoid and cachedHrp and cachedCharacter == currentCharacter then
+        if cachedCharacter.Parent and cachedHumanoid.Parent and cachedHrp.Parent then
+            return cachedCharacter, cachedHumanoid, cachedHrp
+        end
+        invalidateRigCache()
+    end
+
     local character = LocalPlayer.Character
     if not character or not character.Parent then
+        invalidateRigCache()
         return nil, nil, nil
     end
 
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not humanoid or not hrp or not hrp:IsA("BasePart") then
+        invalidateRigCache()
         return character, nil, nil
     end
+
+    cachedCharacter = character
+    cachedHumanoid = humanoid
+    cachedHrp = hrp
 
     return character, humanoid, hrp
 end
@@ -133,23 +173,42 @@ local function waitForRig(timeoutSeconds: number): (Model?, Humanoid?, BasePart?
     return nil, nil, nil
 end
 
-local function isAbortGuiVisible(): boolean
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+local function resolveRewardGuiRoot(): Instance?
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") :: PlayerGui?
+    if playerGui ~= cachedPlayerGui then
+        cachedPlayerGui = playerGui
+        cachedRootGui = nil
+        cachedRewardRoot = nil
+    end
+
     if not playerGui then
-        return false
+        return nil
     end
 
-    local rootGui = playerGui:FindFirstChild("GUI")
+    if not cachedRootGui or cachedRootGui.Parent ~= playerGui then
+        cachedRootGui = playerGui:FindFirstChild("GUI")
+        cachedRewardRoot = nil
+    end
+
+    local rootGui = cachedRootGui
     if not rootGui then
+        return nil
+    end
+
+    if not cachedRewardRoot or cachedRewardRoot.Parent ~= rootGui then
+        cachedRewardRoot = rootGui:FindFirstChild(SECONDARY_GUI_NAME)
+    end
+
+    return cachedRewardRoot
+end
+
+local function isAbortGuiVisible(): boolean
+    local rewardRoot = resolveRewardGuiRoot()
+    if not rewardRoot then
         return false
     end
 
-    local secondLayer = rootGui:FindFirstChild(SECONDARY_GUI_NAME)
-    if not secondLayer then
-        return false
-    end
-
-    local rewardGui = secondLayer:FindFirstChild(REWARD_VISIBLE_GUI_NAME)
+    local rewardGui = rewardRoot:FindFirstChild(REWARD_VISIBLE_GUI_NAME)
     return rewardGui ~= nil and rewardGui:IsA("GuiObject") and rewardGui.Visible
 end
 
@@ -175,17 +234,7 @@ local function waitWithGuiAbort(seconds: number, context: string): boolean
 end
 
 local function removeRewardUI(): boolean
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then
-        return false
-    end
-
-    local rootGui = playerGui:FindFirstChild("GUI")
-    if not rootGui then
-        return false
-    end
-
-    local rewardRoot = rootGui:FindFirstChild(SECONDARY_GUI_NAME)
+    local rewardRoot = resolveRewardGuiRoot()
     if not rewardRoot then
         return false
     end
@@ -206,7 +255,16 @@ local function removeRewardUI(): boolean
 end
 
 local function getCrystalContainer(): Instance?
-    return Workspace:FindFirstChild(CRYSTAL_CONTAINER_NAME)
+    if cachedCrystalContainer and cachedCrystalContainer.Parent == Workspace then
+        return cachedCrystalContainer
+    end
+
+    local container = Workspace:FindFirstChild(CRYSTAL_CONTAINER_NAME)
+    if container ~= cachedCrystalContainer then
+        cachedCrystal = nil
+    end
+    cachedCrystalContainer = container
+    return cachedCrystalContainer
 end
 
 local function checkCrystalExists(): boolean
@@ -214,7 +272,7 @@ local function checkCrystalExists(): boolean
     if not container then
         return false
     end
-    return #container:GetChildren() > 0
+    return container:GetChildren()[1] ~= nil
 end
 
 local function getInstancePosition(instance: Instance): Vector3?
@@ -246,29 +304,27 @@ local function findAvailableCrystal(startPos: Vector3): Instance?
         return nil
     end
 
-    local candidates: { CrystalCandidate } = {}
     local startFlat = flat(startPos)
+    local nearestCrystal: Instance? = nil
+    local nearestDist = math.huge
 
     for _, crystal in ipairs(children) do
         local pos = getInstancePosition(crystal)
         if pos then
-            table.insert(candidates, {
-                instance = crystal,
-                distance = (startFlat - flat(pos)).Magnitude,
-            })
+            local dist = (startFlat - flat(pos)).Magnitude
+            if dist < nearestDist then
+                nearestDist = dist
+                nearestCrystal = crystal
+            end
         end
     end
 
-    if #candidates == 0 then
+    if not nearestCrystal then
         cachedCrystal = children[1]
         return cachedCrystal
     end
 
-    table.sort(candidates, function(a, b)
-        return a.distance < b.distance
-    end)
-
-    cachedCrystal = candidates[1].instance
+    cachedCrystal = nearestCrystal
     return cachedCrystal
 end
 
@@ -325,8 +381,11 @@ end
 
 local function tryBuildDirectPath(startPos: Vector3, targetPos: Vector3): (Path?, string)
     local lastError = "UnknownError"
-    for _, profile in ipairs(PATH_PROFILES) do
-        local path, err = computePathWithProfile(startPos, targetPos, profile)
+    local profileCount = #PATH_PROFILES
+
+    if preferredProfileIndex >= 1 and preferredProfileIndex <= profileCount then
+        local preferredProfile = PATH_PROFILES[preferredProfileIndex]
+        local path, err = computePathWithProfile(startPos, targetPos, preferredProfile)
         if path then
             return path, "ok"
         end
@@ -334,13 +393,35 @@ local function tryBuildDirectPath(startPos: Vector3, targetPos: Vector3): (Path?
             lastError = err
         end
     end
+
+    for index, profile in ipairs(PATH_PROFILES) do
+        if index == preferredProfileIndex then
+            continue
+        end
+
+        local path, err = computePathWithProfile(startPos, targetPos, profile)
+        if path then
+            preferredProfileIndex = index
+            return path, "ok"
+        end
+        if err then
+            lastError = err
+        end
+    end
+
     return nil, lastError
 end
 
 local function findNearbyReachablePath(startPos: Vector3, targetPos: Vector3): (Path?, Vector3?)
+    local baseDir = flat(startPos - targetPos)
+    local baseAngle = 0
+    if baseDir.Magnitude > 0.001 then
+        baseAngle = math.deg(math.atan2(baseDir.Z, baseDir.X))
+    end
+
     for radius = SEARCH_STEP, SEARCH_RADIUS, SEARCH_STEP do
-        for angle = 0, 359, SEARCH_ANGLE_STEP do
-            local rad = math.rad(angle)
+        for _, angleOffset in ipairs(SEARCH_ANGLE_OFFSETS) do
+            local rad = math.rad(baseAngle + angleOffset)
             local probe = Vector3.new(
                 targetPos.X + math.cos(rad) * radius,
                 targetPos.Y,
@@ -392,9 +473,21 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
     local lastStepPos = hrp.Position
 
     local blockedIndex = math.huge
-    local blockedConn = path.Blocked:Connect(function(index: number)
+    local blockedConn: RBXScriptConnection? = path.Blocked:Connect(function(index: number)
         blockedIndex = math.min(blockedIndex, index)
     end)
+
+    local function cleanupBlockedConn()
+        if blockedConn then
+            blockedConn:Disconnect()
+            blockedConn = nil
+        end
+    end
+
+    local function fail(reason: MoveFailureReason): (boolean, MoveFailureReason)
+        cleanupBlockedConn()
+        return false, reason
+    end
 
     local function updateSpeed(forceBase: boolean)
         local now = os.clock()
@@ -415,26 +508,22 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
 
     for i = 2, #waypoints do
         if blockedIndex <= i then
-            blockedConn:Disconnect()
-            return false, "path_blocked"
+            return fail("path_blocked")
         end
 
         if shutdownIfAbortGuiVisible("移动") then
-            blockedConn:Disconnect()
-            return false, "gui_visible"
+            return fail("gui_visible")
         end
 
         local _, humNow, hrpNow = getCurrentRig()
         if not humNow or not hrpNow then
-            blockedConn:Disconnect()
-            return false, "character_invalid"
+            return fail("character_invalid")
         end
         humanoid = humNow
         hrp = hrpNow
 
         if humanoid.Health <= 0 then
-            blockedConn:Disconnect()
-            return false, "humanoid_dead"
+            return fail("humanoid_dead")
         end
 
         updateSpeed(false)
@@ -450,21 +539,18 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
 
         while true do
             if shutdownIfAbortGuiVisible("移动循环") then
-                blockedConn:Disconnect()
-                return false, "gui_visible"
+                return fail("gui_visible")
             end
 
             local _, humLoop, hrpLoop = getCurrentRig()
             if not humLoop or not hrpLoop then
-                blockedConn:Disconnect()
-                return false, "character_invalid"
+                return fail("character_invalid")
             end
             humanoid = humLoop
             hrp = hrpLoop
 
             if humanoid.Health <= 0 then
-                blockedConn:Disconnect()
-                return false, "humanoid_dead"
+                return fail("humanoid_dead")
             end
 
             updateSpeed(false)
@@ -477,23 +563,19 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
             local now = os.clock()
 
             if blockedIndex <= i then
-                blockedConn:Disconnect()
-                return false, "path_blocked"
+                return fail("path_blocked")
             end
 
             if now - moveStart >= MOVE_TIMEOUT_SECONDS then
-                blockedConn:Disconnect()
-                return false, "move_timeout"
+                return fail("move_timeout")
             end
 
             if now - waypointStart >= WAYPOINT_TIMEOUT_SECONDS then
-                blockedConn:Disconnect()
-                return false, "waypoint_timeout"
+                return fail("waypoint_timeout")
             end
 
             if (hrp.Position - lastStepPos).Magnitude >= POSITION_JUMP_THRESHOLD then
-                blockedConn:Disconnect()
-                return false, "position_jump"
+                return fail("position_jump")
             end
             lastStepPos = hrp.Position
 
@@ -502,8 +584,7 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
                 if moved <= STUCK_DISTANCE_THRESHOLD then
                     stuckStrikeCount += 1
                     if stuckStrikeCount >= STUCK_CONFIRM_COUNT then
-                        blockedConn:Disconnect()
-                        return false, "stuck"
+                        return fail("stuck")
                     end
                 else
                     stuckStrikeCount = 0
@@ -517,7 +598,7 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
         end
     end
 
-    blockedConn:Disconnect()
+    cleanupBlockedConn()
     return true, nil
 end
 
@@ -536,6 +617,11 @@ local function navigateTo(targetPos: Vector3): boolean
 
         humanoid.PlatformStand = false
         humanoid.WalkSpeed = BASE_WALK_SPEED
+
+        if (flat(hrp.Position) - flat(targetPos)).Magnitude <= WAYPOINT_REACH_DISTANCE then
+            print("[导航] 已在目标附近，跳过寻路")
+            return true
+        end
 
         local path, resolvedTarget, mode = buildPath(hrp.Position, targetPos)
         if not path or not resolvedTarget then
