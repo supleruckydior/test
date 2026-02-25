@@ -3155,7 +3155,6 @@ if currentGameId == TARGET_GAME_ID then
         print('炼丹炉等级:', elixirLevel)
         print('初始草药量:', getHerbValue())
         print('==================')
-        task.spawn(smartMonitor)
     else
         print('条件不满足：需要农田5和炼丹炉等级≥80')
     end
