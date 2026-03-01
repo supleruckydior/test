@@ -253,7 +253,71 @@ if currentGameId == TARGET_GAME_ID then
     local finishworldnum
     local values = player:WaitForChild('值')
     local privileges = values:WaitForChild('特权')
-    local gowordlevels = 78
+    local DEFAULT_WORLD_LEVEL = 78
+    local worldSettingsFilePath = 'WorldSettings.json'
+    local function normalizeWorldSettings(settings)
+        local normalized = settings or {}
+        local worldLevel = math.floor(
+            tonumber(normalized.worldLevel) or DEFAULT_WORLD_LEVEL
+        )
+        if worldLevel < 1 then
+            worldLevel = DEFAULT_WORLD_LEVEL
+        end
+        return {
+            worldLevel = worldLevel,
+            worldMode = (normalized.worldMode == 'auto_highest')
+                and 'auto_highest'
+                or 'manual',
+            worldAutoStart = normalized.worldAutoStart == true,
+        }
+    end
+    local function loadWorldSettingsData()
+        if not isfile(worldSettingsFilePath) then
+            return {}
+        end
+        local success, fileContent = pcall(readfile, worldSettingsFilePath)
+        if not success or fileContent == '' then
+            return {}
+        end
+        local decodeSuccess, data =
+            pcall(Services.HttpService.JSONDecode, Services.HttpService, fileContent)
+        if not decodeSuccess or type(data) ~= 'table' then
+            warn('WorldSettings.json 解析失败，已回退为默认配置')
+            return {}
+        end
+        return data
+    end
+    local function saveWorldSettingsData(data)
+        local encodeSuccess, fileContent =
+            pcall(Services.HttpService.JSONEncode, Services.HttpService, data)
+        if not encodeSuccess then
+            warn('WorldSettings.json 编码失败')
+            return false
+        end
+        local writeSuccess, writeError =
+            pcall(writefile, worldSettingsFilePath, fileContent)
+        if not writeSuccess then
+            warn('WorldSettings.json 写入失败: ' .. tostring(writeError))
+            return false
+        end
+        return true
+    end
+    local function getPlayerWorldSettings()
+        local allSettings = loadWorldSettingsData()
+        return normalizeWorldSettings(allSettings[player.Name])
+    end
+    local function updatePlayerWorldSettings(updates)
+        local allSettings = loadWorldSettingsData()
+        local playerSettings = normalizeWorldSettings(allSettings[player.Name])
+        for key, value in pairs(updates) do
+            playerSettings[key] = value
+        end
+        playerSettings = normalizeWorldSettings(playerSettings)
+        allSettings[player.Name] = playerSettings
+        saveWorldSettingsData(allSettings)
+        return playerSettings
+    end
+    local gowordlevels = getPlayerWorldSettings().worldLevel
     local isDetectionEnabled = true
     local playerInRange = false
     local timescheck = 0
@@ -961,6 +1025,11 @@ if currentGameId == TARGET_GAME_ID then
         -- 75关自动重试的全局控制变量
         local AutoReenter = false
         local AutoReenterThread = nil
+        local Autostartwarld = false
+        local AutostartThread = nil
+        local savedWorldSettings = getPlayerWorldSettings()
+        local worldSelectionMode = savedWorldSettings.worldMode
+        local autoHighestWorldThread = nil
         
         local worldnum = player
             :WaitForChild('值')
@@ -980,7 +1049,10 @@ if currentGameId == TARGET_GAME_ID then
             end
         end)
         local Difficulty_choose =
-            features2:AddLabel('  當前選擇 關卡： 78') -- 初始化顯示為70
+            features2:AddLabel('  當前選擇 關卡： ' .. savedWorldSettings.worldLevel)
+        local function saveCurrentWorldSettings(updates)
+            savedWorldSettings = updatePlayerWorldSettings(updates)
+        end
         local function gowordlevelscheak(gowordlevels)
             if gowordlevels > worldnum then
                 if gowordlevels < 10 then
@@ -994,85 +1066,104 @@ if currentGameId == TARGET_GAME_ID then
                 Difficulty_choose.Text = '  當前選擇 關卡： 0'
                     .. gowordlevels
             else
-                Difficulty_choose.Text = '  當前選擇 關卡： '
-                    .. gowordlevels
+                    Difficulty_choose.Text = '  當前選擇 關卡： '
+                        .. gowordlevels
             end
+        end
+        local function updateAutoHighestWorldLabel()
+            if worldnum < 10 then
+                Difficulty_choose.Text = '  當前選擇最高關卡： 0' .. worldnum
+            else
+                Difficulty_choose.Text = '  當前選擇最高關卡： ' .. worldnum
+            end
+        end
+        local function stopAutoHighestWorldMode(silent)
+            local wasAutoHighest = worldSelectionMode == 'auto_highest'
+            worldSelectionMode = 'manual'
+            if autoHighestWorldThread then
+                task.cancel(autoHighestWorldThread)
+                autoHighestWorldThread = nil
+            end
+            if wasAutoHighest and not silent then
+                print('自動最高關卡已停止')
+            end
+        end
+        local function setManualWorldLevel(newLevel, labelOverride, silentStop)
+            stopAutoHighestWorldMode(silentStop)
+            gowordlevels = math.max(1, math.floor(tonumber(newLevel) or DEFAULT_WORLD_LEVEL))
+            if labelOverride then
+                Difficulty_choose.Text = labelOverride
+            else
+                gowordlevelscheak(gowordlevels)
+            end
+            saveCurrentWorldSettings({
+                worldLevel = gowordlevels,
+                worldMode = 'manual',
+            })
+        end
+        local function startAutoHighestWorldMode()
+            if autoHighestWorldThread then
+                task.cancel(autoHighestWorldThread)
+                autoHighestWorldThread = nil
+            end
+            worldSelectionMode = 'auto_highest'
+            print('當前選擇：自動最高關卡')
+            gowordlevels = worldnum
+            newworldnum = worldnum
+            updateAutoHighestWorldLabel()
+            saveCurrentWorldSettings({
+                worldLevel = gowordlevels,
+                worldMode = worldSelectionMode,
+            })
+            autoHighestWorldThread = task.spawn(function()
+                print('自動最高關卡已啟動')
+                while worldSelectionMode == 'auto_highest' do
+                    if newworldnum ~= worldnum then
+                        gowordlevels = worldnum
+                        newworldnum = worldnum
+                        finishworldnum = tonumber(gowordlevels)
+                        updateAutoHighestWorldLabel()
+                        saveCurrentWorldSettings({
+                            worldLevel = gowordlevels,
+                            worldMode = worldSelectionMode,
+                        })
+                        wait(savemodetime2)
+                        wait(savemodetime + 1)
+                        local args = { [1] = finishworldnum }
+                        PathCache.Stage
+                            :FindFirstChild(
+                                '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
+                            )
+                            :FireServer(unpack(args))
+                    end
+                    task.wait(1)
+                end
+                autoHighestWorldThread = nil
+            end)
         end
         local Difficulty_selection = features2:AddDropdown(
             '                關卡難易度選擇                ',
             function(text)
                 if text == '      世界關卡簡單： 01       ' then
                     print('當前選擇：簡單')
-                    gowordlevels = 1
-                    Difficulty_choose.Text = '  當前選擇： 01'
+                    setManualWorldLevel(1, '  當前選擇： 01')
                 elseif text == '      世界關卡普通： 21       ' then
                     print('當前選擇：普通')
-                    gowordlevels = 21
-                    gowordlevelscheak(gowordlevels)
+                    setManualWorldLevel(21)
                 elseif text == '      世界關卡困難： 55       ' then
                     print('當前選擇：困難')
-                    gowordlevels = 55
-                    gowordlevelscheak(gowordlevels)
+                    setManualWorldLevel(55)
                 elseif text == '      世界關卡專家： 64       ' then
                     print('當前選擇：專家')
-                    gowordlevels = 64
-                    gowordlevelscheak(gowordlevels)
+                    setManualWorldLevel(64)
                 elseif text == '      世界關卡大師： 82       ' then
                     print('當前選擇：大師')
-                    gowordlevels = 82
-                    gowordlevelscheak(gowordlevels)
+                    setManualWorldLevel(82)
                 elseif text == '      世界關卡      ： 101       ' then
                     print('當前選擇：專家')
-                    gowordlevels = 101
-                    gowordlevelscheak(gowordlevels)
+                    setManualWorldLevel(101)
                 elseif text == '      自動最高關卡        ' then
-                    local showone = false
-                    print('當前選擇：自動最高關卡')
-                    if worldnum < 10 then
-                        Difficulty_choose.Text = '  當前選擇最高關卡： 0'
-                            .. worldnum
-                    else
-                        Difficulty_choose.Text = '  當前選擇最高關卡： '
-                            .. worldnum
-                    end
-                    gowordlevels = worldnum
-                    while true do
-                        local Difficulty_choose_Text = string.match(
-                            Difficulty_choose.Text,
-                            '當前選擇最高關卡'
-                        )
-                        if
-                            Difficulty_choose_Text ~= '當前選擇最高關卡'
-                        then
-                            showone = false
-                            print('自動最高關卡已停止')
-                            break
-                        elseif not showone then
-                            print('自動最高關卡已啟動')
-                            showone = true
-                        end
-                        if newworldnum ~= worldnum then
-                            gowordlevels = worldnum
-                            newworldnum = worldnum
-                            finishworldnum = tonumber(gowordlevels)
-                            if worldnum < 10 then
-                                Difficulty_choose.Text = '  當前選擇最高關卡： 0'
-                                    .. gowordlevels
-                            else
-                                Difficulty_choose.Text = '  當前選擇最高關卡： '
-                                    .. gowordlevels
-                            end
-                            wait(savemodetime2)
-                            wait(savemodetime + 1)
-                            local args = { [1] = finishworldnum }
-                            PathCache.Stage
-                                :FindFirstChild(
-                                    '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
-                                )
-                                :FireServer(unpack(args))
-                        end
-                        task.wait(1)
-                    end
+                    startAutoHighestWorldMode()
                 end
             end
         )
@@ -1090,12 +1181,10 @@ if currentGameId == TARGET_GAME_ID then
             Difficulty_selection:Add('      自動最高關卡        ')
         local Levels999 = Difficulty_selection:Add('空白')
         features2:AddButton('選擇關卡+1', function()
-            gowordlevels = gowordlevels + 1
-            gowordlevelscheak(gowordlevels)
+            setManualWorldLevel(gowordlevels + 1)
         end)
         features2:AddButton('選擇關卡-1', function()
-            gowordlevels = gowordlevels - 1
-            gowordlevelscheak(gowordlevels)
+            setManualWorldLevel(gowordlevels - 1)
         end)
         local combatUI = playerGui.GUI
             :WaitForChild('主界面')
@@ -1176,88 +1265,108 @@ if currentGameId == TARGET_GAME_ID then
                 AutoReenterThread = nil
             end
         end)
+        if savedWorldSettings.worldMode == 'auto_highest' then
+            startAutoHighestWorldMode()
+        else
+            gowordlevels = savedWorldSettings.worldLevel
+            gowordlevelscheak(gowordlevels)
+        end
 
+        local isRestoringWorldAutoStart = true
+        local function setWorldAutoStart(enabled, persist)
+            if persist == false then
+                savedWorldSettings.worldAutoStart = enabled
+            else
+                saveCurrentWorldSettings({ worldAutoStart = enabled })
+            end
+            if enabled then
+                -- 如果已经运行，先停止
+                if AutostartThread then
+                    Autostartwarld = false
+                    task.cancel(AutostartThread)
+                    AutostartThread = nil
+                    task.wait(0.1) -- 等待旧线程停止
+                end
+
+                Autostartwarld = true
+                AutostartThread = task.spawn(function()
+                    while Autostartwarld do
+                        -- 双重状态检查
+                        if not Autostartwarld then
+                            break
+                        end
+
+                        local isVictory = CheckRestart()
+
+                        if isVictory then
+                            local char = player.Character
+                            if
+                                char
+                                and char:FindFirstChild('HumanoidRootPart')
+                            then
+                                local hrp = char.HumanoidRootPart
+                                hrp.CFrame = CFrame.new(TPX, TPY, TPZ)
+                                teleporttworld2()
+
+                                -- 分段等待便于中断
+                                for i = 1, 10 do
+                                    if not Autostartwarld then
+                                        break
+                                    end
+                                    task.wait(0.5)
+                                end
+                            end
+                        else
+                            local char = player.Character
+                            if
+                                char
+                                and char:FindFirstChild('HumanoidRootPart')
+                            then
+                                local hrp = char.HumanoidRootPart
+                                if
+                                    (hrp.Position - Vector3.new(
+                                        TPX,
+                                        TPY,
+                                        TPZ
+                                    )).Magnitude
+                                    < 2.5
+                                then
+                                    teleporttworld2()
+                                end
+                            end
+                        end
+
+                        -- 每次循环前检查
+                        if not Autostartwarld then
+                            break
+                        end
+                        task.wait(0.3)
+                    end
+                    Autostartwarld = false -- 确保状态同步
+                    AutostartThread = nil -- 线程结束时清空引用
+                end)
+            else
+                -- 安全关闭线程
+                Autostartwarld = false
+                if AutostartThread then
+                    task.cancel(AutostartThread)
+                    AutostartThread = nil
+                end
+            end
+        end
         local Autostart = features2:AddSwitch(
             '戰鬥結束後自動開始(世界戰鬥)',
             function(bool)
-                if bool then
-                    -- 如果已经运行，先停止
-                    if AutostartThread then
-                        Autostartwarld = false
-                        task.cancel(AutostartThread)
-                        AutostartThread = nil
-                        task.wait(0.1) -- 等待旧线程停止
-                    end
-
-                    Autostartwarld = true
-                    AutostartThread = task.spawn(function()
-                        while Autostartwarld do
-                            -- 双重状态检查
-                            if not Autostartwarld then
-                                break
-                            end
-
-                            local isVictory = CheckRestart()
-
-                            if isVictory then
-                                local char = player.Character
-                                if
-                                    char
-                                    and char:FindFirstChild('HumanoidRootPart')
-                                then
-                                    local hrp = char.HumanoidRootPart
-                                    hrp.CFrame = CFrame.new(TPX, TPY, TPZ)
-                                    teleporttworld2()
-
-                                    -- 分段等待便于中断
-                                    for i = 1, 10 do
-                                        if not Autostartwarld then
-                                            break
-                                        end
-                                        task.wait(0.5)
-                                    end
-                                end
-                            else
-                                local char = player.Character
-                                if
-                                    char
-                                    and char:FindFirstChild('HumanoidRootPart')
-                                then
-                                    local hrp = char.HumanoidRootPart
-                                    if
-                                        (hrp.Position - Vector3.new(
-                                            TPX,
-                                            TPY,
-                                            TPZ
-                                        )).Magnitude
-                                        < 2.5
-                                    then
-                                        teleporttworld2()
-                                    end
-                                end
-                            end
-
-                            -- 每次循环前检查
-                            if not Autostartwarld then
-                                break
-                            end
-                            task.wait(0.3)
-                        end
-                        Autostartwarld = false -- 确保状态同步
-                        AutostartThread = nil -- 线程结束时清空引用
-                    end)
-                else
-                    -- 安全关闭线程
-                    Autostartwarld = false
-                    if AutostartThread then
-                        task.cancel(AutostartThread)
-                        AutostartThread = nil
-                    end
+                if isRestoringWorldAutoStart then
+                    return
                 end
+                setWorldAutoStart(bool)
             end
         )
 
-        Autostart:Set(false)
+        Autostart:Set(savedWorldSettings.worldAutoStart)
+        isRestoringWorldAutoStart = false
+        setWorldAutoStart(savedWorldSettings.worldAutoStart, false)
         features2:AddButton('掛機模式', function()
             local AFKmod = player:WaitForChild('值'):WaitForChild('设置'):WaitForChild('自动战斗')
             if AFKmod.Value == true then
