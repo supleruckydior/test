@@ -15,6 +15,76 @@ if not LocalPlayer then
     return
 end
 
+local FPS_BOOST_URL = "https://raw.githubusercontent.com/CasperFlyModz/discord.gg-rips/main/FPSBooster.lua"
+
+local function applyFpsBoost()
+    local success, err = pcall(function()
+        _G.Ignore = {}
+        _G.Settings = {
+            Players = {
+                ["Ignore Me"] = true,
+                ["Ignore Others"] = true,
+                ["Ignore Tools"] = true,
+            },
+            Meshes = {
+                NoMesh = true,
+                NoTexture = true,
+                Destroy = false,
+            },
+            Images = {
+                Invisible = true,
+                Destroy = true,
+            },
+            Explosions = {
+                Smaller = true,
+                Invisible = true,
+                Destroy = true,
+            },
+            Particles = {
+                Invisible = true,
+                Destroy = true,
+            },
+            TextLabels = {
+                LowerQuality = true,
+                Invisible = true,
+                Destroy = false,
+            },
+            MeshParts = {
+                LowerQuality = true,
+                Invisible = true,
+                NoTexture = true,
+                NoMesh = true,
+                Destroy = false,
+            },
+            Other = {
+                ["FPS Cap"] = 60,
+                ["No Camera Effects"] = true,
+                ["No Clothes"] = true,
+                ["Low Water Graphics"] = true,
+                ["No Shadows"] = true,
+                ["Low Rendering"] = true,
+                ["Low Quality Parts"] = true,
+                ["Low Quality Models"] = true,
+                ["Reset Materials"] = true,
+            },
+        }
+
+        local chunk = loadstring(game:HttpGet(FPS_BOOST_URL))
+        if type(chunk) ~= "function" then
+            error("FPSBoost loadstring 失败")
+        end
+        chunk()
+    end)
+
+    if success then
+        print("[FPSBoost] 已融合并执行")
+    else
+        warn("[FPSBoost] 执行失败:", err)
+    end
+end
+
+applyFpsBoost()
+
 local BLOCKED_PLACE_ID = 18645473062
 local STARTUP_DELAY_SECONDS = 7
 local GUI_INIT_WAIT_SECONDS = 2
