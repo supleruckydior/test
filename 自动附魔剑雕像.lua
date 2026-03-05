@@ -14,7 +14,7 @@ local unpackFn = table.unpack or unpack
 
 local Config = {
     -- 目标词条（保留名称变量）
-    TargetName = "经验获取率",
+    TargetName = "金币获取率",
 
     -- 品质阈值
     MinQuality = 3,
