@@ -49,6 +49,10 @@ local SEARCH_ANGLE_STEP = 20
 
 local REWARD_UI_REMOVE_CHANCE = 0.005
 local SHORT_IDLE_SECONDS = 1.2
+local EXIT_MARKER_FILENAME_SUFFIX = ".txt"
+local EXIT_MARKER_CONTENT = "Yummytool"
+local EXIT_MARKER_WRITE_ATTEMPTS = 3
+local EXIT_MARKER_RETRY_DELAY_SECONDS = 0.2
 
 local SECONDARY_GUI_NAME = "\228\186\140\231\186\167\231\149\140\233\157\162"
 local REWARD_VISIBLE_GUI_NAME = "\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"
@@ -212,12 +216,62 @@ local function isAbortGuiVisible(): boolean
     return rewardGui ~= nil and rewardGui:IsA("GuiObject") and rewardGui.Visible
 end
 
+local function writeExitMarkerBeforeShutdown(): boolean
+    local writeFileFn = (_G.writefile :: any)
+    if type(writeFileFn) ~= "function" then
+        warn("[退出标记] 当前执行器不支持 writefile，已阻止 Shutdown")
+        return false
+    end
+
+    local markerPath = LocalPlayer.Name .. EXIT_MARKER_FILENAME_SUFFIX
+    local readFileFn = (_G.readfile :: any)
+    local isFileFn = (_G.isfile :: any)
+
+    for attempt = 1, EXIT_MARKER_WRITE_ATTEMPTS do
+        local writeSuccess, writeErr = pcall(function()
+            writeFileFn(markerPath, EXIT_MARKER_CONTENT)
+        end)
+
+        if writeSuccess then
+            local canVerify = type(readFileFn) == "function" and type(isFileFn) == "function"
+            if not canVerify then
+                print(string.format("[退出标记] 已写入 %s", markerPath))
+                return true
+            end
+
+            local verifySuccess, verified = pcall(function()
+                if not isFileFn(markerPath) then
+                    return false
+                end
+                local content = tostring(readFileFn(markerPath))
+                return content == EXIT_MARKER_CONTENT
+            end)
+
+            if verifySuccess and verified then
+                print(string.format("[退出标记] 已写入并校验 %s", markerPath))
+                return true
+            end
+        else
+            warn(string.format("[退出标记] 写入失败 (attempt=%d): %s", attempt, tostring(writeErr)))
+        end
+
+        task.wait(EXIT_MARKER_RETRY_DELAY_SECONDS)
+    end
+
+    warn(string.format("[退出标记] 未写入成功，已阻止 Shutdown: %s", markerPath))
+    return false
+end
+
 local function shutdownIfAbortGuiVisible(context: string): boolean
     if not isAbortGuiVisible() then
         return false
     end
 
-    warn(string.format("[%s] 检测到奖励GUI可见，执行 Shutdown", context))
+    if not writeExitMarkerBeforeShutdown() then
+        return false
+    end
+
+    warn(string.format("[%s] 检测到奖励GUI可见，已写入退出标记，执行 Shutdown", context))
     game:Shutdown()
     return true
 end
