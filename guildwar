@@ -113,10 +113,11 @@ local STUCK_CONFIRM_COUNT = 2
 local POSITION_JUMP_THRESHOLD = 90
 local MAX_REPATH_ATTEMPTS = 6
 local REPATH_DELAY_SECONDS = 0.6
-local SEGMENT_CLEARANCE_HALF_WIDTH = 3.2
-local SEGMENT_CLEARANCE_HEIGHT_OFFSET = 2.5
+local SEGMENT_CLEARANCE_HALF_WIDTH = 1.25
+local SEGMENT_CLEARANCE_HEIGHT_OFFSET = 2.0
 local SEGMENT_CLEARANCE_PADDING = 1.5
-local SEGMENT_CLEARANCE_MIN_DISTANCE = 3.0
+local SEGMENT_CLEARANCE_MIN_DISTANCE = 2.0
+local SEGMENT_CLEARANCE_END_TOLERANCE = 0.75
 
 local SEARCH_RADIUS = 110
 local SEARCH_STEP = 8
@@ -162,11 +163,11 @@ type MoveFailureReason =
     | "path_blocked"
 
 local PATH_PROFILES: { PathProfile } = {
-    -- 保守 profile：避免尝试挤小缝，优先走更宽的路
-    { agentRadius = 6.5, agentHeight = 8.0, waypointSpacing = 4.0, agentCanJump = true },
-    { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 4.0, agentCanJump = true },
-    { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 6.0, agentCanJump = true },
-    { agentRadius = 5.8, agentHeight = 8.0, waypointSpacing = 6.0, agentCanJump = true },
+    -- 以 Roblox 默认人形寻路参数为基准：Radius=2, Height=5, Spacing=4
+    { agentRadius = 2.0, agentHeight = 5.0, waypointSpacing = 4.0, agentCanJump = true },
+    { agentRadius = 2.2, agentHeight = 5.0, waypointSpacing = 4.0, agentCanJump = true },
+    { agentRadius = 2.4, agentHeight = 5.0, waypointSpacing = 6.0, agentCanJump = true },
+    { agentRadius = 1.8, agentHeight = 5.0, waypointSpacing = 4.0, agentCanJump = true },
 }
 
 local RNG = Random.new(math.floor(os.clock() * 1000) + LocalPlayer.UserId)
@@ -238,15 +239,16 @@ local function isWaypointSegmentTooTight(fromPos: Vector3, toPos: Vector3): bool
     params.IgnoreWater = true
 
     local rayLength = distance + SEGMENT_CLEARANCE_PADDING
+    local blockedRays = 0
     for _, offset in ipairs(offsets) do
         local origin = Vector3.new(fromPos.X, fromPos.Y + SEGMENT_CLEARANCE_HEIGHT_OFFSET, fromPos.Z) + (right * offset)
         local hit = Workspace:Raycast(origin, direction * rayLength, params)
-        if hit and hit.Distance <= distance then
-            return true
+        if hit and hit.Distance <= (distance - SEGMENT_CLEARANCE_END_TOLERANCE) then
+            blockedRays += 1
         end
     end
 
-    return false
+    return blockedRays >= 2
 end
 
 local function getCurrentRig(): (Model?, Humanoid?, BasePart?)
@@ -619,7 +621,7 @@ local function buildPath(startPos: Vector3, targetPos: Vector3): (Path?, Vector3
     return nil, nil, directError
 end
 
-local function followPath(path: Path): (boolean, MoveFailureReason?)
+local function followPath(path: Path, useStrictClearance: boolean): (boolean, MoveFailureReason?)
     local waypoints = path:GetWaypoints()
     if #waypoints <= 1 then
         return false, "waypoint_timeout"
@@ -701,7 +703,7 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
         end
 
         local moveTarget = Vector3.new(waypoint.Position.X, hrp.Position.Y, waypoint.Position.Z)
-        if isWaypointSegmentTooTight(hrp.Position, moveTarget) then
+        if useStrictClearance and isWaypointSegmentTooTight(hrp.Position, moveTarget) then
             return fail("path_blocked")
         end
 
@@ -757,7 +759,7 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
             lastStepPos = hrp.Position
 
             if now - lastStuckProbeAt >= STUCK_CHECK_INTERVAL then
-                if isWaypointSegmentTooTight(hrp.Position, moveTarget) then
+                if useStrictClearance and isWaypointSegmentTooTight(hrp.Position, moveTarget) then
                     return fail("path_blocked")
                 end
 
@@ -784,6 +786,8 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
 end
 
 local function navigateTo(targetPos: Vector3): boolean
+    local pathBlockedStreak = 0
+
     for attempt = 0, MAX_REPATH_ATTEMPTS do
         if shutdownIfAbortGuiVisible("导航前") then
             return false
@@ -821,13 +825,20 @@ local function navigateTo(targetPos: Vector3): boolean
             resolvedTarget.Z
         ))
 
-        local moved, reason = followPath(path)
+        local useStrictClearance = attempt <= 1 and pathBlockedStreak < 2
+        local moved, reason = followPath(path, useStrictClearance)
         if moved then
             print("[导航] 到达目标")
             return true
         end
 
         warn(string.format("[导航] 移动失败，原因=%s，准备重算", tostring(reason)))
+
+        if reason == "path_blocked" then
+            pathBlockedStreak += 1
+        else
+            pathBlockedStreak = 0
+        end
 
         if reason == "stuck" then
             fireReturnToCity()
