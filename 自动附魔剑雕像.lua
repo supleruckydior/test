@@ -26,7 +26,7 @@ local refreshEvent = enchantEvent
 -- 配置
 local TARGET_GROUP = 1  -- 目标组（第一个数组）
 local TARGET_NAME = "金币获取率"  -- 目标词条名称
-local MIN_QUALITY = 5  -- 最低品质要求
+local MIN_QUALITY = 4  -- 最低品质要求
 local REFRESH_COST = 100  -- 刷新消耗
 local LOCK_COST = 100  -- 每个锁定消耗
 local MAX_ENTRIES = 5  -- 最大词条数量
