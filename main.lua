@@ -620,9 +620,9 @@ if currentGameId == TARGET_GAME_ID then
             :WaitForChild('在线奖励')
             :WaitForChild('列表')
         local Gife_check = false
+        local onlineGiftThread = nil
         local countdownList = {}
-        local hasExecutedToday = false
-        local lastExecutedDay = os.date('%d')
+        local lastExecutedDay = os.date('!%Y-%m-%d', os.time() + (8 * 3600))
 
         local function convertToSeconds(timeText)
             local minutes, seconds = string.match(timeText, '(%d+):(%d+)')
@@ -632,7 +632,6 @@ if currentGameId == TARGET_GAME_ID then
             return nil
         end
         local function GetOnlineGiftCountdown()
-            hasExecutedToday = true
             local minTime = math.huge
             for i = 1, 6 do
                 local rewardName = string.format('在线奖励%02d', i)
@@ -663,7 +662,7 @@ if currentGameId == TARGET_GAME_ID then
         local function Online_Gift_start()
             -- 如果倒计时到达或小于等于0，触发领取
             if nowminCountdown and (nowminCountdown <= 0) then
-                timeLabel.Text = '倒计时结束，准备获取奖勳'
+                timeLabel.Text = '倒计时结束，准备获取奖励'
                 -- 触发所有可领取的奖励
                 for i = 1, 6 do
                     local args = { [1] = i }
@@ -707,65 +706,54 @@ if currentGameId == TARGET_GAME_ID then
                     timeLabel.Text = '倒计时即将结束...'
                 end
             else
-                -- 没有倒计时，说明全部领取完成
-                timeLabel.Text = '已全部领取'
-                Gife_check = false
+                -- 没有倒计时，说明当前周期全部领取完成，继续等待下一次刷新
+                timeLabel.Text = '已全部领取，等待刷新...'
             end
         end
         local function Online_Gift_check()
             while Gife_check do
                 Online_Gift_start()
-                task.wait(1)
+                if nowminCountdown and (nowminCountdown > 0) then
+                    task.wait(1)
+                else
+                    task.wait(5)
+                end
             end
+            onlineGiftThread = nil
         end
         local function ClaimOnlineRewards()
+            if Gife_check and onlineGiftThread then
+                return
+            end
             Gife_check = true
-            task.spawn(Online_Gift_check)
+            onlineGiftThread = task.spawn(Online_Gift_check)
         end
         -- 创建按钮时引用函数
-        features1:AddButton('自动领取在线奖勳', ClaimOnlineRewards)
+        features1:AddButton('自动领取在线奖励', ClaimOnlineRewards)
         -- 启动时自动执行
         task.defer(function()
             ClaimOnlineRewards()
         end)
-        local function CheckAllRewardsCompleted()
-            local allCompleted = true
-            GetOnlineGiftCountdown()
-            for i = 1, 6 do
-                local rewardName = string.format('在线奖励%02d', i)
-                local status = countdownList[rewardName]
-                if not status or not string.match(status, 'DONE') then
-                    allCompleted = false
-                    break
-                end
-            end
-            if allCompleted then
-                print('所有在线奖勳已完成！')
-                Gife_check = false
-            end
-        end
-        task.spawn(function()
-            while Gife_check and not hasExecutedToday do
-                CheckAllRewardsCompleted()
-                task.wait(60)
-            end
-        end)
         task.spawn(function()
             while true do
-                local currentUTCHour = tonumber(os.date('!*t').hour)
-                local currentUTCDate = os.date('!*t').day
-                local currentLocalHour = currentUTCHour + 8
-                if currentLocalHour >= 24 then
-                    currentLocalHour = currentLocalHour - 24
-                end
-                local currentLocalDate = currentUTCDate
-                if currentLocalHour == 0 then
-                    if lastExecutedDay ~= currentLocalDate then
-                        hasExecutedToday = false
-                        print('UTC+8 00:00，自动领取在线奖勳')
-                        Gife_check = true
-                        lastExecutedDay = currentLocalDate
-                    end
+                local utcPlus8 = os.date('!*t', os.time() + (8 * 3600))
+                local currentLocalHour = utcPlus8.hour
+                local currentLocalDate = string.format(
+                    '%04d-%02d-%02d',
+                    utcPlus8.year,
+                    utcPlus8.month,
+                    utcPlus8.day
+                )
+                if
+                    currentLocalHour == 0
+                    and lastExecutedDay ~= currentLocalDate
+                then
+                    print('UTC+8 00:00，在线奖励刷新，继续自动领取')
+                    lastExecutedDay = currentLocalDate
+                    countdownList = {}
+                    minCountdown = nil
+                    nowminCountdown = 0
+                    ClaimOnlineRewards()
                 end
                 task.wait(60)
             end
