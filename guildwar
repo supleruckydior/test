@@ -16,6 +16,7 @@ if not LocalPlayer then
 end
 
 local FPS_BOOST_URL = "https://raw.githubusercontent.com/CasperFlyModz/discord.gg-rips/main/FPSBooster.lua"
+local fpsBoostApplied = false
 
 local function applyFpsBoost()
     local success, err = pcall(function()
@@ -82,8 +83,6 @@ local function applyFpsBoost()
         warn("[FPSBoost] 执行失败:", err)
     end
 end
-
-applyFpsBoost()
 
 local BLOCKED_PLACE_ID = 18645473062
 local STARTUP_DELAY_SECONDS = 7
@@ -940,6 +939,10 @@ while true do
     end
 
     if checkCrystalExists() then
+        if not fpsBoostApplied then
+            applyFpsBoost()
+            fpsBoostApplied = true
+        end
         executePathfindingOperation()
 
         local cooldown = RNG:NextNumber(MAIN_COOLDOWN_MIN, MAIN_COOLDOWN_MAX)
