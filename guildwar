@@ -217,19 +217,19 @@ local function isAbortGuiVisible(): boolean
 end
 
 local function writeExitMarkerBeforeShutdown(): boolean
-    local writeFileFn = (_G.writefile :: any)
+    local writeFileFn = (writefile :: any)
     if type(writeFileFn) ~= "function" then
         warn("[退出标记] 当前执行器不支持 writefile，已阻止 Shutdown")
         return false
     end
 
     local markerPath = LocalPlayer.Name .. EXIT_MARKER_FILENAME_SUFFIX
-    local readFileFn = (_G.readfile :: any)
-    local isFileFn = (_G.isfile :: any)
+    local readFileFn = (readfile :: any)
+    local isFileFn = (isfile :: any)
 
     for attempt = 1, EXIT_MARKER_WRITE_ATTEMPTS do
         local writeSuccess, writeErr = pcall(function()
-            writeFileFn(markerPath, EXIT_MARKER_CONTENT)
+            writefile(markerPath, EXIT_MARKER_CONTENT)
         end)
 
         if writeSuccess then
