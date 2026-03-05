@@ -106,12 +106,17 @@ local USE_FIXED_TARGET = true
 local MOVE_TIMEOUT_SECONDS = 210
 local WAYPOINT_TIMEOUT_SECONDS = 12
 local WAYPOINT_REACH_DISTANCE = 5.0
+local MOVE_REFRESH_INTERVAL_SECONDS = 0.7
 local STUCK_CHECK_INTERVAL = 1.8
 local STUCK_DISTANCE_THRESHOLD = 1.0
 local STUCK_CONFIRM_COUNT = 2
 local POSITION_JUMP_THRESHOLD = 90
 local MAX_REPATH_ATTEMPTS = 6
 local REPATH_DELAY_SECONDS = 0.6
+local SEGMENT_CLEARANCE_HALF_WIDTH = 3.2
+local SEGMENT_CLEARANCE_HEIGHT_OFFSET = 2.5
+local SEGMENT_CLEARANCE_PADDING = 1.5
+local SEGMENT_CLEARANCE_MIN_DISTANCE = 3.0
 
 local SEARCH_RADIUS = 110
 local SEARCH_STEP = 8
@@ -157,11 +162,11 @@ type MoveFailureReason =
     | "path_blocked"
 
 local PATH_PROFILES: { PathProfile } = {
+    -- 保守 profile：避免尝试挤小缝，优先走更宽的路
+    { agentRadius = 6.5, agentHeight = 8.0, waypointSpacing = 4.0, agentCanJump = true },
     { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 4.0, agentCanJump = true },
-    { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 8.0, agentCanJump = true },
-    { agentRadius = 5.5, agentHeight = 8.0, waypointSpacing = 8.0, agentCanJump = true },
-    { agentRadius = 5.0, agentHeight = 8.0, waypointSpacing = 12.0, agentCanJump = true },
-    { agentRadius = 4.5, agentHeight = 8.0, waypointSpacing = 12.0, agentCanJump = true },
+    { agentRadius = 6.0, agentHeight = 8.0, waypointSpacing = 6.0, agentCanJump = true },
+    { agentRadius = 5.8, agentHeight = 8.0, waypointSpacing = 6.0, agentCanJump = true },
 }
 
 local RNG = Random.new(math.floor(os.clock() * 1000) + LocalPlayer.UserId)
@@ -204,6 +209,44 @@ end
 
 local function flattenPathTarget(v: Vector3): Vector3
     return Vector3.new(v.X, FIXED_PATH_HEIGHT, v.Z)
+end
+
+local function isWaypointSegmentTooTight(fromPos: Vector3, toPos: Vector3): boolean
+    local delta = flat(toPos - fromPos)
+    local distance = delta.Magnitude
+    if distance <= SEGMENT_CLEARANCE_MIN_DISTANCE then
+        return false
+    end
+
+    local direction = delta.Unit
+    local right = Vector3.new(-direction.Z, 0, direction.X)
+    local offsets: { number } = { 0, SEGMENT_CLEARANCE_HALF_WIDTH, -SEGMENT_CLEARANCE_HALF_WIDTH }
+
+    local filterInstances: { Instance } = {}
+    local character = LocalPlayer.Character
+    if character then
+        table.insert(filterInstances, character)
+    end
+    local crystalContainer = Workspace:FindFirstChild(CRYSTAL_CONTAINER_NAME)
+    if crystalContainer then
+        table.insert(filterInstances, crystalContainer)
+    end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = filterInstances
+    params.IgnoreWater = true
+
+    local rayLength = distance + SEGMENT_CLEARANCE_PADDING
+    for _, offset in ipairs(offsets) do
+        local origin = Vector3.new(fromPos.X, fromPos.Y + SEGMENT_CLEARANCE_HEIGHT_OFFSET, fromPos.Z) + (right * offset)
+        local hit = Workspace:Raycast(origin, direction * rayLength, params)
+        if hit and hit.Distance <= distance then
+            return true
+        end
+    end
+
+    return false
 end
 
 local function getCurrentRig(): (Model?, Humanoid?, BasePart?)
@@ -658,8 +701,13 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
         end
 
         local moveTarget = Vector3.new(waypoint.Position.X, hrp.Position.Y, waypoint.Position.Z)
+        if isWaypointSegmentTooTight(hrp.Position, moveTarget) then
+            return fail("path_blocked")
+        end
+
         local waypointStart = os.clock()
         humanoid:MoveTo(moveTarget)
+        local lastMoveRefreshAt = waypointStart
 
         while true do
             if shutdownIfAbortGuiVisible("移动循环") then
@@ -690,6 +738,11 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
                 return fail("path_blocked")
             end
 
+            if now - lastMoveRefreshAt >= MOVE_REFRESH_INTERVAL_SECONDS then
+                humanoid:MoveTo(moveTarget)
+                lastMoveRefreshAt = now
+            end
+
             if now - moveStart >= MOVE_TIMEOUT_SECONDS then
                 return fail("move_timeout")
             end
@@ -704,6 +757,10 @@ local function followPath(path: Path): (boolean, MoveFailureReason?)
             lastStepPos = hrp.Position
 
             if now - lastStuckProbeAt >= STUCK_CHECK_INTERVAL then
+                if isWaypointSegmentTooTight(hrp.Position, moveTarget) then
+                    return fail("path_blocked")
+                end
+
                 local moved = (hrp.Position - lastStuckProbePos).Magnitude
                 if moved <= STUCK_DISTANCE_THRESHOLD then
                     stuckStrikeCount += 1
