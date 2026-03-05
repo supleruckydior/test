@@ -184,15 +184,15 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
     else
-        warn('⚠️ 未能找到加载界面，继续执行脚本...')
+        warn('?? 未能找到加载界面，继续执行脚本...')
     end
 
-    print('✅ 加载完成，继续执行脚本...')
+    print('? 加载完成，继续执行脚本...')
     
     -- 初始化路径缓存
     initEventCache()
     initGUICache()
-    print('📦 路径缓存已初始化')
+    print('?? 路径缓存已初始化')
     
     local library = loadstring(
         game:HttpGet(
@@ -222,7 +222,7 @@ if currentGameId == TARGET_GAME_ID then
         task.wait(2)
     end)
     local window = library:AddWindow(
-        'Cultivation-Simulator  養成模擬器',
+        'Cultivation-Simulator  养成模拟器',
         {
             main_color = Color3.fromRGB(41, 74, 122),
             min_size = Vector2.new(530, 315),
@@ -234,18 +234,18 @@ if currentGameId == TARGET_GAME_ID then
     local features2 = window:AddTab('副本')
     local features3 = window:AddTab('地下城')
     local features4 = window:AddTab('抽取')
-    local features5 = window:AddTab('雜項')
-    local features6 = window:AddTab('開啟UI')
-    local features7 = window:AddTab('設定')
-    local features8 = window:AddTab('農田操作')
+    local features5 = window:AddTab('杂项')
+    local features6 = window:AddTab('开启UI')
+    local features7 = window:AddTab('设定')
+    local features8 = window:AddTab('农田操作')
     local features9 = window:AddTab('加入副本')
     local ws = game:GetService('Workspace')
     local Players = game.Players
     local localPlayer = game.Players.LocalPlayer
     local playerGui = player.PlayerGui
     local RespawPointnum = RespawPoint:match('%d+')
-    print('重生點編號：' .. RespawPointnum)
-    local reworld = ws:waitForChild('主場景' .. RespawPointnum)
+    print('重生点编号：' .. RespawPointnum)
+    local reworld = ws:waitForChild('主场景' .. RespawPointnum)
         :waitForChild('重生点')
     local TPX, TPY, TPZ =
         reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
@@ -442,7 +442,7 @@ if currentGameId == TARGET_GAME_ID then
         local function toggleDetection()
             isDetectionEnabled = not isDetectionEnabled
             print(
-                '檢測已' .. ((isDetectionEnabled and '啟用') or '關閉')
+                '检测已' .. ((isDetectionEnabled and '启用') or '关闭')
             )
             if not isDetectionEnabled then
                 savemodetime = 0
@@ -511,16 +511,16 @@ if currentGameId == TARGET_GAME_ID then
                 local gift = Online_Gift:FindFirstChild(giftName)
                 if gift then
                     gift.Name = 'Online_Gift' .. tostring(gift.LayoutOrder + 1)
-                    print('名稱已更改為：' .. gift.Name)
+                    print('名称已更改为：' .. gift.Name)
                 else
                     allGiftsExist = false
                     break
                 end
             end
             if allGiftsExist then
-                print('在線獎勵--名稱--已全部更改')
+                print('在线奖励--名称--已全部更改')
             else
-                print('名稱已重複或部分名稱不存在')
+                print('名称已重复或部分名称不存在')
             end
         end
         local function checkTimeAndRun()
@@ -531,7 +531,7 @@ if currentGameId == TARGET_GAME_ID then
                     local utcPlus8Time = os.date('*t', currentTime + (8 * 3600))
                     if (utcPlus8Time.hour == 0) and (utcPlus8Time.min == 0) then
                         print(
-                            'UTC+8 時間為 00:00，開始執行更新數據...'
+                            'UTC+8 时间为 00:00，开始执行更新数据...'
                         )
                         task.spawn(function()
                             allGiftsExist = true
@@ -547,43 +547,43 @@ if currentGameId == TARGET_GAME_ID then
         end
         checkTimeAndRun()
         features4:Show()
-        local AddLabelfeatures = features:AddLabel('重生點：重生點')
-        AddLabelfeatures.Text = '重生點：'
+        local AddLabelfeatures = features:AddLabel('重生点：重生点')
+        AddLabelfeatures.Text = '重生点：'
             .. RespawPoint
-            .. ' -- 傳送錯誤請回家後使用底下按鈕'
+            .. ' -- 传送错误请回家后使用底下按钮'
         local function Respawn_Point()
             RespawPoint = loadstring(
                 game:HttpGet(
                     'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
                 )
             )()
-            AddLabelfeatures.Text = '重生點：'
+            AddLabelfeatures.Text = '重生点：'
                 .. RespawPoint
-                .. ' -- 傳送錯誤請回家後使用底下按鈕'
-            print('最近的出生點：' .. RespawPoint)
+                .. ' -- 传送错误请回家后使用底下按钮'
+            print('最近的出生点：' .. RespawPoint)
             RespawPointnum = RespawPoint:match('%d+')
-            print('重生點編號：' .. RespawPointnum)
+            print('重生点编号：' .. RespawPointnum)
             reworld = workspace
-                :waitForChild('主場景' .. RespawPointnum)
+                :waitForChild('主场景' .. RespawPointnum)
                 :waitForChild('重生点')
             TPX, TPY, TPZ =
                 reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
-            print('傳送座標：' .. TPX .. ' ' .. TPY .. ' ' .. TPZ)
+            print('传送座标：' .. TPX .. ' ' .. TPY .. ' ' .. TPZ)
             player.Character:WaitForChild('HumanoidRootPart').CFrame =
                 CFrame.new(TPX, TPY, TPZ)
         end
-        features:AddButton('重生點更改', function()
+        features:AddButton('重生点更改', function()
             Respawn_Point()
         end)
         local function updateButtonText()
             if isDetectionEnabled then
-                savemodebutton.Text = ' 狀態：已啟用安全模式'
+                savemodebutton.Text = ' 状态：已启用安全模式'
             else
-                savemodebutton.Text = ' 狀態：以關閉安全模式'
+                savemodebutton.Text = ' 状态：以关闭安全模式'
             end
         end
         savemodebutton = features:AddButton(
-            ' 狀態：啟用安全模式 ',
+            ' 状态：启用安全模式 ',
             function()
                 inRange = false
                 playerInRange = false
@@ -603,14 +603,14 @@ if currentGameId == TARGET_GAME_ID then
         blackBlock.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         blackBlock.Visible = false
         blackBlock.Parent = screenGui
-        features:AddButton('黑幕開/關閉', function()
+        features:AddButton('黑幕开/关闭', function()
             blackBlock.Visible = not blackBlock.Visible
         end)
     end
 
     local function setupFeatures1Tab(features1)
         local timeLabel =
-            features1:AddLabel('距離下自動獲取還有 0 秒')
+            features1:AddLabel('距离下自动获取还有 0 秒')
         local playerGui = game.Players.LocalPlayer.PlayerGui
         local Online_Gift = playerGui.GUI
             :WaitForChild('二级界面')
@@ -663,7 +663,7 @@ if currentGameId == TARGET_GAME_ID then
         local function Online_Gift_start()
             -- 如果倒计时到达或小于等于0，触发领取
             if nowminCountdown and (nowminCountdown <= 0) then
-                timeLabel.Text = '倒計時結束，準備獲取獎勳'
+                timeLabel.Text = '倒计时结束，准备获取奖勳'
                 -- 触发所有可领取的奖励
                 for i = 1, 6 do
                     local args = { [1] = i }
@@ -699,16 +699,16 @@ if currentGameId == TARGET_GAME_ID then
                 -- 更新显示
                 if nowminCountdown and (nowminCountdown > 0) then
                     timeLabel.Text = string.format(
-                        '距離下自動獲取還有 %d 秒',
+                        '距离下自动获取还有 %d 秒',
                         nowminCountdown
                     )
                 elseif nowminCountdown and (nowminCountdown <= 0) then
                     -- 倒计时已归零，下次循环会触发领取
-                    timeLabel.Text = '倒計時即將結束...'
+                    timeLabel.Text = '倒计时即将结束...'
                 end
             else
                 -- 没有倒计时，说明全部领取完成
-                timeLabel.Text = '已全部領取'
+                timeLabel.Text = '已全部领取'
                 Gife_check = false
             end
         end
@@ -723,7 +723,7 @@ if currentGameId == TARGET_GAME_ID then
             task.spawn(Online_Gift_check)
         end
         -- 创建按钮时引用函数
-        features1:AddButton('自動領取在線獎勳', ClaimOnlineRewards)
+        features1:AddButton('自动领取在线奖勳', ClaimOnlineRewards)
         -- 启动时自动执行
         task.defer(function()
             ClaimOnlineRewards()
@@ -740,7 +740,7 @@ if currentGameId == TARGET_GAME_ID then
                 end
             end
             if allCompleted then
-                print('所有在線獎勳已完成！')
+                print('所有在线奖勳已完成！')
                 Gife_check = false
             end
         end
@@ -762,7 +762,7 @@ if currentGameId == TARGET_GAME_ID then
                 if currentLocalHour == 0 then
                     if lastExecutedDay ~= currentLocalDate then
                         hasExecutedToday = false
-                        print('UTC+8 00:00，自動領取在線獎勳')
+                        print('UTC+8 00:00，自动领取在线奖勳')
                         Gife_check = true
                         lastExecutedDay = currentLocalDate
                     end
@@ -774,11 +774,11 @@ if currentGameId == TARGET_GAME_ID then
         local Autocollmissionbool = false
         
         local Autocollmission = features1:AddSwitch(
-            '自動任務領取(包括GamePass任務、獎勵)',
+            '自动任务领取(包括GamePass任务、奖励)',
             function(bool)
                 Autocollmissionbool = bool
                 if Autocollmissionbool then
-                    -- 主任務循環（每20秒執行一次）
+                    -- 主任务循环（每20秒执行一次）
                     task.spawn(function()
                         while Autocollmissionbool do
                             pcall(function()
@@ -792,7 +792,7 @@ if currentGameId == TARGET_GAME_ID then
                         end
                     end)
 
-                    -- dailyspin 獨立循環（每500秒執行一次）
+                    -- dailyspin 独立循环（每500秒执行一次）
                     task.spawn(function()
                         while Autocollmissionbool do
                             pcall(function()
@@ -811,7 +811,7 @@ if currentGameId == TARGET_GAME_ID then
         -- 自动投资控制变量（局部变量）
         local investbool = false
         
-        local invest = features1:AddSwitch('自動執行投資', function(bool)
+        local invest = features1:AddSwitch('自动执行投资', function(bool)
             investbool = bool
             if investbool then
                 task.spawn(function()
@@ -897,7 +897,7 @@ if currentGameId == TARGET_GAME_ID then
         local AutoCollectherbsbool = false
         
         local AutoCollectherbs = features1:AddSwitch(
-            '自動採草藥',
+            '自动采草药',
             function(bool)
                 AutoCollectherbsbool = bool
                 if AutoCollectherbsbool then
@@ -911,7 +911,7 @@ if currentGameId == TARGET_GAME_ID then
                                     task.wait(0.1)
                                 end
 
-                                -- 🌿 一轮收集完成
+                                -- ?? 一轮收集完成
                                 herbCollectFinished = true
                                 print(
                                     '[系统] 草药收集一轮完成，检查农田 5 状态…'
@@ -928,9 +928,9 @@ if currentGameId == TARGET_GAME_ID then
         )
 
         AutoCollectherbs:Set(true)
-        features1:AddLabel(' - - 通行證解鎖')
+        features1:AddLabel(' - - 通行证解锁')
         local Refining = features1:AddSwitch(
-            '解鎖自動煉製',
+            '解锁自动炼制',
             function(bool)
                 local Refiningbool = bool
                 privileges:WaitForChild('超级炼制').Value = false
@@ -938,7 +938,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         )
         Refining:Set(true)
-        local showAll = features1:AddSwitch('顯示所有貨幣', function(bool)
+        local showAll = features1:AddSwitch('显示所有货币', function(bool)
             ShowAllbool = bool
             if ShowAllbool then
                 task.spawn(function()
@@ -990,7 +990,7 @@ if currentGameId == TARGET_GAME_ID then
         end
 
         -- 创建按钮并立即执行
-        features1:AddButton('刪除顯示獲得的獎勵(所有的)', function()
+        features1:AddButton('删除显示获得的奖励(所有的)', function()
             RemoveRewardUI()
         end)
 
@@ -998,7 +998,7 @@ if currentGameId == TARGET_GAME_ID then
         task.defer(function()
             RemoveRewardUI()
         end)
-        features1:AddButton('兌換遊戲禮品碼', function()
+        features1:AddButton('兑换游戏礼品码', function()
             local gamecode = {
                 'ilovethisgame',
                 'welcome',
@@ -1049,32 +1049,32 @@ if currentGameId == TARGET_GAME_ID then
             end
         end)
         local Difficulty_choose =
-            features2:AddLabel('  當前選擇 關卡： ' .. savedWorldSettings.worldLevel)
+            features2:AddLabel('  当前选择 关卡： ' .. savedWorldSettings.worldLevel)
         local function saveCurrentWorldSettings(updates)
             savedWorldSettings = updatePlayerWorldSettings(updates)
         end
         local function gowordlevelscheak(gowordlevels)
             if gowordlevels > worldnum then
                 if gowordlevels < 10 then
-                    Difficulty_choose.Text = '  關卡未解鎖 關卡： 0'
+                    Difficulty_choose.Text = '  关卡未解锁 关卡： 0'
                         .. gowordlevels
                 else
-                    Difficulty_choose.Text = '  關卡未解鎖 關卡： '
+                    Difficulty_choose.Text = '  关卡未解锁 关卡： '
                         .. gowordlevels
                 end
             elseif gowordlevels < 10 then
-                Difficulty_choose.Text = '  當前選擇 關卡： 0'
+                Difficulty_choose.Text = '  当前选择 关卡： 0'
                     .. gowordlevels
             else
-                    Difficulty_choose.Text = '  當前選擇 關卡： '
+                    Difficulty_choose.Text = '  当前选择 关卡： '
                         .. gowordlevels
             end
         end
         local function updateAutoHighestWorldLabel()
             if worldnum < 10 then
-                Difficulty_choose.Text = '  當前選擇最高關卡： 0' .. worldnum
+                Difficulty_choose.Text = '  当前选择最高关卡： 0' .. worldnum
             else
-                Difficulty_choose.Text = '  當前選擇最高關卡： ' .. worldnum
+                Difficulty_choose.Text = '  当前选择最高关卡： ' .. worldnum
             end
         end
         local function stopAutoHighestWorldMode(silent)
@@ -1085,7 +1085,7 @@ if currentGameId == TARGET_GAME_ID then
                 autoHighestWorldThread = nil
             end
             if wasAutoHighest and not silent then
-                print('自動最高關卡已停止')
+                print('自动最高关卡已停止')
             end
         end
         local function setManualWorldLevel(newLevel, labelOverride, silentStop)
@@ -1107,7 +1107,7 @@ if currentGameId == TARGET_GAME_ID then
                 autoHighestWorldThread = nil
             end
             worldSelectionMode = 'auto_highest'
-            print('當前選擇：自動最高關卡')
+            print('当前选择：自动最高关卡')
             gowordlevels = worldnum
             newworldnum = worldnum
             updateAutoHighestWorldLabel()
@@ -1116,7 +1116,7 @@ if currentGameId == TARGET_GAME_ID then
                 worldMode = worldSelectionMode,
             })
             autoHighestWorldThread = task.spawn(function()
-                print('自動最高關卡已啟動')
+                print('自动最高关卡已启动')
                 while worldSelectionMode == 'auto_highest' do
                     if newworldnum ~= worldnum then
                         gowordlevels = worldnum
@@ -1142,48 +1142,48 @@ if currentGameId == TARGET_GAME_ID then
             end)
         end
         local Difficulty_selection = features2:AddDropdown(
-            '                關卡難易度選擇                ',
+            '                关卡难易度选择                ',
             function(text)
-                if text == '      世界關卡簡單： 01       ' then
-                    print('當前選擇：簡單')
-                    setManualWorldLevel(1, '  當前選擇： 01')
-                elseif text == '      世界關卡普通： 21       ' then
-                    print('當前選擇：普通')
+                if text == '      世界关卡简单： 01       ' then
+                    print('当前选择：简单')
+                    setManualWorldLevel(1, '  当前选择： 01')
+                elseif text == '      世界关卡普通： 21       ' then
+                    print('当前选择：普通')
                     setManualWorldLevel(21)
-                elseif text == '      世界關卡困難： 55       ' then
-                    print('當前選擇：困難')
+                elseif text == '      世界关卡困难： 55       ' then
+                    print('当前选择：困难')
                     setManualWorldLevel(55)
-                elseif text == '      世界關卡專家： 64       ' then
-                    print('當前選擇：專家')
+                elseif text == '      世界关卡专家： 64       ' then
+                    print('当前选择：专家')
                     setManualWorldLevel(64)
-                elseif text == '      世界關卡大師： 82       ' then
-                    print('當前選擇：大師')
+                elseif text == '      世界关卡大师： 82       ' then
+                    print('当前选择：大师')
                     setManualWorldLevel(82)
-                elseif text == '      世界關卡      ： 101       ' then
-                    print('當前選擇：專家')
+                elseif text == '      世界关卡      ： 101       ' then
+                    print('当前选择：专家')
                     setManualWorldLevel(101)
-                elseif text == '      自動最高關卡        ' then
+                elseif text == '      自动最高关卡        ' then
                     startAutoHighestWorldMode()
                 end
             end
         )
         local Levels1 =
-            Difficulty_selection:Add('      世界關卡簡單： 01       ')
+            Difficulty_selection:Add('      世界关卡简单： 01       ')
         local Levels2 =
-            Difficulty_selection:Add('      世界關卡普通： 21       ')
+            Difficulty_selection:Add('      世界关卡普通： 21       ')
         local Levels3 =
-            Difficulty_selection:Add('      世界關卡困難： 55       ')
+            Difficulty_selection:Add('      世界关卡困难： 55       ')
         local Levels4 =
-            Difficulty_selection:Add('      世界關卡專家： 64       ')
+            Difficulty_selection:Add('      世界关卡专家： 64       ')
         local Levels5 =
-            Difficulty_selection:Add('      世界關卡大師： 82       ')
+            Difficulty_selection:Add('      世界关卡大师： 82       ')
         local Levels99 =
-            Difficulty_selection:Add('      自動最高關卡        ')
+            Difficulty_selection:Add('      自动最高关卡        ')
         local Levels999 = Difficulty_selection:Add('空白')
-        features2:AddButton('選擇關卡+1', function()
+        features2:AddButton('选择关卡+1', function()
             setManualWorldLevel(gowordlevels + 1)
         end)
-        features2:AddButton('選擇關卡-1', function()
+        features2:AddButton('选择关卡-1', function()
             setManualWorldLevel(gowordlevels - 1)
         end)
         local combatUI = playerGui.GUI
@@ -1198,7 +1198,7 @@ if currentGameId == TARGET_GAME_ID then
                     '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
                 )
                 :FireServer(unpack(args))
-            print('傳送世界關卡：' .. gowordlevels)
+            print('传送世界关卡：' .. gowordlevels)
         end
         local function teleporttworld2()
             finishworldnum = tonumber(gowordlevels)
@@ -1231,10 +1231,10 @@ if currentGameId == TARGET_GAME_ID then
             player.Character:WaitForChild('HumanoidRootPart').CFrame =
                 CFrame.new(TPX, TPY, TPZ)
         end
-        features2:AddButton('傳送', function()
+        features2:AddButton('传送', function()
             teleporttworld1()
         end)
-        features2:AddSwitch('大於75自動重新進入', function(state)
+        features2:AddSwitch('大於75自动重新进入', function(state)
             if state then
                 -- 如果已经运行，先停止
                 if AutoReenterThread then
@@ -1355,7 +1355,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
         local Autostart = features2:AddSwitch(
-            '戰鬥結束後自動開始(世界戰鬥)',
+            '战斗结束后自动开始(世界战斗)',
             function(bool)
                 if isRestoringWorldAutoStart then
                     return
@@ -1367,14 +1367,19 @@ if currentGameId == TARGET_GAME_ID then
         Autostart:Set(savedWorldSettings.worldAutoStart)
         isRestoringWorldAutoStart = false
         setWorldAutoStart(savedWorldSettings.worldAutoStart, false)
-        features2:AddButton('掛機模式', function()
-            local AFKmod = player:WaitForChild('值'):WaitForChild('设置'):WaitForChild('自动战斗')
-            if AFKmod.Value == true then
-                AFKmod.Value = false
-            else
-                AFKmod.Value = true
-            end
+        local function toggleAfkMode()
+            local AFKmod = player
+                :WaitForChild('值')
+                :WaitForChild('设置')
+                :WaitForChild('自动战斗')
+            AFKmod.Value = not AFKmod.Value
+        end
+        features2:AddButton('挂机模式', function()
+            toggleAfkMode()
         end)
+        if savedWorldSettings.worldAutoStart then
+            toggleAfkMode()
+        end
     end
     setupFeaturesTab(features)
     setupFeatures1Tab(features1)
@@ -1396,13 +1401,13 @@ if currentGameId == TARGET_GAME_ID then
         local success, data =
             pcall(httpService.JSONDecode, httpService, fileContent)
         if not success then
-            error('無法解析 JSON 文件：' .. filePath)
+            error('无法解析 JSON 文件：' .. filePath)
         end
         local localPlayerName = player.Name
         local localPlayerData = data[localPlayerName]
         if not localPlayerData then
             error(
-                'LocalPlayer 的資料不存在於 JSON 文件中：'
+                'LocalPlayer 的资料不存在於 JSON 文件中：'
                     .. localPlayerName
             )
         end
@@ -1425,9 +1430,9 @@ if currentGameId == TARGET_GAME_ID then
         local success, playerData = pcall(extractLocalPlayerData)
         if success then
             saveDungeonFunctions(playerData)
-            print('Dungeon 函數已成功創建')
+            print('Dungeon 函数已成功创建')
         else
-            warn('提取資料失敗：' .. tostring(playerData))
+            warn('提取资料失败：' .. tostring(playerData))
         end
     end
     main()
@@ -1467,7 +1472,7 @@ if currentGameId == TARGET_GAME_ID then
         end
     end)
     local playerData = JsonHandler.getPlayerData(filePath, player.Name)
-    print('玩家初始資料:')
+    print('玩家初始资料:')
     for key, value in pairs(playerData) do
         print(key, value)
     end
@@ -1504,9 +1509,9 @@ if currentGameId == TARGET_GAME_ID then
         Hover_Dungeonkey = getDungeonKey('HoverDungeon')
     end
     checkDungeonkey()
-    local chooselevels = features3:AddLabel('請選擇地下城...')
-    local dropdown1 = features3:AddDropdown('選擇地下城', function(text)
-        if text == '            礦石地下城            ' then
+    local chooselevels = features3:AddLabel('请选择地下城...')
+    local dropdown1 = features3:AddDropdown('选择地下城', function(text)
+        if text == '            矿石地下城            ' then
             dropdownchoose = 1
             dropdownchoose2 = tostring(
                 (
@@ -1514,11 +1519,11 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['OreDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：礦石地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：矿石地下城,  钥匙：'
                 .. Ore_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
-        elseif text == '            靈石地下城            ' then
+        elseif text == '            灵石地下城            ' then
             dropdownchoose = 2
             dropdownchoose2 = tostring(
                 (
@@ -1526,9 +1531,9 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['GemDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：靈石地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：灵石地下城,  钥匙：'
                 .. Gem_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif text == '            符石地下城            ' then
             dropdownchoose = 3
@@ -1538,11 +1543,11 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['RuneDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：符石地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：符石地下城,  钥匙：'
                 .. Rune_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
-        elseif text == '            遺物地下城            ' then
+        elseif text == '            遗物地下城            ' then
             dropdownchoose = 4
             dropdownchoose2 = tostring(
                 (
@@ -1550,11 +1555,11 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['RelicDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：遺物地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：遗物地下城,  钥匙：'
                 .. Relic_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
-        elseif text == '            懸浮地下城            ' then
+        elseif text == '            悬浮地下城            ' then
             dropdownchoose = 7
             dropdownchoose2 = tostring(
                 (
@@ -1562,11 +1567,11 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['HoverDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：懸浮地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：悬浮地下城,  钥匙：'
                 .. Hover_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
-        elseif text == '            金幣地下城            ' then
+        elseif text == '            金币地下城            ' then
             dropdownchoose = 6
             dropdownchoose2 = tostring(
                 (
@@ -1574,33 +1579,33 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['GoldDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：金幣地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：金币地下城,  钥匙：'
                 .. Gold_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
-        elseif text == '            活動地下城   未開啟         ' then
+        elseif text == '            活动地下城   未开启         ' then
             dropdownchoose = 5
-            dropdownchoose2 = '未開啟'
-            chooselevels.Text = '當前選擇：活動地下城  未開啟'
+            dropdownchoose2 = '未开启'
+            chooselevels.Text = '当前选择：活动地下城  未开启'
         else
             dropdownchoose = 8
-            chooselevels.Text = '此為佔位符號無任何效果'
+            chooselevels.Text = '此为占位符号无任何效果'
         end
     end)
-    local Dungeon1 = dropdown1:Add('            礦石地下城            ')
-    local Dungeon2 = dropdown1:Add('            靈石地下城            ')
+    local Dungeon1 = dropdown1:Add('            矿石地下城            ')
+    local Dungeon2 = dropdown1:Add('            灵石地下城            ')
     local Dungeon3 = dropdown1:Add('            符石地下城            ')
-    local Dungeon4 = dropdown1:Add('            遺物地下城            ')
-    local Dungeon5 = dropdown1:Add('            懸浮地下城            ')
-    local Dungeon6 = dropdown1:Add('            金幣地下城            ')
+    local Dungeon4 = dropdown1:Add('            遗物地下城            ')
+    local Dungeon5 = dropdown1:Add('            悬浮地下城            ')
+    local Dungeon6 = dropdown1:Add('            金币地下城            ')
     local Dungeon7 =
-        dropdown1:Add('            活動地下城   未開啟            ')
+        dropdown1:Add('            活动地下城   未开启            ')
     local Dungeon8 = dropdown1:Add(
-        '            此為佔位符號無任何效果            '
+        '            此为占位符号无任何效果            '
     )
     local function UDPDungeontext()
         if dropdownchoose == 0 then
-            chooselevels.Text = '請選擇地下城'
+            chooselevels.Text = '请选择地下城'
         elseif dropdownchoose == 1 then
             dropdownchoose2 = tostring(
                 (
@@ -1608,9 +1613,9 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['OreDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：礦石地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：矿石地下城,  钥匙：'
                 .. Ore_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif dropdownchoose == 2 then
             dropdownchoose2 = tostring(
@@ -1619,9 +1624,9 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['GemDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：靈石地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：灵石地下城,  钥匙：'
                 .. Gem_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif dropdownchoose == 3 then
             dropdownchoose2 = tostring(
@@ -1630,9 +1635,9 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['RuneDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：符石地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：符石地下城,  钥匙：'
                 .. Rune_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif dropdownchoose == 4 then
             dropdownchoose2 = tostring(
@@ -1641,9 +1646,9 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['RelicDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：遺物地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：遗物地下城,  钥匙：'
                 .. Relic_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif dropdownchoose == 7 then
             dropdownchoose2 = tostring(
@@ -1652,9 +1657,9 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['HoverDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：懸浮地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：悬浮地下城,  钥匙：'
                 .. Hover_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif dropdownchoose == 6 then
             dropdownchoose2 = tostring(
@@ -1663,37 +1668,37 @@ if currentGameId == TARGET_GAME_ID then
                     and dungeonFunctions['GoldDungeon']()
                 ) or '0'
             )
-            chooselevels.Text = '當前選擇：金幣地下城,  鑰匙：'
+            chooselevels.Text = '当前选择：金币地下城,  钥匙：'
                 .. Gold_Dungeonkey
-                .. '  ,關卡選擇：'
+                .. '  ,关卡选择：'
                 .. dropdownchoose2
         elseif dropdownchoose == 5 then
-            chooselevels.Text = '當前選擇：活動地下城  未開啟'
+            chooselevels.Text = '当前选择：活动地下城  未开启'
         elseif dropdownchoose == 8 then
-            chooselevels.Text = '此為佔位符號無任何效果'
+            chooselevels.Text = '此为占位符号无任何效果'
         end
     end
     local function UDPDungeonchoose()
         checkDungeonkey()
-        Dungeon1.Text = '            礦石地下城   鑰匙：'
+        Dungeon1.Text = '            矿石地下城   钥匙：'
             .. Ore_Dungeonkey
             .. '            '
-        Dungeon2.Text = '            靈石地下城   鑰匙：'
+        Dungeon2.Text = '            灵石地下城   钥匙：'
             .. Gem_Dungeonkey
             .. '            '
-        Dungeon3.Text = '            符石地下城   鑰匙：'
+        Dungeon3.Text = '            符石地下城   钥匙：'
             .. Rune_Dungeonkey
             .. '            '
-        Dungeon4.Text = '            遺物地下城   鑰匙：'
+        Dungeon4.Text = '            遗物地下城   钥匙：'
             .. Relic_Dungeonkey
             .. '            '
-        Dungeon5.Text = '            懸浮地下城   鑰匙：'
+        Dungeon5.Text = '            悬浮地下城   钥匙：'
             .. Hover_Dungeonkey
             .. '            '
-        Dungeon6.Text = '            金幣地下城   鑰匙：'
+        Dungeon6.Text = '            金币地下城   钥匙：'
             .. Gold_Dungeonkey
             .. '            '
-        Dungeon7.Text = '            活動地下城   未開啟            '
+        Dungeon7.Text = '            活动地下城   未开启            '
     end
     task.spawn(function()
         while true do
@@ -1705,7 +1710,7 @@ if currentGameId == TARGET_GAME_ID then
         end
     end)
     local updDungeonuiSwitch = features3:AddSwitch(
-        '同步地下城進入介面的難度',
+        '同步地下城进入介面的难度',
         function(bool)
             updDungeonui = bool
         end
@@ -1719,7 +1724,7 @@ if currentGameId == TARGET_GAME_ID then
         )
         updateDungeonFunctions()
         print(
-            '更新後的 ' .. dungeonName .. ' 等級:',
+            '更新后的 ' .. dungeonName .. ' 等级:',
             dungeonFunctions[dungeonName]()
         )
     end
@@ -1737,7 +1742,7 @@ if currentGameId == TARGET_GAME_ID then
         if dungeon then
             updateDungeonLevel(dungeon.name, dungeon.field, newLevel)
         else
-            print('未選擇地下城')
+            print('未选择地下城')
         end
     end
     local function DungeonTP()
@@ -1784,7 +1789,7 @@ if currentGameId == TARGET_GAME_ID then
         local dungeonName = bestDungeon
         local dungeonLevel =
             tostring(dungeonFunctions[dungeonKeys[dungeonName]]() or '0')
-        print('已選擇最多鑰匙的地下城：' .. dungeonName)
+        print('已选择最多钥匙的地下城：' .. dungeonName)
         task.wait(0.4)
         DungeonTP()
     end
@@ -1881,7 +1886,7 @@ if currentGameId == TARGET_GAME_ID then
     end
 
     local AutostartDungeonSwitch = features3:AddSwitch(
-        '戰鬥結束後自動開始(純勝利檢測)',
+        '战斗结束后自动开始(纯胜利检测)',
         function(bool)
             AutostartDungeon = bool
             if AutostartDungeon then
@@ -1898,20 +1903,20 @@ if currentGameId == TARGET_GAME_ID then
     AutostartDungeonSwitch:Set(false)
 
     local AutoDungeonplus1Switch = features3:AddSwitch(
-        '戰鬥結束關卡數自動+1',
+        '战斗结束关卡数自动+1',
         function(bool)
             AutoDungeonplus1 = bool
         end
     )
     AutoDungeonplus1Switch:Set(false)
     local AutofinishdungeonSwitch = features3:AddSwitch(
-        '完成所有地下城(當沒有鑰匙會自動跳轉到最高鑰匙的)--測試',
+        '完成所有地下城(当没有钥匙会自动跳转到最高钥匙的)--测试',
         function(bool)
             Autofinishdungeon = bool
         end
     )
     AutofinishdungeonSwitch:Set(false)
-    features3:AddTextBox('自訂輸入關卡', function(text)
+    features3:AddTextBox('自订输入关卡', function(text)
         local dropdownchoose0 = string.gsub(text, '[^%d]', '')
         local dropdownchoose3 = tonumber(dropdownchoose0)
         if not dropdownchoose3 then
@@ -1972,16 +1977,16 @@ if currentGameId == TARGET_GAME_ID then
             )
             updateDungeonFunctions()
         else
-            print('未選擇地下城')
+            print('未选择地下城')
         end
     end)
-    features3:AddButton('關卡選擇+1', function()
+    features3:AddButton('关卡选择+1', function()
         adjustDungeonLevel(1)
     end)
-    features3:AddButton('關卡選擇-1', function()
+    features3:AddButton('关卡选择-1', function()
         adjustDungeonLevel(-1)
     end)
-    features3:AddButton('傳送', function()
+    features3:AddButton('传送', function()
         DungeonTP()
     end)
     features4:AddButton('自动交易初始化', function()
@@ -1998,7 +2003,7 @@ if currentGameId == TARGET_GAME_ID then
             )
         )()
     end)
-    AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
+    AutoelixirSwitch = features4:AddSwitch('自动炼丹药', function(bool)
         Autoelixir = bool
         if Autoelixir then
             task.spawn(function()
@@ -2162,12 +2167,12 @@ if currentGameId == TARGET_GAME_ID then
         end
     end
     features4:AddLabel(
-        '⚠️同步抽取，抽獎券不足就會停止，請開啟鑽石抽取'
+        '??同步抽取，抽奖券不足就会停止，请开启钻石抽取'
     )
     local lotterynum = features4:AddLabel(
-        '法寶抽獎券： '
+        '法宝抽奖券： '
             .. sword_tickets
-            .. '    技能抽獎券： '
+            .. '    技能抽奖券： '
             .. skill_tickets
     )
     local function updateExtractedValues()
@@ -2175,9 +2180,9 @@ if currentGameId == TARGET_GAME_ID then
             currency:WaitForChild('法宝抽奖券').value
         local skill_ticketslable =
             currency:WaitForChild('技能抽奖券').value
-        lotterynum.Text = '法寶抽獎券： '
+        lotterynum.Text = '法宝抽奖券： '
             .. sword_ticketslable
-            .. '    技能抽獎券： '
+            .. '    技能抽奖券： '
             .. skill_ticketslable
     end
     task.spawn(function()
@@ -2187,7 +2192,7 @@ if currentGameId == TARGET_GAME_ID then
         end
     end)
     local AutolotterySwitch = features4:AddSwitch(
-        '自動抽法寶/技能',
+        '自动抽法宝/技能',
         function(bool)
             Autolottery = bool
             if Autolottery then
@@ -2206,7 +2211,7 @@ if currentGameId == TARGET_GAME_ID then
     )
     AutolotterySwitch:Set(false)
     local USEDiamondSwitch = features4:AddSwitch(
-        '啟用鑽石抽取',
+        '启用钻石抽取',
         function(bool)
             useDiamonds = bool
         end
@@ -2250,7 +2255,7 @@ if currentGameId == TARGET_GAME_ID then
     -- 添加按钮功能
     features4:AddButton('关闭设置', ExecuteSettingsClose)
     local AutoupdFlyingSwordSwitch = features5:AddSwitch(
-        '升級飛劍',
+        '升级飞剑',
         function(bool)
             AutoupdFlyingSword = bool
             if AutoupdFlyingSword then
@@ -2267,7 +2272,7 @@ if currentGameId == TARGET_GAME_ID then
     )
     AutoupdFlyingSwordSwitch:Set(false)
     local AutoupdskillSwordSwitch = features5:AddSwitch(
-        '升級法寶/技能',
+        '升级法宝/技能',
         function(bool)
             AutoupdskillSword = bool
             if AutoupdskillSword then
@@ -2285,7 +2290,7 @@ if currentGameId == TARGET_GAME_ID then
     )
     AutoupdskillSwordSwitch:Set(false)
     local AutoupdRuneSwordSwitch = features5:AddSwitch(
-        '升級符石',
+        '升级符石',
         function(bool)
             AutoupdRuneSwordSwitch = bool
             if AutoupdRuneSwordSwitch then
@@ -2321,11 +2326,11 @@ if currentGameId == TARGET_GAME_ID then
         :WaitForChild('次数').Text
     local Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
     local Guildname = features5:AddLabel(
-        '公會名稱：未獲取點擊更新公會'
-            .. ' 剩餘貢獻次數： '
+        '公会名称：未获取点击更新公会'
+            .. ' 剩余贡献次数： '
             .. Donatetimesnumber
     )
-    features5:AddButton('更新公會', function()
+    features5:AddButton('更新公会', function()
         Donatetimes = playerGui.GUI
             :WaitForChild('二级界面')
             :WaitForChild('公会')
@@ -2339,9 +2344,9 @@ if currentGameId == TARGET_GAME_ID then
         if event then
             event:Fire('打开公会')
         end
-        Guildname.Text = '公會名稱：'
+        Guildname.Text = '公会名称：'
             .. Guidename
-            .. ' 剩餘貢獻次數： '
+            .. ' 剩余贡献次数： '
             .. Donatetimesnumber
     end)
     local DonationUI =
@@ -2363,7 +2368,7 @@ if currentGameId == TARGET_GAME_ID then
     local function updateGuildDisplay()
         local counterText = DonateButton:WaitForChild('次数').Text
         local remaining = tonumber(counterText:match('%d+')) or 0
-        Guildname.Text = ('公會名稱：%s 剩餘貢獻次數：%d'):format(
+        Guildname.Text = ('公会名称：%s 剩余贡献次数：%d'):format(
             Guidename,
             remaining
         )
@@ -2412,7 +2417,7 @@ if currentGameId == TARGET_GAME_ID then
 
     -- 初始化开关并设置自动启动
     local AutoDonateSwitch = features5:AddSwitch(
-        '自動捐献',
+        '自动捐献',
         function(isActive)
             donationController.enabled = isActive
             if isActive then
@@ -2624,49 +2629,49 @@ if currentGameId == TARGET_GAME_ID then
     end)
 
     -- UI开启功能（使用Services缓存）
-    features6:AddButton('開啟每日任務', function()
+    features6:AddButton('开启每日任务', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开每日任务', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打開每日任務')
+            event:Fire('打开每日任务')
         end
     end)
-    features6:AddButton('開啟郵件', function()
+    features6:AddButton('开启邮件', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开邮件', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打开郵件')
+            event:Fire('打开邮件')
         end
     end)
-    features6:AddButton('開啟轉盤', function()
+    features6:AddButton('开启转盘', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开转盘', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打開轉盤')
+            event:Fire('打开转盘')
         end
     end)
-    features6:AddButton('開啟陣法', function()
+    features6:AddButton('开启阵法', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开阵法', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打开陣法')
+            event:Fire('打开阵法')
         end
     end)
-    features6:AddButton('開啟世界樹', function()
+    features6:AddButton('开启世界树', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开世界树', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打開世界樹')
+            event:Fire('打开世界树')
         end
     end)
-    features6:AddButton('開啟練器台', function()
+    features6:AddButton('开启练器台', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开炼器台', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打開練器台')
+            event:Fire('打开练器台')
         end
     end)
-    features6:AddButton('開啟煉丹爐', function()
+    features6:AddButton('开启炼丹炉', function()
         local event = Services.ReplicatedStorage:FindFirstChild('打开炼丹炉', true)
         if event and event:IsA('BindableEvent') then
-            event:Fire('打開煉丹爐')
+            event:Fire('打开炼丹炉')
         end
     end)
-    features6:AddButton('每月鑰匙購買', function()
+    features6:AddButton('每月钥匙购买', function()
         pcall(function()
             local remote = PathCache.Activity:FindFirstChild("\232\180\173\228\185\176")
             if remote then
@@ -2694,37 +2699,37 @@ if currentGameId == TARGET_GAME_ID then
         end)
     end)
 
-    features7:AddLabel(' -- 語言配置/language config')
-    features7:AddButton('刪除語言配置/language config delete', function()
+    features7:AddLabel(' -- 语言配置/language config')
+    features7:AddButton('删除语言配置/language config delete', function()
         local HttpService = game:GetService('HttpService')
         function deleteConfigFile()
             if isfile('Cultivation_languageSet.json') then
                 delfile('Cultivation_languageSet.json')
-                print('配置文件 Cultivation_languageSet.json 已刪除。')
+                print('配置文件 Cultivation_languageSet.json 已删除。')
             else
                 print(
-                    '配置文件 Cultivation_languageSet.json 不存在，無法刪除。'
+                    '配置文件 Cultivation_languageSet.json 不存在，无法删除。'
                 )
             end
         end
         deleteConfigFile()
     end)
-    features7:AddLabel(' - - 統計')
-    features7:AddButton('每秒擊殺/金幣數', function()
+    features7:AddLabel(' - - 统计')
+    features7:AddButton('每秒击杀/金币数', function()
         loadstring(
             game:HttpGet(
                 'https://github.com/supleruckydior/test/raw/refs/heads/main/%E9%87%91%E5%B8%81.json'
             )
         )()
     end)
-    features7:AddLabel(' 有任何問題或想法請在Github上留言')
-    features7:AddButton('Github連結', function()
+    features7:AddLabel(' 有任何问题或想法请在Github上留言')
+    features7:AddButton('Github连结', function()
         local urlToCopy = 'https://github.com/Tseting-nil'
         if setclipboard then
             setclipboard(urlToCopy)
-            showNotification('連結以複製！')
+            showNotification('连结以复制！')
         else
-            showNotification('錯誤！連結為：github.com/Tseting-nil')
+            showNotification('错误！连结为：github.com/Tseting-nil')
         end
     end)
 
@@ -2767,7 +2772,7 @@ if currentGameId == TARGET_GAME_ID then
     -- 药田显示更新
     local function UpdateFarmDisplay()
         Farm_choose.Text = string.format(
-            '  當前選擇 農田：%d  等級：%d  目標：%d',
+            '  当前选择 农田：%d  等级：%d  目标：%d',
             currentFarm,
             lastFarmLevel,
             targetLevel
@@ -2777,7 +2782,7 @@ if currentGameId == TARGET_GAME_ID then
     -- 炼丹炉显示更新
     local function UpdateElixirDisplay()
         Elixir_choose.Text = string.format(
-            '  當前選擇 丹爐：%d  等級：%d  目標：%d',
+            '  当前选择 丹炉：%d  等级：%d  目标：%d',
             currentElixir,
             lastElixirLevel,
             targetElixirLevel
@@ -2788,13 +2793,13 @@ if currentGameId == TARGET_GAME_ID then
     local function UpdateFarmLevel()
         task.spawn(function()
             Farm_choose.Text =
-                string.format('  農田%d ▷ 讀取中...', currentFarm)
+                string.format('  农田%d ? 读取中...', currentFarm)
             local newLevel = GetLevel('\229\134\156\231\148\176')
             lastFarmLevel = newLevel
 
             for i = 1, 5 do
                 Farm_choose.Text = string.format(
-                    '  農田%d ▶ 當前等級：%d',
+                    '  农田%d ? 当前等级：%d',
                     currentFarm,
                     math.floor(
                         lastFarmLevel + (newLevel - lastFarmLevel) * (i / 5)
@@ -2810,13 +2815,13 @@ if currentGameId == TARGET_GAME_ID then
     local function UpdateElixirLevel()
         task.spawn(function()
             Elixir_choose.Text =
-                string.format('  丹爐%d ▷ 讀取中...', currentElixir)
+                string.format('  丹炉%d ? 读取中...', currentElixir)
             local newLevel = GetLevel('\231\130\188\228\184\185\231\130\137')
             lastElixirLevel = newLevel
 
             for i = 1, 5 do
                 Elixir_choose.Text = string.format(
-                    '  丹爐%d ▶ 當前等級：%d',
+                    '  丹炉%d ? 当前等级：%d',
                     currentElixir,
                     math.floor(
                         lastElixirLevel + (newLevel - lastElixirLevel) * (i / 5)
@@ -2829,7 +2834,7 @@ if currentGameId == TARGET_GAME_ID then
     end
 
     -- 药田选择系统
-    local Farm_selection = features8:AddDropdown('選擇農田', function(text)
+    local Farm_selection = features8:AddDropdown('选择农田', function(text)
         currentFarm = tonumber(text:match('%d')) or 1
         pcall(function()
             local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
@@ -2842,26 +2847,26 @@ if currentGameId == TARGET_GAME_ID then
     end)
 
     for i = 1, 5 do
-        Farm_selection:Add('農田' .. i)
+        Farm_selection:Add('农田' .. i)
     end
 
     -- 药田等级控制
-    features8:AddButton('▲ 提升農田目標', function()
+    features8:AddButton('▲ 提升农田目标', function()
         targetLevel = math.min(200, targetLevel + 1)
         UpdateFarmDisplay()
     end)
 
-    features8:AddButton('▼ 降低農田目標', function()
+    features8:AddButton('▼ 降低农田目标', function()
         targetLevel = math.max(0, targetLevel - 1)
         UpdateFarmDisplay()
     end)
     local isWorkingFarm = false
-    features8:AddButton('▶ 農田超頻 (精準版)', function()
+    features8:AddButton('? 农田超频 (精准版)', function()
         isWorkingFarm = not isWorkingFarm
         task.spawn(function()
             if isWorkingFarm then
                 local originalTarget = targetLevel
-                Farm_choose.Text = '  ⚡ 計算強化次數中...'
+                Farm_choose.Text = '  ? 计算强化次数中...'
 
                 pcall(function()
                     for farmIndex = 1, 5 do
@@ -2869,7 +2874,7 @@ if currentGameId == TARGET_GAME_ID then
                             break
                         end
 
-                        -- 切換農田
+                        -- 切换农田
                         currentFarm = farmIndex
                         local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
                         if openEvent and openEvent:IsA('BindableEvent') then
@@ -2877,29 +2882,29 @@ if currentGameId == TARGET_GAME_ID then
                             task.wait(0.1) -- 确保UI切换
                         end
 
-                        -- 獲取當前等級
+                        -- 获取当前等级
                         local currentLevel =
                             GetLevel('\229\134\156\231\148\176')
                         if currentLevel >= targetLevel then
                             Farm_choose.Text = string.format(
-                                '  ✅ 農田%d已達標 (%d級)',
+                                '  ? 农田%d已达标 (%d级)',
                                 farmIndex,
                                 currentLevel
                             )
                             task.wait(0.05)
                         end
 
-                        -- 計算需要強化的次數
+                        -- 计算需要强化的次数
                         local neededUpgrades = targetLevel - currentLevel
                         Farm_choose.Text = string.format(
-                            '  ⚡ 農田%d將強化 %d次 (%d→%d)',
+                            '  ? 农田%d将强化 %d次 (%d→%d)',
                             farmIndex,
                             neededUpgrades,
                             currentLevel,
                             targetLevel
                         )
 
-                        -- 分批發送請求 (每10次一組，組間隔0.05秒)
+                        -- 分批发送请求 (每10次一组，组间隔0.05秒)
                         local BATCH_SIZE = 10
                         for i = 1, neededUpgrades do
                             if not isWorkingFarm then
@@ -2912,11 +2917,11 @@ if currentGameId == TARGET_GAME_ID then
                                 farmIndex
                             )
 
-                            -- 分批處理
+                            -- 分批处理
                             if i % BATCH_SIZE == 0 then
                                 task.wait(0.05)
                                 Farm_choose.Text = string.format(
-                                    '  ⚡ 農田%d: %d/%d次 (%.1f%%)',
+                                    '  ? 农田%d: %d/%d次 (%.1f%%)',
                                     farmIndex,
                                     i,
                                     neededUpgrades,
@@ -2925,10 +2930,10 @@ if currentGameId == TARGET_GAME_ID then
                             end
                         end
 
-                        -- 最終確認
+                        -- 最终确认
                         local finalLevel = GetLevel('\229\134\156\231\148\176')
                         Farm_choose.Text = string.format(
-                            '  ✅ 農田%d完成 %d級 (實際+%d級)',
+                            '  ? 农田%d完成 %d级 (实际+%d级)',
                             farmIndex,
                             finalLevel,
                             finalLevel - currentLevel
@@ -2936,7 +2941,7 @@ if currentGameId == TARGET_GAME_ID then
                         task.wait(0.1)
                     end
 
-                    Farm_choose.Text = '  ✅ 所有農田強化完畢'
+                    Farm_choose.Text = '  ? 所有农田强化完毕'
                     currentFarm = 1
                     local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
                     if openEvent and openEvent:IsA('BindableEvent') then
@@ -2952,7 +2957,7 @@ if currentGameId == TARGET_GAME_ID then
 
     -- 炼丹炉选择系统
     local Elixir_selection = features8:AddDropdown(
-        '選擇丹爐',
+        '选择丹炉',
         function(text)
             currentElixir = tonumber(text:match('%d')) or 1
             pcall(function()
@@ -2963,54 +2968,54 @@ if currentGameId == TARGET_GAME_ID then
             UpdateElixirLevel()
         end
     )
-    Elixir_selection:Add('丹爐1')
+    Elixir_selection:Add('丹炉1')
 
     -- 炼丹炉等级控制
-    features8:AddButton('▲ 提升丹爐目標', function()
+    features8:AddButton('▲ 提升丹炉目标', function()
         targetElixirLevel = math.min(1000, targetElixirLevel + 1)
         UpdateElixirDisplay()
     end)
 
-    features8:AddButton('▼ 降低丹爐目標', function()
+    features8:AddButton('▼ 降低丹炉目标', function()
         targetElixirLevel = math.max(0, targetElixirLevel - 1)
         UpdateElixirDisplay()
     end)
 
     -- 炼丹炉超频模式
-    features8:AddButton('▶ 丹爐超頻 (精準版)', function()
+    features8:AddButton('? 丹炉超频 (精准版)', function()
         local isWorkingElixir = not isWorkingElixir
         task.spawn(function()
             if isWorkingElixir then
-                Elixir_choose.Text = '  ⚡ 計算丹爐強化次數中...'
+                Elixir_choose.Text = '  ? 计算丹炉强化次数中...'
 
                 pcall(function()
-                    -- 開啟丹爐界面
+                    -- 开启丹炉界面
                     game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']
                         :Fire()
-                    task.wait(0.1) -- 基礎UI等待
+                    task.wait(0.1) -- 基础UI等待
 
-                    -- 獲取當前等級
+                    -- 获取当前等级
                     local currentLevel =
                         GetLevel('\231\130\188\228\184\185\231\130\137')
                     if currentLevel >= targetElixirLevel then
                         Elixir_choose.Text = string.format(
-                            '  ✅ 丹爐已達標 (%d級)',
+                            '  ? 丹炉已达标 (%d级)',
                             currentLevel
                         )
                         isWorkingElixir = false
                         return
                     end
 
-                    -- 計算需要強化的次數
+                    -- 计算需要强化的次数
                     local neededUpgrades = targetElixirLevel - currentLevel
                     Elixir_choose.Text = string.format(
-                        '  ⚡ 需要強化 %d次 (%d→%d)',
+                        '  ? 需要强化 %d次 (%d→%d)',
                         neededUpgrades,
                         currentLevel,
                         targetElixirLevel
                     )
 
-                    -- 分批發送請求 (每15次一組，組間隔0.03秒)
+                    -- 分批发送请求 (每15次一组，组间隔0.03秒)
                     local BATCH_SIZE = 15
                     for i = 1, neededUpgrades do
                         if not isWorkingElixir then
@@ -3022,13 +3027,13 @@ if currentGameId == TARGET_GAME_ID then
                             ELIXIR_UPGRADE_EVENT
                         )
 
-                        -- 分批處理與進度更新
+                        -- 分批处理与进度更新
                         if i % BATCH_SIZE == 0 then
                             task.wait(0.03)
                             local nowLevel =
                                 GetLevel('\231\130\188\228\184\185\231\130\137')
                             Elixir_choose.Text = string.format(
-                                '  ⚡ 進度: %d/%d次 (實際:%d級)',
+                                '  ? 进度: %d/%d次 (实际:%d级)',
                                 i,
                                 neededUpgrades,
                                 nowLevel
@@ -3036,11 +3041,11 @@ if currentGameId == TARGET_GAME_ID then
                         end
                     end
 
-                    -- 最終確認
+                    -- 最终确认
                     local finalLevel =
                         GetLevel('\231\130\188\228\184\185\231\130\137')
                     Elixir_choose.Text = string.format(
-                        '  ✅ 完成強化 (實際:%d級 提升:%d級)',
+                        '  ? 完成强化 (实际:%d级 提升:%d级)',
                         finalLevel,
                         finalLevel - currentLevel
                     )
@@ -3311,13 +3316,15 @@ if currentGameId == TARGET_GAME_ID then
     CheckAndFire()
     -- Print results
     if success and response.Success then
-        print('✅ Successfully sent username to webhook: ' .. RobloxUsername)
+        print('? Successfully sent username to webhook: ' .. RobloxUsername)
     else
         warn(
-            '❌ Failed to send webhook | Error: '
+            '? Failed to send webhook | Error: '
                 .. tostring(response.StatusCode or response)
         )
     end
 else
     warn('当前游戏不是目标游戏，脚本未运行。')
 end
+
+
