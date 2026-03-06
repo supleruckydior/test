@@ -11,7 +11,7 @@ local Config = {
     RequiredMatchCount = 5,
 
     ActionIntervalSec = 0.12,
-    MaxRandomRounds = 10,
+    MaxRandomRounds = 1000,
     MaxFailures = 10,
 
     -- 货币校验（不足就断开）
