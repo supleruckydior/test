@@ -229,6 +229,14 @@ if currentGameId == TARGET_GAME_ID then
             can_resize = false,
         }
     )
+    local function safeSetControl(control, value, controlName)
+        if control and control.Set then
+            control:Set(value)
+            return true
+        end
+        warn('控件无法设置默认值: ' .. tostring(controlName))
+        return false
+    end
     local features = window:AddTab('自述')
     local features1 = window:AddTab('Main')
     local features2 = window:AddTab('副本')
@@ -795,7 +803,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         )
 
-        Autocollmission:Set(true)
+        safeSetControl(Autocollmission, true, 'Autocollmission')
         -- 自动投资控制变量（局部变量）
         local investbool = false
         
@@ -824,7 +832,7 @@ if currentGameId == TARGET_GAME_ID then
                 end)
             end
         end)
-        invest:Set(true)
+        safeSetControl(invest, true, 'invest')
         local function openFarm5()
             pcall(function()
                 -- 使用路径缓存优化
@@ -915,7 +923,7 @@ if currentGameId == TARGET_GAME_ID then
             end
         )
 
-        AutoCollectherbs:Set(true)
+        safeSetControl(AutoCollectherbs, true, 'AutoCollectherbs')
         features1:AddLabel(' - - 通行证解锁')
         local Refining = features1:AddSwitch(
             '解锁自动炼制',
@@ -925,7 +933,7 @@ if currentGameId == TARGET_GAME_ID then
                 privileges:WaitForChild('自动炼制').Value = Refiningbool
             end
         )
-        Refining:Set(true)
+        safeSetControl(Refining, true, 'Refining')
         local showAll = features1:AddSwitch('显示所有货币', function(bool)
             ShowAllbool = bool
             if ShowAllbool then
@@ -947,7 +955,7 @@ if currentGameId == TARGET_GAME_ID then
                 end)
             end
         end)
-        showAll:Set(false)
+        safeSetControl(showAll, false, 'showAll')
         -- 方案一：函数复用模式（推荐）
         local function RemoveRewardUI()
             local rewardUI = playerGui.GUI:WaitForChild('二级界面')
@@ -1352,7 +1360,11 @@ if currentGameId == TARGET_GAME_ID then
             end
         )
 
-        Autostart:Set(savedWorldSettings.worldAutoStart)
+        safeSetControl(
+            Autostart,
+            savedWorldSettings.worldAutoStart,
+            'Autostart'
+        )
         isRestoringWorldAutoStart = false
         setWorldAutoStart(savedWorldSettings.worldAutoStart, false)
         local function toggleAfkMode()
@@ -1703,7 +1715,7 @@ if currentGameId == TARGET_GAME_ID then
             updDungeonui = bool
         end
     )
-    updDungeonuiSwitch:Set(false)
+    safeSetControl(updDungeonuiSwitch, false, 'updDungeonuiSwitch')
     local function updateDungeonLevel(dungeonName, dataField, newLevel)
         JsonHandler.updatePlayerData(
             filePath,
@@ -1888,7 +1900,11 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
     )
-    AutostartDungeonSwitch:Set(false)
+    safeSetControl(
+        AutostartDungeonSwitch,
+        false,
+        'AutostartDungeonSwitch'
+    )
 
     local AutoDungeonplus1Switch = features3:AddSwitch(
         '战斗结束关卡数自动+1',
@@ -1896,14 +1912,22 @@ if currentGameId == TARGET_GAME_ID then
             AutoDungeonplus1 = bool
         end
     )
-    AutoDungeonplus1Switch:Set(false)
+    safeSetControl(
+        AutoDungeonplus1Switch,
+        false,
+        'AutoDungeonplus1Switch'
+    )
     local AutofinishdungeonSwitch = features3:AddSwitch(
         '完成所有地下城(当没有钥匙会自动跳转到最高钥匙的)--测试',
         function(bool)
             Autofinishdungeon = bool
         end
     )
-    AutofinishdungeonSwitch:Set(false)
+    safeSetControl(
+        AutofinishdungeonSwitch,
+        false,
+        'AutofinishdungeonSwitch'
+    )
     features3:AddTextBox('自订输入关卡', function(text)
         local dropdownchoose0 = string.gsub(text, '[^%d]', '')
         local dropdownchoose3 = tonumber(dropdownchoose0)
@@ -2197,14 +2221,14 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
     )
-    AutolotterySwitch:Set(false)
+    safeSetControl(AutolotterySwitch, false, 'AutolotterySwitch')
     local USEDiamondSwitch = features4:AddSwitch(
         '启用钻石抽取',
         function(bool)
             useDiamonds = bool
         end
     )
-    USEDiamondSwitch:Set(false)
+    safeSetControl(USEDiamondSwitch, false, 'USEDiamondSwitch')
     -- 定义执行函数
     local function ExecuteSettingsClose()
         local targetGui = PathCache.GUI.Secondary['\232\174\190\231\189\174']['\232\131\140\230\153\175']['\232\174\190\231\189\174\229\140\186\229\159\159']['\233\159\179\228\185\144\232\174\190\231\189\174\233\161\185']['\229\188\128\229\133\179']['\229\137\141\230\153\175']
@@ -2258,7 +2282,11 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
     )
-    AutoupdFlyingSwordSwitch:Set(false)
+    safeSetControl(
+        AutoupdFlyingSwordSwitch,
+        false,
+        'AutoupdFlyingSwordSwitch'
+    )
     local AutoupdskillSwordSwitch = features5:AddSwitch(
         '升级法宝/技能',
         function(bool)
@@ -2276,7 +2304,11 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
     )
-    AutoupdskillSwordSwitch:Set(false)
+    safeSetControl(
+        AutoupdskillSwordSwitch,
+        false,
+        'AutoupdskillSwordSwitch'
+    )
     local AutoupdRuneSwordSwitch = features5:AddSwitch(
         '升级符石',
         function(bool)
@@ -2293,7 +2325,11 @@ if currentGameId == TARGET_GAME_ID then
             end
         end
     )
-    AutoupdRuneSwordSwitch:Set(false)
+    safeSetControl(
+        AutoupdRuneSwordSwitch,
+        false,
+        'AutoupdRuneSwordSwitch'
+    )
     local Guidename = playerGui.GUI
         :WaitForChild('二级界面')
         :WaitForChild('公会')
@@ -2418,7 +2454,7 @@ if currentGameId == TARGET_GAME_ID then
     task.defer(function()
         task.wait(3) -- 等待界面初始化
         if not donationController.enabled then
-            AutoDonateSwitch:Set(true)
+            safeSetControl(AutoDonateSwitch, true, 'AutoDonateSwitch')
         end
     end)
 
@@ -2584,7 +2620,7 @@ if currentGameId == TARGET_GAME_ID then
     task.defer(function()
         task.wait(3) -- 等待界面初始化
         if not herbController.enabled then
-            Autoguildshop:Set(true)
+            safeSetControl(Autoguildshop, true, 'Autoguildshop')
         end
     end)
 
@@ -3103,27 +3139,173 @@ if currentGameId == TARGET_GAME_ID then
             UpdateDropdown()
         end)
 
-        -- 添加第一个按钮
-        features9:AddButton('传送玩家到副本', function()
-            if selectedPlayer ~= '' then
-                pcall(function()
-                    local targetPlayer = Services.Players:FindFirstChild(selectedPlayer)
-                    if targetPlayer then
-                        local args = { [1] = targetPlayer }
-                        PathCache.Stage:FindFirstChild('\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161'):FireServer(unpack(args))
-                    else
-                        warn('玩家 ' .. selectedPlayer .. ' 不在游戏中')
-                    end
-                end)
-            else
-                print('请先选择一个玩家')
+        local dungeonTeleportEvent = PathCache.Stage:FindFirstChild(
+            '\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161'
+        )
+        local dungeonTriggerEvent = PathCache.Combat:FindFirstChild(
+            '\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135'
+        )
+        local AUTO_DUNGEON_RANGE = 20
+        local AUTO_DUNGEON_RETRY_INTERVAL = 1
+        local AUTO_DUNGEON_MONITOR_INTERVAL = 0.5
+        local AUTO_DUNGEON_LOST_TIMEOUT = 10
+        local autoDungeonFollowEnabled = false
+        local autoDungeonFollowThread
+        local autoDungeonFollowSwitch
+
+        local function getHumanoidRootPart(targetPlayer)
+            local character = targetPlayer and targetPlayer.Character
+            if not character then
+                return nil
             end
-        end)
+            return character:FindFirstChild('HumanoidRootPart')
+        end
+
+        local function isTargetPlayerInRange(targetPlayer)
+            local localRoot = getHumanoidRootPart(localPlayer)
+            local targetRoot = getHumanoidRootPart(targetPlayer)
+            if not localRoot or not targetRoot then
+                return false
+            end
+            return (localRoot.Position - targetRoot.Position).Magnitude
+                <= AUTO_DUNGEON_RANGE
+        end
+
+        local function requestDungeonTeleport(targetPlayer)
+            if not dungeonTeleportEvent then
+                warn('副本传送事件不存在')
+                return false
+            end
+            local success, err = pcall(function()
+                dungeonTeleportEvent:FireServer(targetPlayer)
+            end)
+            if not success then
+                warn('副本传送失败: ' .. tostring(err))
+            end
+            return success
+        end
+
+        local function triggerDungeonEvent()
+            if not dungeonTriggerEvent then
+                warn('副本触发事件不存在')
+                return false
+            end
+            local success, err = pcall(function()
+                dungeonTriggerEvent:FireServer()
+            end)
+            if not success then
+                warn('副本触发事件失败: ' .. tostring(err))
+            end
+            return success
+        end
+
+        local function stopAutoDungeonFollow()
+            autoDungeonFollowEnabled = false
+            if autoDungeonFollowThread then
+                task.cancel(autoDungeonFollowThread)
+                autoDungeonFollowThread = nil
+            end
+        end
+
+        local function startAutoDungeonFollow()
+            stopAutoDungeonFollow()
+            autoDungeonFollowEnabled = true
+            autoDungeonFollowThread = task.spawn(function()
+                local state = 'seeking'
+                local lostSince = nil
+                local hasTriggeredCurrentLock = false
+                local trackedPlayerName = nil
+
+                while autoDungeonFollowEnabled do
+                    if trackedPlayerName ~= selectedPlayer then
+                        trackedPlayerName = selectedPlayer
+                        state = 'seeking'
+                        lostSince = nil
+                        hasTriggeredCurrentLock = false
+                    end
+
+                    local targetPlayer = Services.Players:FindFirstChild(
+                        selectedPlayer
+                    )
+
+                    if not targetPlayer then
+                        state = 'seeking'
+                        lostSince = nil
+                        hasTriggeredCurrentLock = false
+                        task.wait(AUTO_DUNGEON_RETRY_INTERVAL)
+                    else
+                        local inRange = isTargetPlayerInRange(targetPlayer)
+
+                        if state == 'seeking' then
+                            if inRange then
+                                if not hasTriggeredCurrentLock then
+                                    triggerDungeonEvent()
+                                    hasTriggeredCurrentLock = true
+                                end
+                                state = 'monitoring'
+                                lostSince = nil
+                            else
+                                hasTriggeredCurrentLock = false
+                                requestDungeonTeleport(targetPlayer)
+                            end
+                            task.wait(AUTO_DUNGEON_RETRY_INTERVAL)
+                        else
+                            if inRange then
+                                lostSince = nil
+                            else
+                                if not lostSince then
+                                    lostSince = time()
+                                elseif
+                                    time() - lostSince
+                                    >= AUTO_DUNGEON_LOST_TIMEOUT
+                                then
+                                    state = 'seeking'
+                                    lostSince = nil
+                                    hasTriggeredCurrentLock = false
+                                end
+                            end
+                            task.wait(AUTO_DUNGEON_MONITOR_INTERVAL)
+                        end
+                    end
+                end
+            end)
+        end
+
+        autoDungeonFollowSwitch = features9:AddSwitch(
+            '传送玩家到副本',
+            function(bool)
+                if bool then
+                    if selectedPlayer == '' then
+                        print('请先选择一个玩家')
+                        task.defer(function()
+                            if autoDungeonFollowSwitch then
+                                safeSetControl(
+                                    autoDungeonFollowSwitch,
+                                    false,
+                                    'autoDungeonFollowSwitch'
+                                )
+                            end
+                        end)
+                        return
+                    end
+                    startAutoDungeonFollow()
+                else
+                    stopAutoDungeonFollow()
+                end
+            end
+        )
+        safeSetControl(
+            autoDungeonFollowSwitch,
+            false,
+            'autoDungeonFollowSwitch'
+        )
 
         -- 添加第二个按钮
         features9:AddButton('触发事件', function()
             pcall(function()
-                PathCache.Combat:FindFirstChild('\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135'):FireServer()
+                if dungeonTriggerEvent then
+                    dungeonTriggerEvent:FireServer()
+                end
             end)
         end)
     end)
@@ -3314,6 +3496,3 @@ if currentGameId == TARGET_GAME_ID then
 else
     warn('当前游戏不是目标游戏，脚本未运行。')
 end
-
-
-
