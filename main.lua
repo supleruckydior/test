@@ -245,8 +245,8 @@ if currentGameId == TARGET_GAME_ID then
     local playerGui = player.PlayerGui
     local RespawPointnum = RespawPoint:match('%d+')
     print('重生点编号：' .. RespawPointnum)
-    local reworld = ws:waitForChild('主场景' .. RespawPointnum)
-        :waitForChild('重生点')
+    local reworld = ws:WaitForChild('主場景' .. RespawPointnum)
+        :WaitForChild('重生点')
     local TPX, TPY, TPZ =
         reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
     local Restart = false
@@ -564,8 +564,8 @@ if currentGameId == TARGET_GAME_ID then
             RespawPointnum = RespawPoint:match('%d+')
             print('重生点编号：' .. RespawPointnum)
             reworld = workspace
-                :waitForChild('主场景' .. RespawPointnum)
-                :waitForChild('重生点')
+                :WaitForChild('主场景' .. RespawPointnum)
+                :WaitForChild('重生点')
             TPX, TPY, TPZ =
                 reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
             print('传送座标：' .. TPX .. ' ' .. TPY .. ' ' .. TPZ)
@@ -1177,8 +1177,8 @@ if currentGameId == TARGET_GAME_ID then
         local combatUI = playerGui.GUI
             :WaitForChild('主界面')
             :WaitForChild('战斗')
-            :waitForChild('关卡信息')
-            :waitForChild('文本')
+            :WaitForChild('关卡信息')
+            :WaitForChild('文本')
         local function teleporttworld1()
             local args = { [1] = gowordlevels }
             PathCache.Stage
@@ -2301,9 +2301,9 @@ if currentGameId == TARGET_GAME_ID then
         :WaitForChild('右侧界面')
         :WaitForChild('主页')
         :WaitForChild('介绍')
-        :waitForChild('名称')
-        :waitForChild('文本')
-        :waitForChild('文本').Text
+        :WaitForChild('名称')
+        :WaitForChild('文本')
+        :WaitForChild('文本').Text
     local Donatetimes = playerGui.GUI
         :WaitForChild('二级界面')
         :WaitForChild('公会')
@@ -3314,5 +3314,6 @@ if currentGameId == TARGET_GAME_ID then
 else
     warn('当前游戏不是目标游戏，脚本未运行。')
 end
+
 
 
