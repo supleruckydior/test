@@ -1,36 +1,23 @@
--- 自动附魔剑雕像（完善版）
--- 基于实际同步数据结构：
--- ReplicatedStorage.事件.公用.剑雕像.同步数据
---
--- 功能：
--- 1) 监听同步数据
--- 2) 在目标组中查找满足最低品质的词条
--- 3) 维护锁定槽位并持续刷新，直到达成目标或触发停止条件
+-- 自动附魔剑雕像（新机制：单独锁定 + 单独随机）
+-- 路径保持为老脚本同款转义字符串
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-
 local unpackFn = table.unpack or unpack
 
 local Config = {
-    -- 目标词条（保留名称变量）
     TargetName = "金币获取率",
+    MinQuality = 5,
+    RequiredMatchCount = 5,
 
-    -- 品质阈值
-    MinQuality = 3,
+    ActionIntervalSec = 0.12,
+    MaxRandomRounds = 10,
+    MaxFailures = 10,
 
-    -- 目标达成条件
-    RequiredMatchCount = 5, -- 目标词条数量达到该值后停止
-
-    -- 刷新控制
-    RefreshIntervalSec = 0.12, -- 两次刷新最小间隔
-    MaxRefreshRounds = 600, -- 最大刷新次数，防止无限循环
-    MaxRefreshFailures = 8, -- 连续刷新失败上限
-
-    -- 代币检查（默认关闭；UI 路径变化较大）
-    EnableTokenCheck = false,
+    -- 货币校验（不足就断开）
     RefreshCost = 100,
     LockCost = 100,
+    StopIfTokenReadFailed = true, -- 读不到货币时是否停止
 }
 
 local State = {
@@ -39,14 +26,12 @@ local State = {
     processing = false,
     pendingData = nil,
 
-    lockedSlots = {}, -- [slotIndexString] = true
-    refreshRounds = 0,
-    refreshFailures = 0,
-    lastRefreshClock = 0,
-    warnedTokenPath = false,
+    randomRounds = 0,
+    failures = 0,
+    lastActionClock = 0,
+    syncConnection = nil,
 }
 
--- 与老脚本一致的路径（不使用中文明文）
 local OLD_SYNC_PARTS = {
     "\228\186\139\228\187\182",
     "\229\133\172\231\148\168",
@@ -54,35 +39,40 @@ local OLD_SYNC_PARTS = {
     "\229\144\140\230\173\165\230\149\176\230\141\174",
 }
 
-local OLD_ENCHANT_PARTS = {
+local OLD_RANDOM_PARTS = {
     "\228\186\139\228\187\182",
     "\229\133\172\231\148\168",
     "\229\137\145\233\155\149\229\131\143",
     "\231\165\136\231\165\183",
 }
 
+local OLD_LOCK_PARTS = {
+    "\228\186\139\228\187\182",
+    "\229\133\172\231\148\168",
+    "\229\137\145\233\155\149\229\131\143",
+    "\233\148\129\229\174\154\229\164\169\232\181\139",
+}
+
 local function log(msg)
-    print("[剑雕像自动附魔] " .. msg)
+    print("[剑雕像新机制] " .. msg)
 end
 
 local function warnLog(msg)
-    warn("[剑雕像自动附魔] " .. msg)
+    warn("[剑雕像新机制] " .. msg)
 end
 
 local function waitChild(parent, childName, timeoutSec)
-    local timeout = timeoutSec or 10
     local obj = parent:FindFirstChild(childName)
     if obj then
         return obj
     end
-    obj = parent:WaitForChild(childName, timeout)
-    return obj
+    return parent:WaitForChild(childName, timeoutSec or 10)
 end
 
 local function resolvePath(root, parts, timeoutSec)
     local node = root
-    for _, part in ipairs(parts) do
-        node = waitChild(node, part, timeoutSec)
+    for _, p in ipairs(parts) do
+        node = waitChild(node, p, timeoutSec)
         if not node then
             return nil
         end
@@ -90,243 +80,245 @@ local function resolvePath(root, parts, timeoutSec)
     return node
 end
 
-local function resolveSyncEvent()
-    return resolvePath(ReplicatedStorage, OLD_SYNC_PARTS, 10)
-end
-
-local function resolveEnchantEvent()
-    return resolvePath(ReplicatedStorage, OLD_ENCHANT_PARTS, 10)
-end
-
-local function getTokenCount()
-    if not Config.EnableTokenCheck then
-        return math.huge
-    end
-
-    local ok, result = pcall(function()
-        local player = Players.LocalPlayer
-        local gui = player:WaitForChild("PlayerGui"):WaitForChild("GUI")
-        local secondLevel = gui:WaitForChild("二级界面")
-
-        -- 旧脚本中的常见路径
-        local refreshPanel = secondLevel:WaitForChild("刷新器")
-        local backpack = refreshPanel:WaitForChild("背景")
-        local enchant = backpack:WaitForChild("附魔")
-        local life = enchant:WaitForChild("生命之水")
-        local button = life:WaitForChild("按钮")
-        local text = button:WaitForChild("值")
-
-        return tonumber(text.Text) or 0
-    end)
-
-    if ok then
-        return result
-    end
-
-    if not State.warnedTokenPath then
-        warnLog("代币路径读取失败，已禁用代币校验。本轮错误: " .. tostring(result))
-        State.warnedTokenPath = true
-    end
-    Config.EnableTokenCheck = false
-    return math.huge
-end
-
 local function stopRun(reason)
     State.running = false
     State.stopped = true
     State.processing = false
     State.pendingData = nil
+    if State.syncConnection then
+        State.syncConnection:Disconnect()
+        State.syncConnection = nil
+    end
     log("停止: " .. reason)
 end
 
-local function getGroupIndex(data)
-    local idx = tonumber(data["当前使用组"])
-    if idx and idx >= 1 then
-        return idx
-    end
-
-    -- 兜底：某些数据包可能没有“当前使用组”
-    if type(data["组数据"]) == "table" and type(data["组数据"][1]) == "table" then
-        return 1
-    end
-
-    return 1
-end
-
-local function getEntryList(groupItem)
-    if type(groupItem) ~= "table" then
-        return nil
-    end
-    if type(groupItem["数据"]) == "table" then
-        return groupItem["数据"]
-    end
-    if #groupItem > 0 then
-        return groupItem
-    end
-    return nil
-end
-
-local function isTargetEntry(entry)
-    if type(entry) ~= "table" then
-        return false, nil, nil
-    end
-    local name = entry["名称"]
-    local quality = tonumber(entry["品质"])
-    if name == Config.TargetName and quality and quality >= Config.MinQuality then
-        return true, name, quality
-    end
-    return false, name, quality
-end
-
-local function getLockedSlotKeys(lockTable)
-    local keys = {}
-    for slotKey, locked in pairs(lockTable) do
-        if locked then
-            keys[#keys + 1] = slotKey
-        end
-    end
-    table.sort(keys, function(a, b)
-        return tonumber(a) < tonumber(b)
+local function getTokenCount()
+    local ok, result = pcall(function()
+        local player = Players.LocalPlayer
+        local gui = player:WaitForChild("PlayerGui"):WaitForChild("GUI")
+        local secondLevel = gui:WaitForChild("\228\186\140\231\186\167\231\149\140\233\157\162")
+        local refreshPanel = secondLevel:WaitForChild("\229\137\145\233\155\149\229\131\143")
+        local backpack = refreshPanel:WaitForChild("\232\131\140\230\153\175")
+        local enchant = backpack:WaitForChild("\229\189\162\232\177\161")
+        local life = enchant:WaitForChild("\231\148\159\229\145\189\228\185\139\230\176\180")
+        local button = life:WaitForChild("\230\140\137\233\146\174")
+        local text = button:WaitForChild("\229\128\188")
+        return tonumber(text.Text) or 0
     end)
-    return keys
+
+    if ok then
+        return result, nil
+    end
+    return nil, tostring(result)
 end
 
-local function analyzeData(data)
-    if type(data) ~= "table" then
-        return nil, "同步数据不是 table"
+local function getEntryList(syncData)
+    if type(syncData) ~= "table" then
+        return nil, nil, "同步数据不是 table"
     end
 
-    local groups = data["组数据"]
+    local groups = syncData["组数据"]
     if type(groups) ~= "table" then
-        return nil, "缺少 组数据"
+        return nil, nil, "缺少组数据"
     end
 
-    local groupIndex = getGroupIndex(data)
-    local groupItem = groups[groupIndex]
-    if type(groupItem) ~= "table" then
-        return nil, "目标组不存在: " .. tostring(groupIndex)
+    local idx = tonumber(syncData["当前使用组"]) or 1
+    local group = groups[idx]
+    if type(group) ~= "table" then
+        return nil, nil, "目标组不存在: " .. tostring(idx)
     end
 
-    local entries = getEntryList(groupItem)
+    local entries = group["数据"]
     if type(entries) ~= "table" then
-        return nil, "目标组词条结构异常"
+        entries = group
+    end
+    if type(entries) ~= "table" then
+        return nil, nil, "组词条结构异常"
     end
 
-    local matchCount = 0
-    local newLockCount = 0
+    return entries, idx, nil
+end
+
+local function analyze(syncData)
+    local entries, groupIndex, err = getEntryList(syncData)
+    if not entries then
+        return nil, err
+    end
+
+    local matched = 0
+    local matchedLocked = 0
+    local toLock = {}
+    local toUnlock = {}
 
     for slotIndex, entry in ipairs(entries) do
-        local matched, name, quality = isTargetEntry(entry)
-        if matched then
-            matchCount = matchCount + 1
-            local slotKey = tostring(slotIndex)
-            if not State.lockedSlots[slotKey] then
-                State.lockedSlots[slotKey] = true
-                newLockCount = newLockCount + 1
-                log(string.format("新增锁定: 槽位=%d 名称=%s 品质=%d", slotIndex, tostring(name), quality))
-            end
-        end
-    end
+        if type(entry) == "table" then
+            local name = entry["名称"]
+            local quality = tonumber(entry["品质"])
+            local locked = (entry["锁定"] == true)
+            local matchedTarget = (name == Config.TargetName and quality and quality >= Config.MinQuality)
 
-    local lockTable = {}
-    for slotKey, locked in pairs(State.lockedSlots) do
-        if locked then
-            lockTable[slotKey] = true
+            if matchedTarget then
+                matched = matched + 1
+                if locked then
+                    matchedLocked = matchedLocked + 1
+                else
+                    toLock[#toLock + 1] = slotIndex
+                end
+            elseif locked then
+                -- 不符合目标但被锁：解锁
+                toUnlock[#toUnlock + 1] = slotIndex
+            end
         end
     end
 
     return {
         groupIndex = groupIndex,
         totalSlots = #entries,
-        matchCount = matchCount,
-        newLockCount = newLockCount,
-        lockTable = lockTable,
+        matched = matched,
+        matchedLocked = matchedLocked,
+        toLock = toLock,
+        toUnlock = toUnlock,
     }
 end
 
-local function canAfford(newLockCount)
-    local tokens = getTokenCount()
-    if tokens == math.huge then
-        return true
+local function waitActionWindow()
+    local pass = os.clock() - State.lastActionClock
+    local remain = Config.ActionIntervalSec - pass
+    if remain > 0 then
+        task.wait(remain)
     end
-
-    local need = Config.RefreshCost + (newLockCount * Config.LockCost)
-    if tokens < need then
-        log(string.format("代币不足: 当前=%d 需要=%d", tokens, need))
-        return false
-    end
-    return true
 end
 
-local function fireRefresh(enchantEvent, lockTable)
-    local now = os.clock()
-    local waitSec = Config.RefreshIntervalSec - (now - State.lastRefreshClock)
-    if waitSec > 0 then
-        task.wait(waitSec)
-    end
-
-    local slotKeys = getLockedSlotKeys(lockTable or {})
-    log("发送刷新请求，锁定槽位: [" .. table.concat(slotKeys, ",") .. "]")
+local function fireLock(lockEvent, slotIndex)
+    waitActionWindow()
 
     local ok, err = pcall(function()
-        local args = {lockTable or {}}
-        enchantEvent:FireServer(unpackFn(args))
+        local args = {slotIndex}
+        lockEvent:FireServer(unpackFn(args))
     end)
-    State.lastRefreshClock = os.clock()
+    State.lastActionClock = os.clock()
 
     if not ok then
-        State.refreshFailures = State.refreshFailures + 1
-        warnLog("刷新失败: " .. tostring(err))
-        if State.refreshFailures >= Config.MaxRefreshFailures then
-            stopRun("连续刷新失败过多")
-        end
+        State.failures = State.failures + 1
+        warnLog("锁定发送失败: " .. tostring(err))
         return false
     end
 
-    State.refreshFailures = 0
-    State.refreshRounds = State.refreshRounds + 1
+    State.failures = 0
+    log("已发送锁定请求，槽位=" .. tostring(slotIndex))
     return true
 end
 
-local function processData(syncData, enchantEvent)
-    local result, err = analyzeData(syncData)
-    if not result then
+local function fireUnlock(lockEvent, slotIndex)
+    waitActionWindow()
+
+    local ok, err = pcall(function()
+        local args = {slotIndex}
+        lockEvent:FireServer(unpackFn(args))
+    end)
+    State.lastActionClock = os.clock()
+
+    if not ok then
+        State.failures = State.failures + 1
+        warnLog("解锁发送失败: " .. tostring(err))
+        return false
+    end
+
+    State.failures = 0
+    log("已发送解锁请求，槽位=" .. tostring(slotIndex))
+    return true
+end
+
+local function fireRandom(randomEvent)
+    waitActionWindow()
+
+    local ok, err = pcall(function()
+        randomEvent:FireServer()
+    end)
+    State.lastActionClock = os.clock()
+
+    if not ok then
+        State.failures = State.failures + 1
+        warnLog("随机发送失败: " .. tostring(err))
+        return false
+    end
+
+    State.failures = 0
+    State.randomRounds = State.randomRounds + 1
+    log("已发送随机请求，轮次=" .. tostring(State.randomRounds))
+    return true
+end
+
+local function processData(syncData, randomEvent, lockEvent)
+    local r, err = analyze(syncData)
+    if not r then
         warnLog("数据解析失败: " .. tostring(err))
         return
     end
 
-    local required = math.min(Config.RequiredMatchCount, result.totalSlots > 0 and result.totalSlots or Config.RequiredMatchCount)
+    local required = math.min(Config.RequiredMatchCount, (r.totalSlots > 0 and r.totalSlots or Config.RequiredMatchCount))
     log(string.format(
-        "组=%d 满足=%d/%d 新增锁定=%d 已刷新=%d",
-        result.groupIndex,
-        result.matchCount,
+        "组=%d 满足=%d 锁定满足=%d/%d 待解锁=%d 待锁=%d 随机轮次=%d",
+        r.groupIndex,
+        r.matched,
+        r.matchedLocked,
         required,
-        result.newLockCount,
-        State.refreshRounds
+        #r.toUnlock,
+        #r.toLock,
+        State.randomRounds
     ))
 
-    if result.matchCount >= required then
+    if r.matchedLocked >= required then
         stopRun("目标达成")
         return
     end
 
-    if State.refreshRounds >= Config.MaxRefreshRounds then
-        stopRun("达到最大刷新次数")
+    if State.failures >= Config.MaxFailures then
+        stopRun("连续失败过多")
         return
     end
 
-    if not canAfford(result.newLockCount) then
-        stopRun("代币不足")
+    local tokenCount, tokenErr = getTokenCount()
+    if tokenCount == nil then
+        warnLog("读取货币失败: " .. tostring(tokenErr))
+        if Config.StopIfTokenReadFailed then
+            stopRun("无法读取货币，已断开")
+            return
+        end
+    end
+
+    if #r.toUnlock > 0 then
+        if tokenCount and tokenCount < Config.LockCost then
+            stopRun(string.format("货币不足(解锁): 当前=%d 需要=%d", tokenCount, Config.LockCost))
+            return
+        end
+        fireUnlock(lockEvent, r.toUnlock[1])
         return
     end
 
-    local ok = fireRefresh(enchantEvent, result.lockTable)
-    if ok then
-        log("已发送刷新请求")
+    if #r.toLock > 0 then
+        if tokenCount and tokenCount < Config.LockCost then
+            stopRun(string.format("货币不足(锁定): 当前=%d 需要=%d", tokenCount, Config.LockCost))
+            return
+        end
+        fireLock(lockEvent, r.toLock[1])
+        return
     end
+
+    if State.randomRounds >= Config.MaxRandomRounds then
+        stopRun("达到最大随机次数")
+        return
+    end
+
+    if tokenCount and tokenCount < Config.RefreshCost then
+        stopRun(string.format("货币不足(随机): 当前=%d 需要=%d", tokenCount, Config.RefreshCost))
+        return
+    end
+
+    fireRandom(randomEvent)
 end
 
-local function runQueued(syncData, enchantEvent)
+local function runQueued(syncData, randomEvent, lockEvent)
     if State.processing then
         State.pendingData = syncData
         return
@@ -337,7 +329,7 @@ local function runQueued(syncData, enchantEvent)
     local current = syncData
     while current and not State.stopped do
         State.pendingData = nil
-        processData(current, enchantEvent)
+        processData(current, randomEvent, lockEvent)
         current = State.pendingData
     end
 
@@ -345,24 +337,29 @@ local function runQueued(syncData, enchantEvent)
 end
 
 local function main()
-    log("初始化中...")
-    local syncEvent = resolveSyncEvent()
+    local syncEvent = resolvePath(ReplicatedStorage, OLD_SYNC_PARTS, 10)
+    local randomEvent = resolvePath(ReplicatedStorage, OLD_RANDOM_PARTS, 10)
+    local lockEvent = resolvePath(ReplicatedStorage, OLD_LOCK_PARTS, 10)
+
     if not syncEvent then
-        warnLog("未找到同步事件（老脚本路径）")
+        warnLog("未找到同步事件（老路径）")
         return
     end
-    local enchantEvent = resolveEnchantEvent()
-
-    if not enchantEvent then
-        warnLog("未找到刷新事件（老脚本路径）")
+    if not randomEvent then
+        warnLog("未找到随机事件（老路径）")
+        return
+    end
+    if not lockEvent then
+        warnLog("未找到锁定事件（老路径）")
         return
     end
 
     log("同步路径: " .. syncEvent:GetFullName())
-    log("附魔路径: " .. enchantEvent:GetFullName())
-    log(string.format("配置: 名称=%s 最低品质=%d (组=自动当前组)", Config.TargetName, Config.MinQuality))
+    log("随机路径: " .. randomEvent:GetFullName())
+    log("锁定路径: " .. lockEvent:GetFullName())
+    log(string.format("配置: 名称=%s 最低品质=%d", Config.TargetName, Config.MinQuality))
 
-    syncEvent.OnClientEvent:Connect(function(data)
+    State.syncConnection = syncEvent.OnClientEvent:Connect(function(data)
         if State.stopped then
             return
         end
@@ -372,13 +369,13 @@ local function main()
 
         if not State.running then
             State.running = true
-            log("收到同步数据，开始自动附魔")
+            log("收到同步数据，开始运行")
         end
 
-        runQueued(data, enchantEvent)
+        runQueued(data, randomEvent, lockEvent)
     end)
 
-    _G.SwordStatueAutoEnchant = {
+    _G.SwordStatueAutoEnchantV2 = {
         Stop = function()
             stopRun("手动停止")
         end,
@@ -386,14 +383,14 @@ local function main()
             return {
                 running = State.running,
                 stopped = State.stopped,
-                lockedSlots = State.lockedSlots,
-                refreshRounds = State.refreshRounds,
-                refreshFailures = State.refreshFailures,
+                randomRounds = State.randomRounds,
+                failures = State.failures,
+                connected = (State.syncConnection ~= nil),
             }
         end,
     }
 
-    log("监听已连接，等待同步数据触发")
+    log("监听已连接，等待同步数据")
 end
 
 main()
