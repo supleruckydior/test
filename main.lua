@@ -2,3497 +2,3569 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-local currentGameId = game.PlaceId
 local TARGET_GAME_ID = 18645473062
-local webhookURL =
-    'https://discord.com/api/webhooks/1360322264888905928/qkYNgfUuR2DpE2Ctal9Y7MDQen197Nm8QT3DpPFZ9iCZho99jYpmIPJIHtkdWdHmZKBc'
 
-if currentGameId == TARGET_GAME_ID then
-    print('检测到目标游戏，正在执行脚本...')
+if game.PlaceId ~= TARGET_GAME_ID then
+    warn('[V2] 当前游戏不匹配，脚本未启动')
+    return
+end
 
-    -- ====================================================================
-    -- 服务缓存 (避免重复调用GetService)
-    -- ====================================================================
-    local Services = {
-        Players = game:GetService('Players'),
-        ReplicatedStorage = game:GetService('ReplicatedStorage'),
-        Workspace = game:GetService('Workspace'),
-        HttpService = game:GetService('HttpService'),
-        VirtualUser = game:GetService('VirtualUser'),
-    }
+local Services = {
+    Players = game:GetService('Players'),
+    ReplicatedStorage = game:GetService('ReplicatedStorage'),
+    Workspace = game:GetService('Workspace'),
+    HttpService = game:GetService('HttpService'),
+    VirtualUser = game:GetService('VirtualUser'),
+}
 
-    -- Wait for player and player GUI to exist
-    local player = Services.Players.LocalPlayer
-    while not player:FindFirstChild('PlayerGui') do
-        task.wait(1)
+local player = Services.Players.LocalPlayer
+while not player:FindFirstChild('PlayerGui') do
+    task.wait(1)
+end
+
+local playerGui = player.PlayerGui
+
+local Constants = {
+    SettingsFile = 'Cultivation_v2_settings.json',
+    LegacyWorldSettingsFile = 'WorldSettings.json',
+    LegacyDungeonSettingsFile = 'DungeonsMaxLevel.json',
+    LegacyLanguageFile = 'Cultivation_languageSet.json',
+    DailyOffset = 8 * 3600,
+    UILibraryUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
+    RespawnScriptUrl = 'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua',
+    TradeScriptUrls = {
+        'https://github.com/supleruckydior/test/raw/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%931.json',
+        'https://github.com/supleruckydior/test/raw/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json',
+    },
+    StatsScriptUrl = 'https://github.com/supleruckydior/test/raw/refs/heads/main/%E9%87%91%E5%B8%81.json',
+    GithubUrl = 'https://github.com/Tseting-nil',
+    GiftCodes = {
+        'ilovethisgame',
+        'welcome',
+        '30klikes',
+        '40klikes',
+        'halloween',
+        'artistkapouki',
+        '45klikes',
+        '60klikes',
+    },
+    Paths = {
+        EventsRoot = '\228\186\139\228\187\182',
+        Common = '\229\133\172\231\148\168',
+        MainGui = '\228\184\187\231\149\140\233\157\162',
+        SecondaryGui = '\228\186\140\231\186\167\231\149\140\233\157\162',
+        LoadingGui = '\229\138\160\232\189\189\233\161\181\233\157\162',
+        Farm = '\229\134\156\231\148\176',
+        FarmUi = '\229\134\156\231\148\176UI',
+        Elixir = '\231\130\188\228\184\185',
+        ElixirGui = '\231\130\188\228\184\185\231\130\137',
+        Guild = '\229\133\172\228\188\154',
+        Dungeon = '\229\137\175\230\156\172',
+        Shop = '\229\149\134\229\186\151',
+        Stage = '\229\133\179\229\141\161',
+        Activity = '\232\138\130\230\151\165\230\180\187\229\138\168',
+        FlyingSword = '\233\163\158\229\137\145',
+        Weapon = '\230\179\149\229\174\157',
+        Skill = '\230\138\128\232\131\189',
+        Rune = '\233\152\181\230\179\149',
+        Settings = '\232\174\190\231\189\174',
+        Combat = '\230\136\152\230\150\151',
+        Forge = '\229\187\186\231\173\145',
+        WorldTree = '\228\184\150\231\149\140\230\160\145',
+        AttributeArea = '\229\177\158\230\128\167\229\140\186\229\159\159',
+        Client = '\229\174\162\230\136\183\231\171\175',
+        ClientUi = '\229\174\162\230\136\183\231\171\175UI',
+        ClaimReward = '\233\162\134\229\143\150\229\165\150\229\138\177',
+        Donate = '\230\141\144\231\140\174',
+        Exchange = '\229\133\145\230\141\162',
+        RefreshGuildShop = '\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151',
+        Collect = '\233\135\135\233\155\134',
+        Craft = '\229\136\182\228\189\156',
+        Upgrade = '\229\141\135\231\186\167',
+        UpgradeAllWeapon = '\229\141\135\231\186\167\229\133\168\233\131\168\230\179\149\229\174\157',
+        UpgradeAllSkill = '\229\141\135\231\186\167\229\133\168\233\131\168\230\138\128\232\131\189',
+        Unequip = '\229\141\184\228\184\139',
+        UnlockBuilding = '\232\167\163\233\148\129\229\187\186\231\173\145',
+        OpenGuildFromClient = '\230\137\147\229\188\128\229\133\172\228\188\154',
+        OpenElixirFromClient = '\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137',
+        Values = '\229\128\188',
+        Currency = '\232\180\167\229\184\129',
+        Privileges = '\231\137\185\230\157\131',
+        MainProgress = '\228\184\187\231\186\191\232\191\155\229\186\166',
+        SettingsValue = '\232\174\190\231\189\174',
+        AutoBattle = '\232\135\170\229\138\168\230\136\152\230\150\151',
+        MainCity = '\228\184\187\229\159\142',
+        CurrencyArea = '\232\180\167\229\184\129\229\140\186\229\159\159',
+        CurrencyAreaRight = '\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179',
+        RespawnPoint = '\233\135\141\231\148\159\231\130\185',
+        EnterWorld = '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161',
+        EnterDungeon = '\232\191\155\229\133\165\229\137\175\230\156\172',
+        EnterOpenBattle = '\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161',
+        UpdateAssistTarget = '\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135',
+        ModifyPlayerSettings = '\231\142\169\229\174\182\228\191\174\230\148\185\232\174\190\231\189\174',
+        Bank = '\233\147\182\232\161\140',
+        ClaimInvestment = '\233\162\134\229\143\150\231\144\134\232\180\162',
+        BuyInvestment = '\232\180\173\228\185\176\231\144\134\232\180\162',
+        Summon = '\229\143\172\229\148\164',
+        Lottery = '\230\138\189\229\165\150',
+        Arena = '\231\171\158\230\138\128\229\156\186',
+        Buy = '\232\180\173\228\185\176',
+        AutoRefineSuper = '\232\182\133\231\186\167\231\130\188\229\136\182',
+        AutoRefine = '\232\135\170\229\138\168\231\130\188\229\136\182',
+    },
+}
+
+local Utils = {}
+
+function Utils.safePcall(fn, ...)
+    local ok, result = pcall(fn, ...)
+    if not ok then
+        warn('[V2]', result)
     end
-    local playerGui = player.PlayerGui
+    return ok, result
+end
 
-    -- ====================================================================
-    -- 通用工具函数模块
-    -- ====================================================================
-    local Utils = {}
-
-    -- 安全数值解析（支持K/M后缀）
-    function Utils.parseNumber(text)
-        local str = tostring(text):lower():gsub('%s+', ''):gsub(',', '')
-        local numStr = str:gsub('[^%d%.]', '')
-        
-        -- 检查多个小数点
-        if select(2, numStr:gsub('%.', '')) > 1 then
-            warn('[Utils] 非法数值格式:', text)
-            return 0
-        end
-        
-        local multiplier = 1
-        if str:find('k') then
-            multiplier = 1000
-        elseif str:find('m') then
-            multiplier = 1000000
-        end
-        
-        return (tonumber(numStr) or 0) * multiplier
+function Utils.parseNumber(text)
+    local str = tostring(text):lower():gsub('%s+', ''):gsub(',', '')
+    local numStr = str:gsub('[^%d%.]', '')
+    if select(2, numStr:gsub('%.', '')) > 1 then
+        return 0
     end
 
-    -- 深度等待（链式WaitForChild）
-    function Utils.deepWait(parent, path, timeout)
-        local obj = parent
-        for _, name in ipairs(path) do
-            obj = obj and obj:WaitForChild(name, timeout or 5)
-            if not obj then
-                return nil
+    local multiplier = 1
+    if str:find('k') then
+        multiplier = 1000
+    elseif str:find('m') then
+        multiplier = 1000000
+    end
+
+    return (tonumber(numStr) or 0) * multiplier
+end
+
+function Utils.cloneTable(value)
+    if type(value) ~= 'table' then
+        return value
+    end
+
+    local clone = {}
+    for key, item in pairs(value) do
+        clone[key] = Utils.cloneTable(item)
+    end
+    return clone
+end
+
+function Utils.mergeDefaults(defaults, incoming)
+    local merged = Utils.cloneTable(defaults)
+    if type(incoming) ~= 'table' then
+        return merged
+    end
+
+    for key, value in pairs(incoming) do
+        if type(merged[key]) == 'table' and type(value) == 'table' then
+            merged[key] = Utils.mergeDefaults(merged[key], value)
+        elseif merged[key] ~= nil then
+            merged[key] = value
+        end
+    end
+
+    return merged
+end
+
+function Utils.deepWait(parent, path, timeout)
+    local current = parent
+    for _, name in ipairs(path) do
+        current = current and current:WaitForChild(name, timeout or 5)
+        if not current then
+            return nil
+        end
+    end
+    return current
+end
+
+function Utils.deepFind(parent, path)
+    local current = parent
+    for _, name in ipairs(path) do
+        current = current and current:FindFirstChild(name)
+        if not current then
+            return nil
+        end
+    end
+    return current
+end
+
+function Utils.getUtc8DateKey(timestamp)
+    local utc8 = os.date('!*t', (timestamp or os.time()) + Constants.DailyOffset)
+    return string.format('%04d-%02d-%02d', utc8.year, utc8.month, utc8.day)
+end
+
+function Utils.showTopRightNotice(text, lifetime)
+    local pg = player:WaitForChild('PlayerGui')
+    local gui = pg:FindFirstChild('FarmNoticeGui') or Instance.new('ScreenGui')
+    gui.Name = 'FarmNoticeGui'
+    gui.ResetOnSpawn = false
+    gui.Parent = pg
+
+    local label = gui:FindFirstChild('Notice') or Instance.new('TextLabel')
+    label.Name = 'Notice'
+    label.AnchorPoint = Vector2.new(1, 0)
+    label.Position = UDim2.new(1, -20, 0, 20)
+    label.Size = UDim2.new(0, 320, 0, 38)
+    label.BackgroundTransparency = 0.25
+    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    label.TextColor3 = Color3.fromRGB(255, 90, 90)
+    label.TextScaled = true
+    label.TextWrapped = true
+    label.Font = Enum.Font.SourceSansSemibold
+    label.Text = text
+    label.Parent = gui
+
+    task.delay(lifetime or 3, function()
+        if label then
+            label:Destroy()
+        end
+        if gui and #gui:GetChildren() == 0 then
+            gui:Destroy()
+        end
+    end)
+end
+
+function Utils.waitForLoadingGui()
+    local maxAttempts = 30
+    for _ = 1, maxAttempts do
+        local ok, gui = pcall(function()
+            return playerGui.GUI[Constants.Paths.SecondaryGui]['\229\138\160\232\189\189\233\161\181\233\157\162']
+        end)
+        if ok and gui then
+            if not gui.Visible then
+                return
             end
-        end
-        return obj
-    end
-
-    -- 安全pcall包装
-    function Utils.safePcall(func, ...)
-        local success, result = pcall(func, ...)
-        if not success then
-            warn('[错误]', result)
-        end
-        return success, result
-    end
-
-    -- 创建线程控制器
-    function Utils.createThreadController()
-        local controller = {
-            enabled = false,
-            thread = nil,
-        }
-        
-        function controller:start(func)
-            self:stop()
-            self.enabled = true
-            self.thread = task.spawn(function()
-                func(self)
-            end)
-        end
-        
-        function controller:stop()
-            self.enabled = false
-            if self.thread then
-                task.cancel(self.thread)
-                self.thread = nil
+            while gui.Parent and gui.Visible do
+                gui:GetPropertyChangedSignal('Visible'):Wait()
+                task.wait(0.1)
             end
+            return
         end
-        
-        return controller
+        task.wait(0.5)
     end
+end
 
-    -- ====================================================================
-    -- 常用路径缓存 (避免重复查找)
-    -- ====================================================================
-    local PathCache = {
-        Events = Services.ReplicatedStorage:WaitForChild('\228\186\139\228\187\182'):WaitForChild('\229\133\172\231\148\168'),
-    }
-
-    -- 延迟初始化事件缓存（在loadingGui之后调用）
-    local function initEventCache()
-        local events = PathCache.Events
-        PathCache.Farm = events:WaitForChild('\229\134\156\231\148\176')
-        PathCache.Elixir = events:WaitForChild('\231\130\188\228\184\185')
-        PathCache.Guild = events:WaitForChild('\229\133\172\228\188\154')
-        PathCache.Dungeon = events:WaitForChild('\229\137\175\230\156\172')
-        PathCache.Shop = events:WaitForChild('\229\149\134\229\186\151')
-        PathCache.Stage = events:WaitForChild('\229\133\179\229\141\161')
-        PathCache.Activity = events:WaitForChild('\232\138\130\230\151\165\230\180\187\229\138\168')
-        PathCache.FlyingSword = events:WaitForChild('\233\163\158\229\137\145')
-        PathCache.Weapon = events:WaitForChild('\230\179\149\229\174\157')
-        PathCache.Skill = events:WaitForChild('\230\138\128\232\131\189')
-        PathCache.Rune = events:WaitForChild('\233\152\181\230\179\149')
-        PathCache.Settings = events:WaitForChild('\232\174\190\231\189\174')
-        PathCache.Combat = events:WaitForChild('\230\136\152\230\150\151')
-        PathCache.Forge = events:WaitForChild('\229\187\186\231\173\145')
-        PathCache.WorldCore = events:WaitForChild('\228\184\150\231\149\140\230\160\145')
-    end
-
-    -- 延迟初始化GUI路径（在loadingGui之后调用）
-    local function initGUICache()
-        local GUI = playerGui:WaitForChild('GUI')
-        PathCache.GUI = {
-            Main = GUI:WaitForChild('\228\184\187\231\149\140\233\157\162'),
-            Secondary = GUI:WaitForChild('\228\186\140\231\186\167\231\149\140\233\157\162'),
-        }
-    end
-
-    -- Function to safely find the loading GUI
-    local function findLoadingGui()
-        local maxAttempts = 30
-        for i = 1, maxAttempts do
-            local success, gui = pcall(function()
-                return playerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\138\160\232\189\189\233\161\181\233\157\162']
-            end)
-            if success and gui then
-                return gui
-            end
-            task.wait(0.5)
-        end
+function Utils.tryReadFile(path)
+    if type(isfile) ~= 'function' or not isfile(path) then
         return nil
     end
 
-    -- Main waiting logic
-    local loadingGui = findLoadingGui()
-
-    if loadingGui then
-        print('找到加载界面，等待加载完成...')
-
-        -- Wait for it to become visible if not already
-        if not loadingGui.Visible then
-            local visibleChanged = false
-            local connection = loadingGui
-                :GetPropertyChangedSignal('Visible')
-                :Connect(function()
-                    visibleChanged = true
-                end)
-
-            -- Timeout after 10 seconds if never becomes visible
-            local startTime = os.time()
-            while not visibleChanged and os.time() - startTime < 10 do
-                task.wait(0.1)
-            end
-            connection:Disconnect()
-        end
-
-        -- Now wait for it to become invisible
-        if loadingGui.Visible then
-            print('等待加载界面消失...')
-            while loadingGui.Parent and loadingGui.Visible do
-                loadingGui:GetPropertyChangedSignal('Visible'):Wait()
-                task.wait(0.1)
-            end
-        end
-    else
-        warn('?? 未能找到加载界面，继续执行脚本...')
+    local ok, content = pcall(readfile, path)
+    if not ok then
+        return nil
     end
 
-    print('? 加载完成，继续执行脚本...')
-    
-    -- 初始化路径缓存
-    initEventCache()
-    initGUICache()
-    print('?? 路径缓存已初始化')
-    
-    local library = loadstring(
-        game:HttpGet(
-            'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
-            true
+    return content
+end
+
+function Utils.tryWriteFile(path, content)
+    if type(writefile) ~= 'function' then
+        return false
+    end
+
+    local ok = pcall(writefile, path, content)
+    return ok
+end
+
+function Utils.tryDeleteFile(path)
+    if type(delfile) ~= 'function' or type(isfile) ~= 'function' then
+        return false
+    end
+    if not isfile(path) then
+        return false
+    end
+    return pcall(delfile, path)
+end
+
+function Utils.readJsonFile(path)
+    local content = Utils.tryReadFile(path)
+    if not content or content == '' then
+        return nil
+    end
+
+    local ok, data = pcall(
+        Services.HttpService.JSONDecode,
+        Services.HttpService,
+        content
+    )
+
+    if not ok or type(data) ~= 'table' then
+        return nil
+    end
+
+    return data
+end
+
+function Utils.writeJsonFile(path, data)
+    local ok, payload = pcall(
+        Services.HttpService.JSONEncode,
+        Services.HttpService,
+        data
+    )
+
+    if not ok then
+        return false
+    end
+
+    return Utils.tryWriteFile(path, payload)
+end
+
+function Utils.findSceneRoot(sceneNumber)
+    local candidates = {
+        '主场景' .. tostring(sceneNumber),
+        '主場景' .. tostring(sceneNumber),
+    }
+
+    for _, candidate in ipairs(candidates) do
+        local node = Services.Workspace:FindFirstChild(candidate)
+        if node then
+            return node
+        end
+    end
+
+    return nil
+end
+
+function Utils.getGlobalFunction(name)
+    local env = (type(getgenv) == 'function' and getgenv()) or _G
+    if type(env) == 'table' and type(env[name]) == 'function' then
+        return env[name]
+    end
+    if type(_G) == 'table' and type(_G[name]) == 'function' then
+        return _G[name]
+    end
+    return nil
+end
+
+function Utils.callGlobalFunction(name)
+    local fn = Utils.getGlobalFunction(name)
+    if type(fn) ~= 'function' then
+        return false, 'missing'
+    end
+
+    local ok, result = pcall(fn)
+    if not ok then
+        warn(('[Legacy:%s] %s'):format(name, tostring(result)))
+    end
+    return ok, result
+end
+
+local Scheduler = {
+    jobs = {},
+}
+
+function Scheduler:stop(name)
+    local job = self.jobs[name]
+    if not job then
+        return
+    end
+
+    job.enabled = false
+    if job.thread then
+        pcall(task.cancel, job.thread)
+    end
+    self.jobs[name] = nil
+end
+
+function Scheduler:start(name, runner)
+    self:stop(name)
+
+    local job = { enabled = true }
+    self.jobs[name] = job
+    job.thread = task.spawn(function()
+        local ok, err = pcall(runner, job)
+        if not ok then
+            warn(('[Scheduler:%s] %s'):format(name, tostring(err)))
+        end
+        if self.jobs[name] == job then
+            self.jobs[name] = nil
+        end
+    end)
+
+    return job
+end
+
+function Scheduler:ensure(name, runner)
+    if self.jobs[name] then
+        return self.jobs[name]
+    end
+    return self:start(name, runner)
+end
+
+local SettingsStore = {}
+
+local defaultSettings = {
+    autoAntiAfk = true,
+    safetyMode = true,
+    blackScreen = false,
+    autoOnlineRewards = true,
+    autoLegacyDaily = true,
+    autoInvest = true,
+    autoDonate = true,
+    autoGuildShop = true,
+    autoCollectHerbs = true,
+    autoRefinePrivilege = true,
+    autoShowAllCurrency = false,
+    autoRemoveRewardUi = true,
+    autoElixirCraft = false,
+    autoLottery = false,
+    useDiamondsForLottery = false,
+    autoUpgradeFlyingSword = false,
+    autoUpgradeWeaponSkill = false,
+    autoUpgradeRune = false,
+    world = {
+        level = 78,
+        mode = 'manual',
+        autoStart = false,
+        autoReenter75 = false,
+    },
+    dungeon = {
+        selected = 'OreDungeon',
+        selectedId = 1,
+        autoSyncUi = false,
+        autoStart = false,
+        autoPlusOne = false,
+        autoFinishAll = false,
+        levels = {
+            OreDungeon = 1,
+            GemDungeon = 1,
+            RuneDungeon = 1,
+            RelicDungeon = 1,
+            HoverDungeon = 1,
+            GoldDungeon = 1,
+        },
+    },
+    batch = {
+        selectedFarm = 1,
+        farmTarget = 80,
+        selectedElixir = 1,
+        elixirTarget = 80,
+    },
+    follow = {
+        selectedPlayer = '',
+        enabled = false,
+    },
+    monitor = {
+        enabled = false,
+        highHerbThreshold = 250000,
+        lowHerbThreshold = 5000,
+        autoTradeOnHighHerb = true,
+        autoElixirOnHighHerb = true,
+        webhookEnabled = false,
+        webhookUrl = '',
+    },
+}
+
+function SettingsStore:migrateLegacy(settings)
+    local migrated = Utils.cloneTable(settings)
+
+    local worldData = Utils.readJsonFile(Constants.LegacyWorldSettingsFile)
+    if type(worldData) == 'table' and type(worldData[player.Name]) == 'table' then
+        local playerWorld = worldData[player.Name]
+        migrated.world.level = math.max(
+            1,
+            math.floor(tonumber(playerWorld.worldLevel) or migrated.world.level)
         )
-    )()
-    local RespawPoint = loadstring(
-        game:HttpGet(
-            'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
+        migrated.world.mode = playerWorld.worldMode == 'auto_highest'
+            and 'auto_highest'
+            or migrated.world.mode
+        migrated.world.autoStart = playerWorld.worldAutoStart == true
+            or migrated.world.autoStart
+    end
+
+    local dungeonData = Utils.readJsonFile(Constants.LegacyDungeonSettingsFile)
+    if type(dungeonData) == 'table' and type(dungeonData[player.Name]) == 'table' then
+        local playerDungeon = dungeonData[player.Name]
+        local mapping = {
+            OreDungeonMaxLevel = 'OreDungeon',
+            GemDungeonMaxLevel = 'GemDungeon',
+            RuneDungeonMaxLevel = 'RuneDungeon',
+            RelicDungeonMaxLevel = 'RelicDungeon',
+            HoverDungeonMaxLevel = 'HoverDungeon',
+            GoldDungeonMaxLevel = 'GoldDungeon',
+        }
+
+        for legacyKey, levelKey in pairs(mapping) do
+            local level = tonumber(playerDungeon[legacyKey])
+            if level and level > 0 then
+                migrated.dungeon.levels[levelKey] = math.floor(level)
+            end
+        end
+    end
+
+    return migrated
+end
+
+function SettingsStore:load()
+    local loaded = Utils.readJsonFile(Constants.SettingsFile)
+    local settings = Utils.mergeDefaults(defaultSettings, loaded)
+    return self:migrateLegacy(settings)
+end
+
+function SettingsStore:save(settings)
+    return Utils.writeJsonFile(Constants.SettingsFile, settings)
+end
+
+local State = {
+    settings = SettingsStore:load(),
+    daily = {
+        currentDateKey = Utils.getUtc8DateKey(),
+        donationFinished = false,
+        herbBuyFinished = false,
+        herbCollectFinished = false,
+        farmReady = false,
+        completionAnnounced = false,
+    },
+    rewards = {
+        countdown = nil,
+    },
+    safety = {
+        nearbyPlayers = 0,
+        paused = false,
+    },
+    world = {
+        unlocked = 0,
+    },
+    dungeon = {
+        keyCounts = {},
+    },
+    lottery = {
+        diamonds = 0,
+        swordTickets = 0,
+        skillTickets = 0,
+    },
+    monitor = {
+        tradeTriggered = false,
+        lastHerbValue = 0,
+        lastOreValue = 0,
+    },
+    upgrade = {
+        farmCurrentLevel = 0,
+        elixirCurrentLevel = 0,
+    },
+    currency = {
+        visibilityCache = {},
+    },
+    ui = {},
+}
+
+local PathRegistry = {}
+
+function PathRegistry:init()
+    local paths = Constants.Paths
+    local eventsRoot = Services.ReplicatedStorage
+        :WaitForChild(paths.EventsRoot)
+        :WaitForChild(paths.Common)
+
+    local gui = playerGui:WaitForChild('GUI')
+
+    self.EventsRoot = Services.ReplicatedStorage:WaitForChild(paths.EventsRoot)
+    self.Events = {
+        Farm = eventsRoot:WaitForChild(paths.Farm),
+        Elixir = eventsRoot:WaitForChild(paths.Elixir),
+        Guild = eventsRoot:WaitForChild(paths.Guild),
+        Dungeon = eventsRoot:WaitForChild(paths.Dungeon),
+        Shop = eventsRoot:WaitForChild(paths.Shop),
+        Stage = eventsRoot:WaitForChild(paths.Stage),
+        Activity = eventsRoot:WaitForChild(paths.Activity),
+        FlyingSword = eventsRoot:WaitForChild(paths.FlyingSword),
+        Weapon = eventsRoot:WaitForChild(paths.Weapon),
+        Skill = eventsRoot:WaitForChild(paths.Skill),
+        Rune = eventsRoot:WaitForChild(paths.Rune),
+        Settings = eventsRoot:WaitForChild(paths.Settings),
+        Combat = eventsRoot:WaitForChild(paths.Combat),
+        Forge = eventsRoot:WaitForChild(paths.Forge),
+        WorldTree = eventsRoot:WaitForChild(paths.WorldTree),
+    }
+    self.GUI = {
+        Root = gui,
+        Main = gui:WaitForChild(paths.MainGui),
+        Secondary = gui:WaitForChild(paths.SecondaryGui),
+    }
+    self.Values = player:WaitForChild(paths.Values)
+    self.Currency = self.Values:WaitForChild(paths.Currency)
+    self.Privileges = self.Values:WaitForChild(paths.Privileges)
+    self.Settings = self.Values:WaitForChild(paths.SettingsValue)
+    self.Progress = self.Values:WaitForChild(paths.MainProgress)
+    self.Remotes = {
+        ClaimOnlineReward = self.Events.Activity:FindFirstChild(paths.ClaimReward),
+        GuildDonate = self.Events.Guild:FindFirstChild(paths.Donate),
+        GuildExchange = self.Events.Guild:FindFirstChild(paths.Exchange),
+        GuildRefresh = self.Events.Guild:FindFirstChild(paths.RefreshGuildShop),
+        FarmCollect = self.Events.Farm:FindFirstChild(paths.Collect),
+        FarmUpgrade = self.Events.Farm:FindFirstChild(paths.Upgrade),
+        ElixirCraft = self.Events.Elixir:FindFirstChild(paths.Craft),
+        ElixirUpgrade = self.Events.Elixir:FindFirstChild(paths.Upgrade),
+        WorldEnter = self.Events.Stage:FindFirstChild(paths.EnterWorld),
+        DungeonEnter = self.Events.Dungeon:FindFirstChild(paths.EnterDungeon),
+        AssistTeleport = self.Events.Stage:FindFirstChild(paths.EnterOpenBattle),
+        AssistTarget = self.Events.Combat:FindFirstChild(paths.UpdateAssistTarget),
+        InvestClaim = self.Events.Shop:FindFirstChild(paths.Bank)
+            and self.Events.Shop[paths.Bank]:FindFirstChild(paths.ClaimInvestment)
+            or nil,
+        InvestBuy = self.Events.Shop:FindFirstChild(paths.Bank)
+            and self.Events.Shop[paths.Bank]:FindFirstChild(paths.BuyInvestment)
+            or nil,
+        Summon = self.Events.Shop:FindFirstChild(paths.Summon)
+            and self.Events.Shop[paths.Summon]:FindFirstChild(paths.Lottery)
+            or nil,
+        WeaponUpgradeAll = self.Events.Weapon:FindFirstChild(paths.UpgradeAllWeapon),
+        SkillUpgradeAll = self.Events.Skill:FindFirstChild(paths.UpgradeAllSkill),
+        RuneUpgrade = self.Events.Rune:FindFirstChild(paths.Upgrade),
+        FlyingSwordUpgrade = self.Events.FlyingSword:FindFirstChild(paths.Upgrade),
+        SettingsUpdate = self.Events.Settings:FindFirstChild(paths.ModifyPlayerSettings),
+        ActivityBuy = self.Events.Activity:FindFirstChild(paths.Buy),
+        ArenaBuy = eventsRoot:FindFirstChild(paths.Arena)
+            and eventsRoot[paths.Arena]:FindFirstChild(paths.Buy)
+            or nil,
+    }
+end
+
+local ActionThrottle = {
+    lastCall = {},
+}
+
+function ActionThrottle:canRun(key, cooldown)
+    local now = os.clock()
+    local previous = self.lastCall[key]
+    if previous and (now - previous) < (cooldown or 0) then
+        return false
+    end
+    self.lastCall[key] = now
+    return true
+end
+
+function ActionThrottle:fireServer(key, remote, cooldown, ...)
+    if not remote or not self:canRun(key, cooldown) then
+        return false
+    end
+    return Utils.safePcall(function(...)
+        remote:FireServer(...)
+    end, ...)
+end
+
+function ActionThrottle:fireBindable(key, event, cooldown, ...)
+    if not event or not self:canRun(key, cooldown) then
+        return false
+    end
+    return Utils.safePcall(function(...)
+        event:Fire(...)
+    end, ...)
+end
+
+local function updateSetting(key, value)
+    if type(key) == 'table' then
+        local cursor = State.settings
+        for index = 1, #key - 1 do
+            cursor[key[index]] = cursor[key[index]] or {}
+            cursor = cursor[key[index]]
+        end
+        cursor[key[#key]] = value
+    else
+        State.settings[key] = value
+    end
+    SettingsStore:save(State.settings)
+end
+
+local function checkDailyCompletion()
+    if State.daily.completionAnnounced then
+        return
+    end
+
+    if
+        State.daily.donationFinished
+        and State.daily.herbBuyFinished
+        and State.daily.herbCollectFinished
+        and State.daily.farmReady
+    then
+        State.daily.completionAnnounced = true
+        Utils.showTopRightNotice('V2 每日链路已完成', 2)
+    end
+end
+
+local DailyResetService = {
+    listeners = {},
+}
+
+function DailyResetService:register(name, callback)
+    self.listeners[name] = callback
+end
+
+function DailyResetService:notify(previousDateKey, currentDateKey)
+    for name, callback in pairs(self.listeners) do
+        local ok, err = pcall(callback, previousDateKey, currentDateKey)
+        if not ok then
+            warn(('[DailyReset:%s] %s'):format(name, tostring(err)))
+        end
+    end
+end
+
+function DailyResetService:start()
+    Scheduler:ensure('daily_reset', function(job)
+        while job.enabled do
+            local dateKey = Utils.getUtc8DateKey()
+            if dateKey ~= State.daily.currentDateKey then
+                local previous = State.daily.currentDateKey
+                State.daily.currentDateKey = dateKey
+                State.daily.completionAnnounced = false
+                print(('[V2] 检测到每日重置 %s -> %s'):format(previous, dateKey))
+                self:notify(previous, dateKey)
+            end
+            task.wait(15)
+        end
+    end)
+end
+
+function DailyResetService:force()
+    State.daily.completionAnnounced = false
+    for _, callback in pairs(self.listeners) do
+        local ok, err = pcall(callback, State.daily.currentDateKey, State.daily.currentDateKey)
+        if not ok then
+            warn('[DailyReset:force] ' .. tostring(err))
+        end
+    end
+end
+
+local ExternalAssets = {
+    cache = {},
+    warned = {},
+}
+
+function ExternalAssets:warnOnce(key, message)
+    if self.warned[key] then
+        return
+    end
+    self.warned[key] = true
+    warn(message)
+end
+
+function ExternalAssets:loadModule(url, cacheKey)
+    local key = cacheKey or url
+    if self.cache[key] ~= nil then
+        return self.cache[key]
+    end
+
+    local ok, result = pcall(function()
+        local chunk = loadstring(game:HttpGet(url, true))
+        if type(chunk) ~= 'function' then
+            return nil
+        end
+        return chunk()
+    end)
+
+    if not ok then
+        self:warnOnce(key, ('[ExternalAssets] 加载失败: %s'):format(tostring(result)))
+        self.cache[key] = false
+        return nil
+    end
+
+    self.cache[key] = result or true
+    return result
+end
+
+function ExternalAssets:runScript(url, cacheKey)
+    local key = cacheKey or url
+    local ok, result = pcall(function()
+        local chunk = loadstring(game:HttpGet(url, true))
+        if type(chunk) ~= 'function' then
+            return nil
+        end
+        return chunk()
+    end)
+
+    if not ok then
+        self:warnOnce(key, ('[ExternalAssets] 运行失败: %s'):format(tostring(result)))
+        return false
+    end
+
+    return true
+end
+
+local RespawnService = {
+    pointName = 'Unknown',
+    pointNumber = 1,
+    position = nil,
+}
+
+function RespawnService:getCharacterRoot()
+    local character = player.Character or player.CharacterAdded:Wait()
+    return character and character:FindFirstChild('HumanoidRootPart') or nil
+end
+
+function RespawnService:refresh(teleportHome)
+    local resolved = self.pointName
+    local helper = ExternalAssets:loadModule(Constants.RespawnScriptUrl, 'respawn_script')
+
+    if type(helper) == 'string' and helper ~= '' then
+        resolved = helper
+    elseif type(helper) == 'table' then
+        if type(helper.getCurrentRespawn) == 'function' then
+            local ok, value = pcall(helper.getCurrentRespawn, helper)
+            if ok and type(value) == 'string' and value ~= '' then
+                resolved = value
+            end
+        elseif type(helper[1]) == 'string' and helper[1] ~= '' then
+            resolved = helper[1]
+        end
+    end
+
+    local pointNumber = tonumber(tostring(resolved):match('%d+')) or self.pointNumber or 1
+    local sceneRoot = Utils.findSceneRoot(pointNumber)
+    local spawnPoint = sceneRoot and sceneRoot:FindFirstChild('重生点')
+
+    if not sceneRoot or not spawnPoint or not spawnPoint:IsA('BasePart') then
+        return false
+    end
+
+    self.pointName = tostring(resolved)
+    self.pointNumber = pointNumber
+    self.position = spawnPoint.Position + Vector3.new(0, 5, 0)
+
+    if teleportHome then
+        self:teleportHome()
+    end
+
+    return true
+end
+
+function RespawnService:teleportHome()
+    if not self.position then
+        self:refresh(false)
+    end
+
+    local root = self:getCharacterRoot()
+    if root and self.position then
+        root.CFrame = CFrame.new(self.position)
+        return true
+    end
+
+    return false
+end
+
+function RespawnService:isAtRespawn(maxDistance)
+    local root = self:getCharacterRoot()
+    if not root then
+        return false
+    end
+
+    if not self.position then
+        self:refresh(false)
+    end
+
+    return self.position ~= nil
+        and (root.Position - self.position).Magnitude <= (maxDistance or 5)
+end
+
+function RespawnService:teleportForge()
+    local sceneRoot = Utils.findSceneRoot(self.pointNumber)
+    local buildingFolder = sceneRoot and sceneRoot:FindFirstChild('\229\187\186\233\128\160\231\137\169')
+    local forge = buildingFolder and buildingFolder:FindFirstChild('035\231\130\188\229\153\168\229\143\176')
+    local root = self:getCharacterRoot()
+
+    if forge and root then
+        root.CFrame = forge:GetPivot()
+        return true
+    end
+
+    return false
+end
+
+local SafetyController = {
+    radius = Vector3.new(500, 500, 500) / 2,
+    overlayGui = nil,
+    overlayFrame = nil,
+}
+
+function SafetyController:getNearbyPlayers()
+    local root = RespawnService:getCharacterRoot()
+    if not root then
+        return 0
+    end
+
+    local count = 0
+    local position = root.Position
+
+    for _, otherPlayer in ipairs(Services.Players:GetPlayers()) do
+        if otherPlayer ~= player then
+            local otherRoot = otherPlayer.Character and otherPlayer.Character:FindFirstChild('HumanoidRootPart')
+            if otherRoot then
+                local offset = otherRoot.Position - position
+                local inRange = math.abs(offset.X) <= self.radius.X
+                    and math.abs(offset.Y) <= self.radius.Y
+                    and math.abs(offset.Z) <= self.radius.Z
+                if inRange then
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    return count
+end
+
+function SafetyController:start()
+    Scheduler:ensure('safety_monitor_v2', function(job)
+        while job.enabled do
+            if State.settings.safetyMode then
+                State.safety.nearbyPlayers = self:getNearbyPlayers()
+                State.safety.paused = State.safety.nearbyPlayers > 0
+            else
+                State.safety.nearbyPlayers = 0
+                State.safety.paused = false
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+function SafetyController:isPaused()
+    return State.settings.safetyMode and State.safety.paused
+end
+
+function SafetyController:ensureOverlay()
+    if self.overlayGui and self.overlayGui.Parent then
+        return
+    end
+
+    self.overlayGui = Instance.new('ScreenGui')
+    self.overlayGui.Name = 'CultivationV2BlackScreen'
+    self.overlayGui.ResetOnSpawn = false
+    self.overlayGui.Parent = playerGui
+
+    self.overlayFrame = Instance.new('Frame')
+    self.overlayFrame.Name = 'Overlay'
+    self.overlayFrame.Size = UDim2.fromScale(1, 1)
+    self.overlayFrame.Position = UDim2.new()
+    self.overlayFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+    self.overlayFrame.BorderSizePixel = 0
+    self.overlayFrame.Visible = false
+    self.overlayFrame.Parent = self.overlayGui
+end
+
+function SafetyController:setBlackScreen(enabled)
+    self:ensureOverlay()
+    if self.overlayFrame then
+        self.overlayFrame.Visible = enabled == true
+    end
+end
+
+local UiOpeners = {}
+
+function UiOpeners.fireByName(name, ...)
+    local event = Services.ReplicatedStorage:FindFirstChild(name, true)
+    if not event or not event:IsA('BindableEvent') then
+        return false
+    end
+    ActionThrottle:fireBindable('open_' .. name, event, 0.2, ...)
+    return true
+end
+
+function UiOpeners.openGuild()
+    UiOpeners.fireByName('打开公会', '打开公会')
+end
+
+function UiOpeners.openFarm(index)
+    local event = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
+    if event and event:IsA('BindableEvent') then
+        ActionThrottle:fireBindable('open_farm', event, 0.2, index or 1)
+    end
+end
+
+function UiOpeners.openDailyTask()
+    UiOpeners.fireByName('打开每日任务', '打开每日任务')
+end
+
+function UiOpeners.openMail()
+    UiOpeners.fireByName('打开邮件', '打开邮件')
+end
+
+function UiOpeners.openSpin()
+    UiOpeners.fireByName('打开转盘', '打开转盘')
+end
+
+function UiOpeners.openRune()
+    UiOpeners.fireByName('打开阵法', '打开阵法')
+end
+
+function UiOpeners.openWorldTree()
+    UiOpeners.fireByName('打开世界树', '打开世界树')
+end
+
+function UiOpeners.openForge()
+    UiOpeners.fireByName('打开炼器台', '打开炼器台')
+end
+
+function UiOpeners.openElixir()
+    UiOpeners.fireByName('打开炼丹炉', '打开炼丹炉')
+end
+
+local OnlineRewardController = {}
+
+function OnlineRewardController:getRoot()
+    return Utils.deepWait(playerGui, {
+        'GUI',
+        '二级界面',
+        '节日活动商店',
+        '背景',
+        '右侧界面',
+        '在线奖励',
+        '列表',
+    }, 2)
+end
+
+function OnlineRewardController:getRewardFrames()
+    local root = self:getRoot()
+    if not root then
+        return {}
+    end
+
+    local rewardFrames = {}
+    for _, child in ipairs(root:GetChildren()) do
+        if child:IsA('Frame') and child:FindFirstChild('按钮') then
+            table.insert(rewardFrames, child)
+        end
+    end
+
+    table.sort(rewardFrames, function(a, b)
+        return (a.LayoutOrder or 0) < (b.LayoutOrder or 0)
+    end)
+
+    return rewardFrames
+end
+
+function OnlineRewardController:getMinCountdown()
+    local frames = self:getRewardFrames()
+    local minCountdown = math.huge
+
+    for index, frame in ipairs(frames) do
+        local button = frame:FindFirstChild('按钮')
+        local countdownLabel = button and button:FindFirstChild('倒计时')
+        if countdownLabel then
+            local text = countdownLabel.Text
+            if text == 'DONE' then
+                minCountdown = math.min(minCountdown, 0)
+            elseif text ~= 'CLAIMED!' then
+                local minutes, seconds = text:match('^(%d+):(%d+)$')
+                if minutes and seconds then
+                    local total = tonumber(minutes) * 60 + tonumber(seconds)
+                    minCountdown = math.min(minCountdown, total)
+                end
+            end
+        end
+        if index >= 6 then
+            break
+        end
+    end
+
+    if minCountdown == math.huge then
+        return nil
+    end
+    return minCountdown
+end
+
+function OnlineRewardController:claimAll()
+    for index = 1, 6 do
+        ActionThrottle:fireServer(
+            'online_reward_' .. tostring(index),
+            PathRegistry.Events.Activity:FindFirstChild(Constants.Paths.ClaimReward),
+            0.15,
+            index
         )
-    )()
-    loadstring(
-        game:HttpGet(
-            'https://github.com/supleruckydior/test/raw/refs/heads/main/respawn.json'
+    end
+end
+
+function OnlineRewardController:start()
+    Scheduler:ensure('online_rewards_v2', function(job)
+        while job.enabled and State.settings.autoOnlineRewards do
+            local minCountdown = self:getMinCountdown()
+            State.rewards.countdown = minCountdown
+
+            if minCountdown ~= nil and minCountdown <= 0 then
+                self:claimAll()
+                task.wait(2)
+            else
+                task.wait(1)
+            end
+        end
+    end)
+end
+
+function OnlineRewardController:stop()
+    Scheduler:stop('online_rewards_v2')
+end
+
+local GuildController = {
+    retryDelay = 30,
+    refreshLimit = 7000,
+    herbPrice = 400,
+}
+
+function GuildController:getGuildName()
+    local label = Utils.deepWait(playerGui, {
+        'GUI',
+        '二级界面',
+        '公会',
+        '背景',
+        '右侧界面',
+        '主页',
+        '介绍',
+        '名称',
+        '文本',
+        '文本',
+    }, 2)
+
+    if label and label:IsA('TextLabel') and label.Text ~= '' then
+        return label.Text
+    end
+
+    return '未读取'
+end
+
+function GuildController:getDonationRemaining()
+    local label = Utils.deepWait(playerGui, {
+        'GUI',
+        '二级界面',
+        '公会',
+        '捐献',
+        '背景',
+        '按钮',
+        '确定按钮',
+        '次数',
+    }, 2)
+
+    if not label or not label:IsA('TextLabel') then
+        return nil
+    end
+
+    return tonumber(string.match(label.Text, '%d+')) or 0
+end
+
+function GuildController:getDiamond()
+    return Utils.parseNumber(
+        playerGui.GUI[Constants.Paths.MainGui]['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
+    )
+end
+
+function GuildController:getGuildCoin()
+    return Utils.parseNumber(
+        playerGui.GUI[Constants.Paths.SecondaryGui][Constants.Paths.Guild]['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text
+    )
+end
+
+function GuildController:getRefreshCost()
+    return Utils.parseNumber(
+        playerGui.GUI[Constants.Paths.SecondaryGui][Constants.Paths.Guild]['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
+    )
+end
+
+function GuildController:setGuildPanelVisible(visible)
+    Utils.safePcall(function()
+        PathRegistry.GUI.Secondary[Constants.Paths.Guild].Visible = visible
+    end)
+end
+
+function GuildController:openGuildPanel()
+    UiOpeners.openGuild()
+    task.wait(0.2)
+end
+
+function GuildController:refreshDonationState(timeout)
+    self:openGuildPanel()
+
+    local deadline = os.clock() + (timeout or 3)
+    local lastRemaining = nil
+
+    while os.clock() < deadline do
+        local remaining = self:getDonationRemaining()
+        self:updateDisplay()
+
+        if type(remaining) == 'number' then
+            lastRemaining = remaining
+            if remaining > 0 then
+                return remaining
+            end
+        end
+
+        task.wait(0.25)
+    end
+
+    self:updateDisplay()
+    return lastRemaining
+end
+
+function GuildController:updateDisplay()
+    local remaining = self:getDonationRemaining()
+    local text = ('公会：%s | 捐献剩余：%s'):format(
+        self:getGuildName(),
+        tostring(remaining or '读取失败')
+    )
+
+    if State.ui.guildInfoLabel then
+        State.ui.guildInfoLabel.Text = text
+    end
+
+    if State.ui.guildOverviewLabel then
+        State.ui.guildOverviewLabel.Text = text
+    end
+end
+
+function GuildController:startDonation()
+    Scheduler:ensure('guild_donation_v2', function(job)
+        self:refreshDonationState(3)
+        while job.enabled and State.settings.autoDonate do
+            self:updateDisplay()
+            local remaining = self:getDonationRemaining()
+            if type(remaining) == 'number' then
+                if remaining > 0 then
+                    ActionThrottle:fireServer(
+                        'guild_donate',
+                        PathRegistry.Events.Guild:FindFirstChild(Constants.Paths.Donate),
+                        0.35
+                    )
+                    task.wait(0.5)
+                else
+                    local confirmedRemaining = self:refreshDonationState(1.5)
+                    if confirmedRemaining == nil then
+                        task.wait(0.5)
+                    elseif confirmedRemaining > 0 then
+                        task.wait(0.2)
+                    else
+                        State.daily.donationFinished = true
+                        checkDailyCompletion()
+                        break
+                    end
+                end
+            else
+                task.wait(1)
+            end
+        end
+    end)
+end
+
+function GuildController:startHerbShop()
+    Scheduler:ensure('guild_shop_v2', function(job)
+        self:openGuildPanel()
+
+        while job.enabled and State.settings.autoGuildShop do
+            if not State.daily.donationFinished then
+                task.wait(2)
+            else
+                local itemList = Utils.deepWait(playerGui, {
+                    'GUI',
+                    '二级界面',
+                    '公会',
+                    '背景',
+                    '右侧界面',
+                    '商店',
+                    '列表',
+                }, 2)
+
+                if itemList then
+                    local diamond = self:getDiamond()
+
+                    for slotIndex = 1, 18 do
+                        local item = itemList:GetChildren()[slotIndex]
+                        if item and item:FindFirstChild('\230\140\137\233\146\174') then
+                            local button = item['\230\140\137\233\146\174']
+                            if
+                                button['\229\186\147\229\173\152'].Text == '1 Left'
+                                and button['\229\144\141\231\167\176'].Text == 'Herb'
+                                and diamond >= self.herbPrice
+                            then
+                                ActionThrottle:fireServer(
+                                    'guild_exchange_' .. tostring(slotIndex),
+                                    PathRegistry.Events.Guild:FindFirstChild(Constants.Paths.Exchange),
+                                    0.15,
+                                    slotIndex - 2
+                                )
+                                diamond = diamond - self.herbPrice
+                                task.wait(0.1)
+                            end
+                        end
+                    end
+                end
+
+                local refreshCost = self:getRefreshCost()
+                local diamond = self:getDiamond()
+                local guildCoin = self:getGuildCoin()
+
+                if refreshCost > self.refreshLimit then
+                    State.daily.herbBuyFinished = true
+                    self:setGuildPanelVisible(false)
+                    checkDailyCompletion()
+                    break
+                end
+
+                if diamond > refreshCost and guildCoin >= 400 and diamond >= 18000 then
+                    Utils.safePcall(function()
+                        local openGuildEvent = Utils.deepWait(Services.ReplicatedStorage, {
+                            Constants.Paths.EventsRoot,
+                            Constants.Paths.Client,
+                            Constants.Paths.ClientUi,
+                            Constants.Paths.OpenGuildFromClient,
+                        }, 2)
+                        if openGuildEvent then
+                            openGuildEvent:Fire()
+                        end
+                    end)
+
+                    task.wait(0.5)
+                    ActionThrottle:fireServer(
+                        'guild_refresh_shop',
+                        PathRegistry.Events.Guild:FindFirstChild(Constants.Paths.RefreshGuildShop),
+                        1
+                    )
+                    task.wait(1.5)
+                else
+                    task.wait(self.retryDelay)
+                end
+            end
+        end
+    end)
+end
+
+function GuildController:stop()
+    Scheduler:stop('guild_donation_v2')
+    Scheduler:stop('guild_shop_v2')
+end
+
+function GuildController:onDailyReset()
+    self:stop()
+    State.daily.donationFinished = false
+    State.daily.herbBuyFinished = false
+    task.spawn(function()
+        self:refreshDonationState(3)
+
+        if State.settings.autoDonate then
+            self:startDonation()
+        else
+            self:updateDisplay()
+        end
+        if State.settings.autoGuildShop then
+            self:startHerbShop()
+        end
+    end)
+end
+
+local FarmController = {
+    collectInterval = 60,
+    readyCheckDuration = 45,
+}
+
+function FarmController:openFarm5()
+    Utils.safePcall(function()
+        local farmOpenRemote = Utils.deepWait(Services.ReplicatedStorage, {
+            Constants.Paths.EventsRoot,
+            Constants.Paths.Farm,
+            Constants.Paths.FarmUi,
+            Constants.Paths.AttributeArea,
+        }, 2)
+
+        if farmOpenRemote then
+            farmOpenRemote:FireServer(5)
+        end
+    end)
+end
+
+function FarmController:readFarm5Number()
+    local label = Utils.deepWait(playerGui, {
+        'GUI',
+        Constants.Paths.SecondaryGui,
+        Constants.Paths.Farm,
+        '\232\131\140\230\153\175',
+        Constants.Paths.AttributeArea,
+        '\230\148\182\233\155\134\230\140\137\233\146\174',
+        '\230\149\176\233\135\143\229\140\186',
+        '\230\149\176\233\135\143',
+    }, 2)
+
+    if not label or not label:IsA('TextLabel') then
+        return nil
+    end
+
+    return tonumber(label.Text) or 0
+end
+
+function FarmController:checkFarmReady()
+    self:openFarm5()
+
+    local deadline = os.clock() + self.readyCheckDuration
+    while os.clock() < deadline do
+        local current = self:readFarm5Number()
+        if current ~= nil then
+            if current < 100 then
+                State.daily.farmReady = true
+                checkDailyCompletion()
+                return true
+            end
+        end
+        task.wait(3)
+    end
+
+    State.daily.farmReady = false
+    return false
+end
+
+function FarmController:collectOnce()
+    for index = 1, 6 do
+        ActionThrottle:fireServer(
+            'farm_collect_' .. tostring(index),
+            PathRegistry.Events.Farm:FindFirstChild(Constants.Paths.Collect),
+            0.08,
+            index,
+            nil
         )
-    )()
-    local JsonHandler = loadstring(
-        game:HttpGet(
-            'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/JSON%E6%A8%A1%E7%B5%84.lua'
+        task.wait(0.1)
+    end
+end
+
+function FarmController:start()
+    Scheduler:ensure('farm_collect_v2', function(job)
+        while job.enabled and State.settings.autoCollectHerbs do
+            self:collectOnce()
+            State.daily.herbCollectFinished = true
+            self:checkFarmReady()
+            checkDailyCompletion()
+            task.wait(self.collectInterval)
+        end
+    end)
+end
+
+function FarmController:stop()
+    Scheduler:stop('farm_collect_v2')
+end
+
+function FarmController:onDailyReset()
+    State.daily.herbCollectFinished = false
+    State.daily.farmReady = false
+    if State.settings.autoCollectHerbs then
+        self:start()
+    end
+end
+
+local LegacyDailyController = {
+    missingFunctions = {},
+    primaryFunctions = {
+        'mainmissionchack',
+        'everydaymission',
+        'gamepassmission',
+        'gamepassgiftget',
+        'potionfull',
+    },
+    secondaryFunctions = {
+        'dailyspin',
+        'offlinereward',
+        'everydaygem',
+    },
+}
+
+function LegacyDailyController:runList(functionNames)
+    for _, functionName in ipairs(functionNames) do
+        local ok, err = Utils.callGlobalFunction(functionName)
+        if ok == false and err == 'missing' then
+            self.missingFunctions[functionName] = true
+        end
+    end
+end
+
+function LegacyDailyController:start()
+    Scheduler:ensure('legacy_daily_primary_v2', function(job)
+        while job.enabled and State.settings.autoLegacyDaily do
+            self:runList(self.primaryFunctions)
+            task.wait(20)
+        end
+    end)
+
+    Scheduler:ensure('legacy_daily_secondary_v2', function(job)
+        while job.enabled and State.settings.autoLegacyDaily do
+            self:runList(self.secondaryFunctions)
+            task.wait(500)
+        end
+    end)
+end
+
+function LegacyDailyController:stop()
+    Scheduler:stop('legacy_daily_primary_v2')
+    Scheduler:stop('legacy_daily_secondary_v2')
+end
+
+function LegacyDailyController:getMissingCount()
+    local count = 0
+    for _ in pairs(self.missingFunctions) do
+        count = count + 1
+    end
+    return count
+end
+
+local InvestmentController = {}
+
+function InvestmentController:start()
+    Scheduler:ensure('investment_v2', function(job)
+        while job.enabled and State.settings.autoInvest do
+            for index = 1, 3 do
+                ActionThrottle:fireServer(
+                    'invest_claim_' .. tostring(index),
+                    PathRegistry.Remotes.InvestClaim,
+                    0.15,
+                    index
+                )
+            end
+
+            task.wait(5)
+
+            for index = 1, 3 do
+                ActionThrottle:fireServer(
+                    'invest_buy_' .. tostring(index),
+                    PathRegistry.Remotes.InvestBuy,
+                    0.15,
+                    index
+                )
+            end
+
+            task.wait(600)
+        end
+    end)
+end
+
+function InvestmentController:stop()
+    Scheduler:stop('investment_v2')
+end
+
+local MiscController = {}
+
+function MiscController:getCurrencyPanel()
+    return Utils.deepWait(PathRegistry.GUI.Root, {
+        Constants.Paths.MainGui,
+        Constants.Paths.MainCity,
+        Constants.Paths.CurrencyArea,
+    }, 2)
+end
+
+function MiscController:applyShowAllCurrencies()
+    local panel = self:getCurrencyPanel()
+    if not panel then
+        return
+    end
+
+    for _, child in ipairs(panel:GetChildren()) do
+        if child:IsA('GuiObject') then
+            if State.currency.visibilityCache[child] == nil then
+                State.currency.visibilityCache[child] = child.Visible
+            end
+            child.Visible = true
+        end
+    end
+end
+
+function MiscController:restoreCurrencyVisibility()
+    for child, originalVisible in pairs(State.currency.visibilityCache) do
+        if child and child.Parent and child:IsA('GuiObject') then
+            child.Visible = originalVisible
+        end
+    end
+    table.clear(State.currency.visibilityCache)
+end
+
+function MiscController:startShowAllCurrencies()
+    Scheduler:ensure('show_all_currency_v2', function(job)
+        while job.enabled and State.settings.autoShowAllCurrency do
+            self:applyShowAllCurrencies()
+            task.wait(0.3)
+        end
+    end)
+end
+
+function MiscController:stopShowAllCurrencies()
+    Scheduler:stop('show_all_currency_v2')
+    self:restoreCurrencyVisibility()
+end
+
+function MiscController:removeRewardUi()
+    local rewardRoot = PathRegistry.GUI.Secondary
+    if not rewardRoot then
+        return false
+    end
+
+    local removed = false
+    for _, name in ipairs({
+        '展示奖励界面',
+        '离线奖励',
+        '版本说明',
+        '7日奖励',
+    }) do
+        local child = rewardRoot:FindFirstChild(name)
+        if child then
+            child:Destroy()
+            removed = true
+        end
+    end
+
+    return removed
+end
+
+function MiscController:redeemGiftCodes()
+    local eventsRoot = Services.ReplicatedStorage
+        :FindFirstChild(Constants.Paths.EventsRoot, true)
+    local redeemRoot = eventsRoot and eventsRoot:FindFirstChild('\230\191\128\230\180\187\231\160\129')
+    local redeemRemote = redeemRoot and redeemRoot:FindFirstChild('\231\142\169\229\174\182\229\133\145\230\141\162\230\191\128\230\180\187\231\160\129')
+
+    if not redeemRemote then
+        return false
+    end
+
+    for _, code in ipairs(Constants.GiftCodes) do
+        ActionThrottle:fireServer('gift_code_' .. code, redeemRemote, 0.1, code)
+    end
+
+    return true
+end
+
+function MiscController:deleteLanguageConfig()
+    return Utils.tryDeleteFile(Constants.LegacyLanguageFile)
+end
+
+function MiscController:closeSettingsOnce()
+    local settingPanel = Utils.deepWait(PathRegistry.GUI.Secondary, {
+        Constants.Paths.Settings,
+        '背景',
+        '设置区域',
+        '音乐设置项',
+        '开启',
+        '前景',
+    }, 2)
+
+    if not settingPanel or not settingPanel.Visible or not PathRegistry.Remotes.SettingsUpdate then
+        return false
+    end
+
+    for _, args in ipairs({
+        '音乐',
+        '粒子特效',
+        '伤害显示',
+        '掉落动画',
+        '音效',
+        '抽奖动画',
+        '法宝动画',
+        '出售二次确认',
+    }) do
+        ActionThrottle:fireServer(
+            'settings_close_' .. tostring(args),
+            PathRegistry.Remotes.SettingsUpdate,
+            0.05,
+            args
         )
-    )()
-    -- 防止AFK
+    end
+
+    return true
+end
+
+function MiscController:buyMonthlyKeys()
+    local remote = PathRegistry.Remotes.ActivityBuy
+    if not remote then
+        return false
+    end
+
+    for round = 1, 60 do
+        for arg = 4, 9 do
+            ActionThrottle:fireServer(
+                ('monthly_key_%d_%d'):format(arg, round),
+                remote,
+                0,
+                arg
+            )
+        end
+    end
+
+    for round = 1, 30 do
+        for arg = 17, 22 do
+            ActionThrottle:fireServer(
+                ('monthly_key_extra_%d_%d'):format(arg, round),
+                remote,
+                0,
+                arg
+            )
+        end
+    end
+
+    return true
+end
+
+function MiscController:buyArenaWater()
+    local remote = PathRegistry.Remotes.ArenaBuy
+    if not remote then
+        return false
+    end
+
+    for round = 1, 15 do
+        ActionThrottle:fireServer(
+            'arena_buy_water_' .. tostring(round),
+            remote,
+            0,
+            4
+        )
+    end
+
+    return true
+end
+
+function MiscController:runTradeScript(index)
+    local url = Constants.TradeScriptUrls[index]
+    if not url then
+        return false
+    end
+
+    return ExternalAssets:runScript(url, 'trade_script_' .. tostring(index))
+end
+
+function MiscController:runStatsScript()
+    return ExternalAssets:runScript(Constants.StatsScriptUrl, 'stats_script')
+end
+
+function MiscController:copyGithubLink()
+    if type(setclipboard) == 'function' then
+        setclipboard(Constants.GithubUrl)
+        return true
+    end
+    return false
+end
+
+local WorldController = {
+    presets = {
+        { label = 'World 01', level = 1 },
+        { label = 'World 21', level = 21 },
+        { label = 'World 55', level = 55 },
+        { label = 'World 64', level = 64 },
+        { label = 'World 82', level = 82 },
+        { label = 'World 101', level = 101 },
+    },
+}
+
+function WorldController:getUnlockedLevel()
+    local worldValue = PathRegistry.Progress and PathRegistry.Progress:FindFirstChild('world')
+    local unlocked = worldValue and tonumber(worldValue.Value) or 1
+    State.world.unlocked = unlocked
+    return unlocked
+end
+
+function WorldController:getSelectedLevel()
+    if State.settings.world.mode == 'auto_highest' then
+        return self:getUnlockedLevel()
+    end
+    return math.max(1, tonumber(State.settings.world.level) or 1)
+end
+
+function WorldController:setManualLevel(level)
+    updateSetting({ 'world', 'mode' }, 'manual')
+    updateSetting({ 'world', 'level' }, math.max(1, math.floor(tonumber(level) or 1)))
+end
+
+function WorldController:setAutoHighest()
+    updateSetting({ 'world', 'mode' }, 'auto_highest')
+    updateSetting({ 'world', 'level' }, self:getUnlockedLevel())
+end
+
+function WorldController:getCombatInfoText()
+    local label = Utils.deepWait(PathRegistry.GUI.Main, {
+        Constants.Paths.Combat,
+        '关卡信息',
+        '文本',
+    }, 2)
+    return label and label.Text or ''
+end
+
+function WorldController:getBattleProgress()
+    local progress = self:getCombatInfoText():match('-(%d+)%/')
+    return tonumber(progress)
+end
+
+function WorldController:isVictory()
+    local label = Utils.deepWait(PathRegistry.GUI.Main, {
+        Constants.Paths.Combat,
+        '胜利结果',
+    }, 2)
+    return label and label.Visible and label.Text == 'Victory' or false
+end
+
+function WorldController:enterSelectedWorld()
+    local level = self:getSelectedLevel()
+    return ActionThrottle:fireServer('world_enter_' .. tostring(level), PathRegistry.Remotes.WorldEnter, 0.3, level)
+end
+
+function WorldController:toggleAutoBattle()
+    local value = PathRegistry.Settings and PathRegistry.Settings:FindFirstChild(Constants.Paths.AutoBattle)
+    if value and value:IsA('BoolValue') then
+        value.Value = not value.Value
+        return value.Value
+    end
+    return nil
+end
+
+function WorldController:startAutoHighestWatcher()
+    Scheduler:ensure('world_auto_highest_v2', function(job)
+        while job.enabled and State.settings.world.mode == 'auto_highest' do
+            local unlocked = self:getUnlockedLevel()
+            if State.settings.world.level ~= unlocked then
+                updateSetting({ 'world', 'level' }, unlocked)
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+function WorldController:stopAutoHighestWatcher()
+    Scheduler:stop('world_auto_highest_v2')
+end
+
+function WorldController:startAutoReenter()
+    Scheduler:ensure('world_auto_reenter_v2', function(job)
+        while job.enabled and State.settings.world.autoReenter75 do
+            if not SafetyController:isPaused() then
+                local progress = self:getBattleProgress()
+                if progress and progress >= 75 then
+                    self:enterSelectedWorld()
+                    task.wait(1)
+                end
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+function WorldController:stopAutoReenter()
+    Scheduler:stop('world_auto_reenter_v2')
+end
+
+function WorldController:startAutoStart()
+    Scheduler:ensure('world_auto_start_v2', function(job)
+        while job.enabled and State.settings.world.autoStart do
+            if SafetyController:isPaused() then
+                task.wait(1)
+            else
+                if self:isVictory() then
+                    RespawnService:teleportHome()
+                    task.wait(0.5)
+                    self:enterSelectedWorld()
+                    task.wait(3)
+                elseif RespawnService:isAtRespawn(3) then
+                    self:enterSelectedWorld()
+                    task.wait(2)
+                else
+                    task.wait(0.3)
+                end
+            end
+        end
+    end)
+end
+
+function WorldController:stopAutoStart()
+    Scheduler:stop('world_auto_start_v2')
+end
+
+function WorldController:syncModes()
+    if State.settings.world.mode == 'auto_highest' then
+        self:startAutoHighestWatcher()
+    else
+        self:stopAutoHighestWatcher()
+    end
+
+    if State.settings.world.autoReenter75 then
+        self:startAutoReenter()
+    else
+        self:stopAutoReenter()
+    end
+
+    if State.settings.world.autoStart then
+        self:startAutoStart()
+    else
+        self:stopAutoStart()
+    end
+end
+
+local DungeonController = {
+    dungeonOrder = {
+        'OreDungeon',
+        'GemDungeon',
+        'RuneDungeon',
+        'RelicDungeon',
+        'HoverDungeon',
+        'GoldDungeon',
+    },
+    configs = {
+        OreDungeon = { id = 1, label = 'Ore Dungeon', zh = '矿石地下城', uiName = 'OreDungeon' },
+        GemDungeon = { id = 2, label = 'Gem Dungeon', zh = '灵石地下城', uiName = 'GemDungeon' },
+        RuneDungeon = { id = 3, label = 'Rune Dungeon', zh = '符石地下城', uiName = 'RuneDungeon' },
+        RelicDungeon = { id = 4, label = 'Relic Dungeon', zh = '遗物地下城', uiName = 'RelicDungeon' },
+        HoverDungeon = { id = 7, label = 'Hover Dungeon', zh = '悬浮地下城', uiName = 'HoverDungeon' },
+        GoldDungeon = { id = 6, label = 'Gold Dungeon', zh = '金币地下城', uiName = 'GoldDungeon' },
+    },
+}
+
+function DungeonController:getSelectedConfig()
+    return self.configs[State.settings.dungeon.selected] or self.configs.OreDungeon
+end
+
+function DungeonController:getSelectedLevel()
+    local key = self:getSelectedConfig()
+    return math.max(1, tonumber(State.settings.dungeon.levels[key.uiName]) or 1)
+end
+
+function DungeonController:setSelected(name)
+    local config = self.configs[name]
+    if not config then
+        return
+    end
+
+    updateSetting({ 'dungeon', 'selected' }, name)
+    updateSetting({ 'dungeon', 'selectedId' }, config.id)
+end
+
+function DungeonController:setSelectedLevel(level)
+    local config = self:getSelectedConfig()
+    local levels = Utils.cloneTable(State.settings.dungeon.levels)
+    levels[config.uiName] = math.max(1, math.floor(tonumber(level) or 1))
+    updateSetting({ 'dungeon', 'levels' }, levels)
+end
+
+function DungeonController:adjustLevel(delta)
+    self:setSelectedLevel(self:getSelectedLevel() + delta)
+end
+
+function DungeonController:getDungeonListRoot()
+    return Utils.deepWait(PathRegistry.GUI.Root, {
+        Constants.Paths.SecondaryGui,
+        '关卡选择',
+        '背景',
+        '右侧界面',
+        '副本',
+        '列表',
+    }, 2)
+end
+
+function DungeonController:getKeyCount(name)
+    local root = self:getDungeonListRoot()
+    local slot = root and root:FindFirstChild(name)
+    local valueLabel = slot and Utils.deepWait(slot, { '钥匙', '值' }, 1)
+    if not valueLabel then
+        return 0
+    end
+    return tonumber((valueLabel.Text or ''):match('^%d+')) or 0
+end
+
+function DungeonController:refreshKeyCounts()
+    for _, name in ipairs(self.dungeonOrder) do
+        State.dungeon.keyCounts[name] = self:getKeyCount(name)
+    end
+end
+
+function DungeonController:getBestDungeonByKeys()
+    self:refreshKeyCounts()
+
+    local bestName = 'OreDungeon'
+    local bestCount = -1
+
+    for _, name in ipairs(self.dungeonOrder) do
+        local count = tonumber(State.dungeon.keyCounts[name]) or 0
+        if count > bestCount then
+            bestName = name
+            bestCount = count
+        end
+    end
+
+    return bestName, math.max(bestCount, 0)
+end
+
+function DungeonController:enterSelected()
+    local config = self:getSelectedConfig()
+    local level = self:getSelectedLevel()
+    return ActionThrottle:fireServer(
+        'dungeon_enter_' .. config.uiName,
+        PathRegistry.Remotes.DungeonEnter,
+        0.3,
+        config.id,
+        level
+    )
+end
+
+function DungeonController:getVictoryLabel()
+    return Utils.deepWait(PathRegistry.GUI.Main, {
+        Constants.Paths.Combat,
+        '胜利结果',
+    }, 2)
+end
+
+function DungeonController:isVictory()
+    local label = self:getVictoryLabel()
+    return label and label.Visible and label.Text == 'Victory' or false
+end
+
+function DungeonController:clearVictory()
+    local label = self:getVictoryLabel()
+    if label then
+        label.Text = ''
+    end
+end
+
+function DungeonController:syncLevelFromPopup()
+    local popup = Utils.deepWait(PathRegistry.GUI.Root, {
+        Constants.Paths.SecondaryGui,
+        '关卡选择',
+        '副本选择弹出框',
+        '背景',
+    }, 2)
+
+    if not popup or not popup.Visible then
+        return
+    end
+
+    local titleLabel = Utils.deepWait(popup, { '标题', '名称' }, 1)
+    local difficultyValue = Utils.deepWait(popup, { '难度', '难度等级', '值' }, 1)
+    if not titleLabel or not difficultyValue then
+        return
+    end
+
+    local selectedName
+    for name, config in pairs(self.configs) do
+        if titleLabel.Text == config.label then
+            selectedName = name
+            break
+        end
+    end
+
+    local level = tonumber(difficultyValue.Text)
+    if selectedName and level and level > 0 then
+        self:setSelected(selectedName)
+        self:setSelectedLevel(level)
+    end
+end
+
+function DungeonController:startSyncUi()
+    Scheduler:ensure('dungeon_sync_ui_v2', function(job)
+        while job.enabled and State.settings.dungeon.autoSyncUi do
+            self:syncLevelFromPopup()
+            task.wait(1)
+        end
+    end)
+end
+
+function DungeonController:stopSyncUi()
+    Scheduler:stop('dungeon_sync_ui_v2')
+end
+
+function DungeonController:startKeyWatcher()
+    Scheduler:ensure('dungeon_key_watch_v2', function(job)
+        while job.enabled do
+            self:refreshKeyCounts()
+            task.wait(0.5)
+        end
+    end)
+end
+
+function DungeonController:startAutoStart()
+    Scheduler:ensure('dungeon_auto_start_v2', function(job)
+        while job.enabled and State.settings.dungeon.autoStart do
+            if SafetyController:isPaused() then
+                task.wait(1)
+            else
+                if self:isVictory() then
+                    local currentKey = self:getSelectedConfig().uiName
+                    local currentCount = tonumber(State.dungeon.keyCounts[currentKey]) or 0
+
+                    if State.settings.dungeon.autoPlusOne then
+                        self:adjustLevel(1)
+                        task.wait(0.2)
+                    end
+
+                    if State.settings.dungeon.autoFinishAll and currentCount <= 0 then
+                        local bestName = self:getBestDungeonByKeys()
+                        self:setSelected(bestName)
+                    end
+
+                    self:clearVictory()
+                    RespawnService:teleportHome()
+                    task.wait(0.5)
+                    self:enterSelected()
+                    task.wait(2)
+                elseif RespawnService:isAtRespawn(5) then
+                    self:enterSelected()
+                    task.wait(2)
+                else
+                    task.wait(0.5)
+                end
+            end
+        end
+    end)
+end
+
+function DungeonController:stopAutoStart()
+    Scheduler:stop('dungeon_auto_start_v2')
+end
+
+function DungeonController:syncModes()
+    if State.settings.dungeon.autoSyncUi then
+        self:startSyncUi()
+    else
+        self:stopSyncUi()
+    end
+
+    if State.settings.dungeon.autoStart then
+        self:startAutoStart()
+    else
+        self:stopAutoStart()
+    end
+end
+
+local PrivilegeController = {}
+
+function PrivilegeController:apply()
+    local privileges = PathRegistry.Privileges
+    if not privileges then
+        return false
+    end
+
+    local superRefine = privileges:FindFirstChild(Constants.Paths.AutoRefineSuper)
+    local autoRefine = privileges:FindFirstChild(Constants.Paths.AutoRefine)
+
+    if superRefine and superRefine:IsA('BoolValue') then
+        superRefine.Value = false
+    end
+
+    if autoRefine and autoRefine:IsA('BoolValue') then
+        autoRefine.Value = State.settings.autoRefinePrivilege == true
+        return true
+    end
+
+    return false
+end
+
+local ElixirCraftController = {
+    reasons = {},
+}
+
+function ElixirCraftController:isActive()
+    return next(self.reasons) ~= nil
+end
+
+function ElixirCraftController:enable(reason)
+    self.reasons[reason or 'default'] = true
+    Scheduler:ensure('elixir_craft_v2', function(job)
+        while job.enabled and self:isActive() do
+            ActionThrottle:fireServer(
+                'elixir_craft_v2',
+                PathRegistry.Remotes.ElixirCraft,
+                0.18
+            )
+            task.wait(0.2)
+        end
+    end)
+end
+
+function ElixirCraftController:disable(reason)
+    self.reasons[reason or 'default'] = nil
+    if not self:isActive() then
+        Scheduler:stop('elixir_craft_v2')
+    end
+end
+
+function ElixirCraftController:syncManualSetting()
+    if State.settings.autoElixirCraft then
+        self:enable('manual')
+    else
+        self:disable('manual')
+    end
+end
+
+local LotteryController = {
+    speed = 0.7,
+}
+
+function LotteryController:getCurrencyNumber(name)
+    local valueObject = PathRegistry.Currency and PathRegistry.Currency:FindFirstChild(name)
+    local rawValue = valueObject and (valueObject.Value or valueObject.value) or 0
+    return tonumber(rawValue) or 0
+end
+
+function LotteryController:getPanel(kind)
+    return Utils.deepWait(PathRegistry.GUI.Root, {
+        Constants.Paths.SecondaryGui,
+        '商店',
+        '背景',
+        '右侧界面',
+        '召唤',
+        kind,
+    }, 2)
+end
+
+function LotteryController:readPanel(kind)
+    local panel = self:getPanel(kind)
+    if not panel then
+        return 0, 0
+    end
+
+    local levelLabel = Utils.deepWait(panel, { '等级区域', '值' }, 1)
+    local progressLabel = Utils.deepWait(panel, { '等级区域', '进度条', '值', '值' }, 1)
+    local level = tonumber((levelLabel and levelLabel.Text or ''):match('%d+')) or 0
+    local progress = tonumber((progressLabel and progressLabel.Text or ''):match('(%d+)/')) or 0
+
+    return level, progress
+end
+
+function LotteryController:refreshState()
+    State.lottery.diamonds = self:getCurrencyNumber('钻石')
+    State.lottery.swordTickets = self:getCurrencyNumber('法宝抽奖券')
+    State.lottery.skillTickets = self:getCurrencyNumber('技能抽奖券')
+end
+
+function LotteryController:pull(kind)
+    if not PathRegistry.Remotes.Summon then
+        return false
+    end
+
+    local currentTickets = kind == '法宝'
+        and State.lottery.swordTickets
+        or State.lottery.skillTickets
+    local missingTickets = math.max(0, 8 - (tonumber(currentTickets) or 0))
+    local canUseDiamonds = State.settings.useDiamondsForLottery
+        and State.lottery.diamonds >= (missingTickets * 50)
+
+    if (tonumber(currentTickets) or 0) < 8 and not canUseDiamonds then
+        return false
+    end
+
+    return ActionThrottle:fireServer(
+        'lottery_pull_' .. tostring(kind),
+        PathRegistry.Remotes.Summon,
+        0.15,
+        kind,
+        true
+    )
+end
+
+function LotteryController:chooseAndPull()
+    self:refreshState()
+
+    local skillLevel, skillProgress = self:readPanel('技能')
+    local weaponLevel, weaponProgress = self:readPanel('法宝')
+
+    if skillLevel > weaponLevel then
+        self:pull('法宝')
+    elseif skillLevel < weaponLevel then
+        self:pull('技能')
+    elseif skillProgress > weaponProgress then
+        self:pull('法宝')
+    elseif skillProgress < weaponProgress then
+        self:pull('技能')
+    else
+        self:pull('技能')
+        task.wait(0.05)
+        self:pull('法宝')
+    end
+end
+
+function LotteryController:start()
+    Scheduler:ensure('lottery_v2', function(job)
+        while job.enabled and State.settings.autoLottery do
+            self:chooseAndPull()
+            task.wait(self.speed)
+        end
+    end)
+end
+
+function LotteryController:stop()
+    Scheduler:stop('lottery_v2')
+end
+
+local UpgradeController = {}
+
+function UpgradeController:startFlyingSword()
+    Scheduler:ensure('upgrade_flying_sword_v2', function(job)
+        while job.enabled and State.settings.autoUpgradeFlyingSword do
+            ActionThrottle:fireServer(
+                'upgrade_flying_sword_v2',
+                PathRegistry.Remotes.FlyingSwordUpgrade,
+                0.18
+            )
+            task.wait(0.2)
+        end
+    end)
+end
+
+function UpgradeController:stopFlyingSword()
+    Scheduler:stop('upgrade_flying_sword_v2')
+end
+
+function UpgradeController:startWeaponSkill()
+    Scheduler:ensure('upgrade_weapon_skill_v2', function(job)
+        while job.enabled and State.settings.autoUpgradeWeaponSkill do
+            ActionThrottle:fireServer(
+                'upgrade_weapon_all_v2',
+                PathRegistry.Remotes.WeaponUpgradeAll,
+                1
+            )
+            ActionThrottle:fireServer(
+                'upgrade_skill_all_v2',
+                PathRegistry.Remotes.SkillUpgradeAll,
+                1
+            )
+            task.wait(1.5)
+        end
+    end)
+end
+
+function UpgradeController:stopWeaponSkill()
+    Scheduler:stop('upgrade_weapon_skill_v2')
+end
+
+function UpgradeController:startRune()
+    Scheduler:ensure('upgrade_rune_v2', function(job)
+        while job.enabled and State.settings.autoUpgradeRune do
+            ActionThrottle:fireServer(
+                'upgrade_rune_v2',
+                PathRegistry.Remotes.RuneUpgrade,
+                0.18
+            )
+            task.wait(0.2)
+        end
+    end)
+end
+
+function UpgradeController:stopRune()
+    Scheduler:stop('upgrade_rune_v2')
+end
+
+function UpgradeController:syncModes()
+    if State.settings.autoUpgradeFlyingSword then
+        self:startFlyingSword()
+    else
+        self:stopFlyingSword()
+    end
+
+    if State.settings.autoUpgradeWeaponSkill then
+        self:startWeaponSkill()
+    else
+        self:stopWeaponSkill()
+    end
+
+    if State.settings.autoUpgradeRune then
+        self:startRune()
+    else
+        self:stopRune()
+    end
+end
+
+function UpgradeController:unlockWorldAndBuildings()
+    local unlockRemote = PathRegistry.Events.Forge:FindFirstChild(Constants.Paths.UnlockBuilding)
+    local buyRemote = PathRegistry.Remotes.ActivityBuy
+
+    if unlockRemote then
+        for index = 1, 30 do
+            ActionThrottle:fireServer('unlock_building_' .. tostring(index), unlockRemote, 0.01, index)
+        end
+    end
+
+    if buyRemote then
+        for round = 1, 30 do
+            ActionThrottle:fireServer(
+                'unlock_buy_1_' .. tostring(round),
+                buyRemote,
+                0,
+                1
+            )
+        end
+
+        for round = 1, 40 do
+            ActionThrottle:fireServer(
+                'unlock_buy_12_' .. tostring(round),
+                buyRemote,
+                0,
+                12
+            )
+        end
+    end
+
+    return unlockRemote ~= nil or buyRemote ~= nil
+end
+
+function UpgradeController:unequipAll()
+    local runeRemote = PathRegistry.Events.Rune:FindFirstChild(Constants.Paths.Unequip)
+    local worldRemote = PathRegistry.Events.WorldTree:FindFirstChild(Constants.Paths.Unequip)
+
+    for index = 1, 5 do
+        ActionThrottle:fireServer('unequip_rune_' .. tostring(index), runeRemote, 0.03, index)
+        ActionThrottle:fireServer('unequip_world_' .. tostring(index), worldRemote, 0.03, index)
+    end
+end
+
+local OverclockController = {}
+OverclockController.selectionReadAttempts = 6
+OverclockController.selectionReadDelay = 0.05
+
+function OverclockController:openFarm(index)
+    UiOpeners.openFarm(index)
+    task.wait(0.15)
+end
+
+function OverclockController:openElixir()
+    UiOpeners.openElixir()
+    task.wait(0.15)
+end
+
+function OverclockController:readFarmLevel()
+    local label = Utils.deepWait(PathRegistry.GUI.Secondary, {
+        Constants.Paths.Farm,
+        '背景',
+        Constants.Paths.AttributeArea,
+        '属性列表',
+        '列表',
+        '等级',
+        '值',
+    }, 2)
+    return tonumber(label and label.Text and label.Text:match('%d+')) or 0
+end
+
+function OverclockController:readElixirLevel()
+    local label = Utils.deepWait(PathRegistry.GUI.Secondary, {
+        Constants.Paths.ElixirGui,
+        '背景',
+        Constants.Paths.AttributeArea,
+        '属性列表',
+        '列表',
+        '等级',
+        '值',
+    }, 2)
+    return tonumber(label and label.Text and label.Text:match('%d+')) or 0
+end
+
+function OverclockController:peekFarmLevel()
+    local label = Utils.deepFind(PathRegistry.GUI.Secondary, {
+        Constants.Paths.Farm,
+        '背景',
+        Constants.Paths.AttributeArea,
+        '属性列表',
+        '列表',
+        '等级',
+        '值',
+    })
+    return tonumber(label and label.Text and label.Text:match('%d+'))
+end
+
+function OverclockController:peekElixirLevel()
+    local label = Utils.deepFind(PathRegistry.GUI.Secondary, {
+        Constants.Paths.ElixirGui,
+        '背景',
+        Constants.Paths.AttributeArea,
+        '属性列表',
+        '列表',
+        '等级',
+        '值',
+    })
+    return tonumber(label and label.Text and label.Text:match('%d+'))
+end
+
+function OverclockController:readFarmLevelWithRetries()
+    local level = 0
+    for attempt = 1, self.selectionReadAttempts do
+        level = self:readFarmLevel()
+        if attempt < self.selectionReadAttempts then
+            task.wait(self.selectionReadDelay)
+        end
+    end
+    return level
+end
+
+function OverclockController:readElixirLevelWithRetries()
+    local level = 0
+    for attempt = 1, self.selectionReadAttempts do
+        level = self:readElixirLevel()
+        if attempt < self.selectionReadAttempts then
+            task.wait(self.selectionReadDelay)
+        end
+    end
+    return level
+end
+
+function OverclockController:refreshFarmSelection(index)
+    local farmIndex = math.clamp(tonumber(index) or tonumber(State.settings.batch.selectedFarm) or 1, 1, 5)
+    updateSetting({ 'batch', 'selectedFarm' }, farmIndex)
+    self:openFarm(farmIndex)
+    State.upgrade.farmCurrentLevel = self:readFarmLevelWithRetries()
+    return State.upgrade.farmCurrentLevel
+end
+
+function OverclockController:refreshElixirSelection(index)
+    local elixirIndex = math.max(1, tonumber(index) or tonumber(State.settings.batch.selectedElixir) or 1)
+    updateSetting({ 'batch', 'selectedElixir' }, elixirIndex)
+    self:openElixir()
+    State.upgrade.elixirCurrentLevel = self:readElixirLevelWithRetries()
+    return State.upgrade.elixirCurrentLevel
+end
+
+function OverclockController:runFarmBatch()
+    Scheduler:start('farm_overclock_v2', function(job)
+        for farmIndex = 1, 5 do
+            if not job.enabled then
+                break
+            end
+
+            self:openFarm(farmIndex)
+            local currentLevel = self:readFarmLevel()
+            State.upgrade.farmCurrentLevel = currentLevel
+            local targetLevel = math.max(0, tonumber(State.settings.batch.farmTarget) or 80)
+            local needed = math.max(0, targetLevel - currentLevel)
+
+            for upgradeIndex = 1, needed do
+                if not job.enabled then
+                    break
+                end
+
+                ActionThrottle:fireServer(
+                    ('farm_overclock_%d_%d'):format(farmIndex, upgradeIndex),
+                    PathRegistry.Remotes.FarmUpgrade,
+                    0,
+                    farmIndex
+                )
+
+                if upgradeIndex % 10 == 0 then
+                    task.wait(0.05)
+                end
+            end
+
+            task.wait(0.05)
+            State.upgrade.farmCurrentLevel = self:readFarmLevel()
+        end
+
+        self:refreshFarmSelection(State.settings.batch.selectedFarm or 1)
+    end)
+end
+
+function OverclockController:runElixirBatch()
+    Scheduler:start('elixir_overclock_v2', function(job)
+        if not job.enabled then
+            return
+        end
+
+        self:openElixir()
+        local currentLevel = self:readElixirLevel()
+        State.upgrade.elixirCurrentLevel = currentLevel
+        local targetLevel = math.max(0, tonumber(State.settings.batch.elixirTarget) or 80)
+        local needed = math.max(0, targetLevel - currentLevel)
+
+        for upgradeIndex = 1, needed do
+            if not job.enabled then
+                break
+            end
+
+            ActionThrottle:fireServer(
+                'elixir_overclock_' .. tostring(upgradeIndex),
+                PathRegistry.Remotes.ElixirUpgrade,
+                0
+            )
+
+            if upgradeIndex % 15 == 0 then
+                task.wait(0.03)
+            end
+        end
+
+        task.wait(0.05)
+        State.upgrade.elixirCurrentLevel = self:readElixirLevel()
+    end)
+end
+
+local FollowController = {
+    range = 20,
+    lostTimeout = 10,
+}
+
+function FollowController:getTargetPlayer()
+    local name = tostring(State.settings.follow.selectedPlayer or '')
+    if name == '' then
+        return nil
+    end
+    return Services.Players:FindFirstChild(name)
+end
+
+function FollowController:isInRange(targetPlayer)
+    local localRoot = RespawnService:getCharacterRoot()
+    local targetRoot = targetPlayer
+        and targetPlayer.Character
+        and targetPlayer.Character:FindFirstChild('HumanoidRootPart')
+
+    if not localRoot or not targetRoot then
+        return false
+    end
+
+    return (localRoot.Position - targetRoot.Position).Magnitude <= self.range
+end
+
+function FollowController:requestTeleport(targetPlayer)
+    return ActionThrottle:fireServer(
+        'follow_teleport_' .. tostring(targetPlayer and targetPlayer.Name or 'nil'),
+        PathRegistry.Remotes.AssistTeleport,
+        1,
+        targetPlayer
+    )
+end
+
+function FollowController:triggerAssist()
+    return ActionThrottle:fireServer(
+        'follow_assist_v2',
+        PathRegistry.Remotes.AssistTarget,
+        0.5
+    )
+end
+
+function FollowController:start()
+    Scheduler:ensure('follow_player_v2', function(job)
+        local state = 'seeking'
+        local lostSince = nil
+        local hasTriggeredCurrentLock = false
+        local trackedName = nil
+
+        while job.enabled and State.settings.follow.enabled do
+            local targetPlayer = self:getTargetPlayer()
+            local currentName = targetPlayer and targetPlayer.Name or ''
+
+            if trackedName ~= currentName then
+                trackedName = currentName
+                state = 'seeking'
+                lostSince = nil
+                hasTriggeredCurrentLock = false
+            end
+
+            if not targetPlayer then
+                task.wait(1)
+            else
+                local inRange = self:isInRange(targetPlayer)
+
+                if state == 'seeking' then
+                    if inRange then
+                        if not hasTriggeredCurrentLock then
+                            self:triggerAssist()
+                            hasTriggeredCurrentLock = true
+                        end
+                        state = 'monitoring'
+                        lostSince = nil
+                    else
+                        hasTriggeredCurrentLock = false
+                        self:requestTeleport(targetPlayer)
+                    end
+                    task.wait(1)
+                else
+                    if inRange then
+                        lostSince = nil
+                    else
+                        if not lostSince then
+                            lostSince = time()
+                        elseif time() - lostSince >= self.lostTimeout then
+                            state = 'seeking'
+                            lostSince = nil
+                            hasTriggeredCurrentLock = false
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end
+        end
+    end)
+end
+
+function FollowController:stop()
+    Scheduler:stop('follow_player_v2')
+end
+
+function FollowController:sync()
+    if State.settings.follow.enabled and tostring(State.settings.follow.selectedPlayer or '') ~= '' then
+        self:start()
+    else
+        self:stop()
+    end
+end
+
+local MonitorController = {}
+
+function MonitorController:getCurrencyText(name)
+    local label = Utils.deepWait(PathRegistry.GUI.Main, {
+        Constants.Paths.MainCity,
+        Constants.Paths.CurrencyAreaRight,
+        name,
+        '值',
+    }, 2)
+    return label and label.Text or '0'
+end
+
+function MonitorController:getHerbValue()
+    return Utils.parseNumber(self:getCurrencyText('草药'))
+end
+
+function MonitorController:getOreValue()
+    return Utils.parseNumber(self:getCurrencyText('矿石'))
+end
+
+function MonitorController:sendWebhook()
+    local url = tostring(State.settings.monitor.webhookUrl or '')
+    if url == '' then
+        return false
+    end
+
+    local request = syn and syn.request or http and http.request or request
+    if type(request) ~= 'function' then
+        return false
+    end
+
+    local payload = {
+        content = ('%s | 草药:%s | 矿石:%s'):format(
+            player.Name,
+            tostring(self:getHerbValue()),
+            tostring(self:getOreValue())
+        ),
+    }
+
+    local ok, response = pcall(function()
+        return request({
+            Url = url,
+            Method = 'POST',
+            Headers = {
+                ['Content-Type'] = 'application/json',
+            },
+            Body = Services.HttpService:JSONEncode(payload),
+        })
+    end)
+
+    return ok and response ~= nil
+end
+
+function MonitorController:start()
+    Scheduler:ensure('smart_monitor_v2', function(job)
+        while job.enabled and State.settings.monitor.enabled do
+            local herbValue = self:getHerbValue()
+            local oreValue = self:getOreValue()
+
+            State.monitor.lastHerbValue = herbValue
+            State.monitor.lastOreValue = oreValue
+
+            if herbValue >= (tonumber(State.settings.monitor.highHerbThreshold) or 250000) then
+                if not State.monitor.tradeTriggered then
+                    State.monitor.tradeTriggered = true
+                    if State.settings.monitor.autoTradeOnHighHerb then
+                        MiscController:runTradeScript(2)
+                    end
+                    if State.settings.monitor.autoElixirOnHighHerb then
+                        ElixirCraftController:enable('monitor')
+                    end
+                    if State.settings.monitor.webhookEnabled then
+                        self:sendWebhook()
+                    end
+                end
+            elseif herbValue <= (tonumber(State.settings.monitor.lowHerbThreshold) or 5000) then
+                if State.monitor.tradeTriggered then
+                    State.monitor.tradeTriggered = false
+                    ElixirCraftController:disable('monitor')
+                end
+            end
+
+            task.wait(5)
+        end
+    end)
+end
+
+function MonitorController:stop()
+    Scheduler:stop('smart_monitor_v2')
+    ElixirCraftController:disable('monitor')
+end
+
+function MonitorController:sync()
+    if State.settings.monitor.enabled then
+        self:start()
+    else
+        self:stop()
+    end
+end
+
+local UiController = {}
+
+function UiController:safeSet(control, value, name)
+    if control and control.Set then
+        control:Set(value)
+        return
+    end
+    warn('[V2] 控件无法设置默认值: ' .. tostring(name))
+end
+
+function UiController:rebuildPlayerDropdown()
+    if not State.ui.followDropdown then
+        return
+    end
+
+    for _, option in ipairs(State.ui.followDropdownOptions or {}) do
+        Utils.safePcall(function()
+            option:Remove()
+        end)
+    end
+
+    State.ui.followDropdownOptions = {}
+    for _, otherPlayer in ipairs(Services.Players:GetPlayers()) do
+        if otherPlayer ~= player then
+            local option = State.ui.followDropdown:Add(otherPlayer.Name)
+            if option then
+                table.insert(State.ui.followDropdownOptions, option)
+            end
+        end
+    end
+
+    local blankOption = State.ui.followDropdown:Add('')
+    if blankOption then
+        table.insert(State.ui.followDropdownOptions, blankOption)
+    end
+end
+
+function UiController:addDropdownSpacer(dropdown)
+    if not dropdown or type(dropdown.Add) ~= 'function' then
+        return nil
+    end
+    return dropdown:Add('')
+end
+
+function UiController:formatShortLevel(level)
+    local number = math.max(0, tonumber(level) or 0)
+    if number < 10 then
+        return ('0%d'):format(number)
+    end
+    return tostring(number)
+end
+
+function UiController:updateDungeonDropdownTexts()
+    if not State.ui.dungeonOptionMap then
+        return
+    end
+
+    for name, option in pairs(State.ui.dungeonOptionMap) do
+        local config = DungeonController.configs[name]
+        local keys = tonumber(State.dungeon.keyCounts[name]) or 0
+        if option and config then
+            option.Text = ('%s  钥匙：%s'):format(
+                config.zh,
+                self:formatShortLevel(keys)
+            )
+        end
+    end
+end
+
+function UiController:updateSummary()
+    WorldController:getUnlockedLevel()
+    DungeonController:refreshKeyCounts()
+    LotteryController:refreshState()
+
+    local farmCurrentLevel = OverclockController:peekFarmLevel()
+    local elixirCurrentLevel = OverclockController:peekElixirLevel()
+    if farmCurrentLevel then
+        State.upgrade.farmCurrentLevel = farmCurrentLevel
+    end
+    if elixirCurrentLevel then
+        State.upgrade.elixirCurrentLevel = elixirCurrentLevel
+    end
+
+    if State.ui.summaryLabel then
+        State.ui.summaryLabel.Text = (
+            'UTC+8: %s | Respawn: %s'
+        ):format(
+            State.daily.currentDateKey,
+            tostring(RespawnService.pointName)
+        )
+    end
+
+    if State.ui.dailyStatusLabel then
+        State.ui.dailyStatusLabel.Text = (
+            '在线奖励: %s | 收菜 D%s H%s C%s F%s | 旧每日缺失:%d'
+        ):format(
+            State.rewards.countdown and tostring(State.rewards.countdown) or '等待刷新',
+            State.daily.donationFinished and '1' or '0',
+            State.daily.herbBuyFinished and '1' or '0',
+            State.daily.herbCollectFinished and '1' or '0',
+            State.daily.farmReady and '1' or '0',
+            LegacyDailyController:getMissingCount()
+        )
+    end
+
+    if State.ui.safetyStatusLabel then
+        State.ui.safetyStatusLabel.Text = (
+            '安全模式: %s | 附近玩家: %d | 暂停: %s'
+        ):format(
+            State.settings.safetyMode and 'ON' or 'OFF',
+            State.safety.nearbyPlayers,
+            SafetyController:isPaused() and 'YES' or 'NO'
+        )
+    end
+
+    if State.ui.worldStatusLabel then
+        State.ui.worldStatusLabel.Text = (
+            '世界: %s | 选中:%d | 已解锁:%d | 自动开始:%s | 75重进:%s'
+        ):format(
+            State.settings.world.mode,
+            WorldController:getSelectedLevel(),
+            State.world.unlocked,
+            State.settings.world.autoStart and 'ON' or 'OFF',
+            State.settings.world.autoReenter75 and 'ON' or 'OFF'
+        )
+    end
+
+    if State.ui.worldLevelLabel then
+        local selectedLevel = WorldController:getSelectedLevel()
+        local unlockedLevel = State.world.unlocked
+        if State.settings.world.mode == 'auto_highest' then
+            State.ui.worldLevelLabel.Text = (
+                '当前选择最高关卡：%s | 当前已解锁最高：%s'
+            ):format(
+                self:formatShortLevel(selectedLevel),
+                self:formatShortLevel(unlockedLevel)
+            )
+        elseif selectedLevel > unlockedLevel then
+            State.ui.worldLevelLabel.Text = (
+                '关卡未解锁：%s | 当前已解锁最高：%s'
+            ):format(
+                self:formatShortLevel(selectedLevel),
+                self:formatShortLevel(unlockedLevel)
+            )
+        else
+            State.ui.worldLevelLabel.Text = (
+                '当前选择关卡：%s | 当前已解锁最高：%s'
+            ):format(
+                self:formatShortLevel(selectedLevel),
+                self:formatShortLevel(unlockedLevel)
+            )
+        end
+    end
+
+    if State.ui.dungeonStatusLabel then
+        local config = DungeonController:getSelectedConfig()
+        local keys = tonumber(State.dungeon.keyCounts[config.uiName]) or 0
+        State.ui.dungeonStatusLabel.Text = (
+            '地下城: %s | 钥匙:%d | 关卡:%d | 自动开始:%s'
+        ):format(
+            config.zh,
+            keys,
+            DungeonController:getSelectedLevel(),
+            State.settings.dungeon.autoStart and 'ON' or 'OFF'
+        )
+    end
+
+    if State.ui.dungeonLabel then
+        local config = DungeonController:getSelectedConfig()
+        local keys = tonumber(State.dungeon.keyCounts[config.uiName]) or 0
+        State.ui.dungeonLabel.Text = (
+            '当前选择：%s | 钥匙：%s | 关卡选择：%s'
+        ):format(
+            config.zh,
+            self:formatShortLevel(keys),
+            self:formatShortLevel(DungeonController:getSelectedLevel())
+        )
+    end
+
+    if State.ui.worldAutoOption then
+        State.ui.worldAutoOption.Text = (
+            '自动最高关卡 [%s]'
+        ):format(self:formatShortLevel(State.world.unlocked))
+    end
+
+    self:updateDungeonDropdownTexts()
+
+    if State.ui.lotteryStatusLabel then
+        State.ui.lotteryStatusLabel.Text = (
+            '钻石:%d | 法宝券:%d | 技能券:%d | 自动抽:%s | 炼丹:%s'
+        ):format(
+            State.lottery.diamonds,
+            State.lottery.swordTickets,
+            State.lottery.skillTickets,
+            State.settings.autoLottery and 'ON' or 'OFF',
+            ElixirCraftController:isActive() and 'ON' or 'OFF'
+        )
+    end
+
+    if State.ui.batchStatusLabel then
+        State.ui.batchStatusLabel.Text = (
+            '农田 当前/目标:%d/%d | 丹炉 当前/目标:%d/%d'
+        ):format(
+            tonumber(State.upgrade.farmCurrentLevel) or 0,
+            tonumber(State.settings.batch.farmTarget) or 0,
+            tonumber(State.upgrade.elixirCurrentLevel) or 0,
+            tonumber(State.settings.batch.elixirTarget) or 0
+        )
+    end
+
+    if State.ui.farmUpgradeLabel then
+        State.ui.farmUpgradeLabel.Text = (
+            '当前选择 农田：%s | 等级：%s | 目标：%s'
+        ):format(
+            self:formatShortLevel(State.settings.batch.selectedFarm or 1),
+            self:formatShortLevel(State.upgrade.farmCurrentLevel or 0),
+            self:formatShortLevel(State.settings.batch.farmTarget or 80)
+        )
+    end
+
+    if State.ui.elixirUpgradeLabel then
+        State.ui.elixirUpgradeLabel.Text = (
+            '当前选择 丹炉：%s | 等级：%s | 目标：%s | 自动炼丹：%s'
+        ):format(
+            self:formatShortLevel(State.settings.batch.selectedElixir or 1),
+            self:formatShortLevel(State.upgrade.elixirCurrentLevel or 0),
+            self:formatShortLevel(State.settings.batch.elixirTarget or 80),
+            State.settings.autoElixirCraft and '开启' or '关闭'
+        )
+    end
+
+    if State.ui.monitorStatusLabel then
+        State.ui.monitorStatusLabel.Text = (
+            '草药:%d | 矿石:%d | 触发:%s'
+        ):format(
+            tonumber(State.monitor.lastHerbValue) or 0,
+            tonumber(State.monitor.lastOreValue) or 0,
+            State.monitor.tradeTriggered and 'YES' or 'NO'
+        )
+    end
+
+    GuildController:updateDisplay()
+end
+
+function UiController:create()
+    local library = ExternalAssets:loadModule(Constants.UILibraryUrl, 'ui_library')
+    if type(library) ~= 'table' or type(library.AddWindow) ~= 'function' then
+        warn('[V2] UI 库加载失败')
+        return
+    end
+
+    local window = library:AddWindow('Cultivation Simulator V2', {
+        main_color = Color3.fromRGB(46, 77, 122),
+        min_size = Vector2.new(620, 360),
+        can_resize = false,
+    })
+
+    local tabs = {
+        overview = window:AddTab('总览'),
+        daily = window:AddTab('每日'),
+        world = window:AddTab('世界'),
+        dungeon = window:AddTab('地下城'),
+        guild = window:AddTab('公会'),
+        lottery = window:AddTab('抽奖/丹药'),
+        upgrade = window:AddTab('升级'),
+        enhance = window:AddTab('强化'),
+        interface = window:AddTab('界面'),
+        tools = window:AddTab('工具'),
+        follow = window:AddTab('跟随'),
+        monitor = window:AddTab('监控'),
+    }
+    local controls = {}
+
+    State.ui.summaryLabel = tabs.overview:AddLabel('V2 初始化中...')
+    State.ui.dailyStatusLabel = tabs.overview:AddLabel('每日状态加载中...')
+    State.ui.safetyStatusLabel = tabs.overview:AddLabel('安全状态读取中...')
+    State.ui.worldStatusLabel = tabs.overview:AddLabel('世界状态读取中...')
+    State.ui.dungeonStatusLabel = tabs.overview:AddLabel('地下城状态读取中...')
+    State.ui.guildOverviewLabel = tabs.overview:AddLabel('公会信息读取中...')
+    State.ui.lotteryStatusLabel = tabs.overview:AddLabel('抽奖状态读取中...')
+    State.ui.batchStatusLabel = tabs.overview:AddLabel('升级状态读取中...')
+    State.ui.monitorStatusLabel = tabs.overview:AddLabel('监控状态读取中...')
+
+    controls.rewardsSwitch = tabs.daily:AddSwitch('自动在线奖励', function(value)
+        updateSetting('autoOnlineRewards', value)
+        if value then
+            OnlineRewardController:start()
+        else
+            OnlineRewardController:stop()
+        end
+    end)
+
+    controls.legacyDailySwitch = tabs.daily:AddSwitch('自动任务链路', function(value)
+        updateSetting('autoLegacyDaily', value)
+        if value then
+            LegacyDailyController:start()
+        else
+            LegacyDailyController:stop()
+        end
+    end)
+
+    controls.investSwitch = tabs.daily:AddSwitch('自动执行投资', function(value)
+        updateSetting('autoInvest', value)
+        if value then
+            InvestmentController:start()
+        else
+            InvestmentController:stop()
+        end
+    end)
+
+    controls.collectSwitch = tabs.daily:AddSwitch('自动采草药', function(value)
+        updateSetting('autoCollectHerbs', value)
+        if value then
+            FarmController:start()
+        else
+            FarmController:stop()
+        end
+    end)
+
+    controls.privilegeSwitch = tabs.daily:AddSwitch('解锁自动炼制', function(value)
+        updateSetting('autoRefinePrivilege', value)
+        PrivilegeController:apply()
+    end)
+
+    tabs.daily:AddButton('兑换礼品码', function()
+        MiscController:redeemGiftCodes()
+    end)
+    tabs.daily:AddButton('删除奖励界面', function()
+        MiscController:removeRewardUi()
+    end)
+
+    State.ui.worldLevelLabel = tabs.world:AddLabel('世界关卡准备中...')
+    local worldDropdown = tabs.world:AddDropdown('选择世界关卡', function(text)
+        if text and text:find('自动最高关卡', 1, true) then
+            WorldController:setAutoHighest()
+        else
+            local level = tonumber((text or ''):match('(%d+)$'))
+            if level then
+                WorldController:setManualLevel(level)
+            end
+        end
+        WorldController:syncModes()
+    end)
+
+    for _, preset in ipairs(WorldController.presets) do
+        worldDropdown:Add(('世界关卡 %02d'):format(preset.level))
+    end
+    State.ui.worldAutoOption = worldDropdown:Add('自动最高关卡')
+    self:addDropdownSpacer(worldDropdown)
+
+    tabs.world:AddButton('关卡 +1', function()
+        WorldController:setManualLevel(WorldController:getSelectedLevel() + 1)
+        WorldController:syncModes()
+    end)
+    tabs.world:AddButton('关卡 -1', function()
+        WorldController:setManualLevel(WorldController:getSelectedLevel() - 1)
+        WorldController:syncModes()
+    end)
+    tabs.world:AddButton('传送世界关卡', function()
+        WorldController:enterSelectedWorld()
+    end)
+
+    controls.worldAutoStartSwitch = tabs.world:AddSwitch('自动开始世界战斗', function(value)
+        updateSetting({ 'world', 'autoStart' }, value)
+        WorldController:syncModes()
+    end)
+
+    controls.worldReenterSwitch = tabs.world:AddSwitch('进度>75自动重进', function(value)
+        updateSetting({ 'world', 'autoReenter75' }, value)
+        WorldController:syncModes()
+    end)
+
+    tabs.world:AddButton('挂机模式', function()
+        WorldController:toggleAutoBattle()
+    end)
+
+    State.ui.dungeonLabel = tabs.dungeon:AddLabel('地下城准备中...')
+    local dungeonDropdown = tabs.dungeon:AddDropdown('选择地下城', function(text)
+        for name, config in pairs(DungeonController.configs) do
+            if text and text:find(config.zh, 1, true) then
+                DungeonController:setSelected(name)
+                break
+            end
+        end
+    end)
+
+    State.ui.dungeonOptionMap = {}
+    for _, name in ipairs(DungeonController.dungeonOrder) do
+        State.ui.dungeonOptionMap[name] = dungeonDropdown:Add(DungeonController.configs[name].zh)
+    end
+    self:addDropdownSpacer(dungeonDropdown)
+
+    controls.dungeonSyncSwitch = tabs.dungeon:AddSwitch('同步地下城难度', function(value)
+        updateSetting({ 'dungeon', 'autoSyncUi' }, value)
+        DungeonController:syncModes()
+    end)
+
+    controls.dungeonAutoStartSwitch = tabs.dungeon:AddSwitch('自动开始地下城', function(value)
+        updateSetting({ 'dungeon', 'autoStart' }, value)
+        DungeonController:syncModes()
+    end)
+
+    controls.dungeonPlusOneSwitch = tabs.dungeon:AddSwitch('战斗结束关卡 +1', function(value)
+        updateSetting({ 'dungeon', 'autoPlusOne' }, value)
+        DungeonController:syncModes()
+    end)
+
+    controls.dungeonFinishAllSwitch = tabs.dungeon:AddSwitch('钥匙耗尽自动切换', function(value)
+        updateSetting({ 'dungeon', 'autoFinishAll' }, value)
+        DungeonController:syncModes()
+    end)
+
+    tabs.dungeon:AddTextBox('自订地下城关卡', function(text)
+        local level = tonumber((tostring(text or '')):gsub('[^%d]', ''))
+        if level then
+            DungeonController:setSelectedLevel(level)
+        end
+    end)
+    tabs.dungeon:AddButton('关卡 +1', function()
+        DungeonController:adjustLevel(1)
+    end)
+    tabs.dungeon:AddButton('关卡 -1', function()
+        DungeonController:adjustLevel(-1)
+    end)
+    tabs.dungeon:AddButton('传送地下城', function()
+        DungeonController:enterSelected()
+    end)
+
+    controls.donateSwitch = tabs.guild:AddSwitch('自动公会捐献', function(value)
+        updateSetting('autoDonate', value)
+        if value then
+            GuildController:startDonation()
+        else
+            Scheduler:stop('guild_donation_v2')
+        end
+    end)
+
+    State.ui.guildInfoLabel = tabs.guild:AddLabel('公会信息读取中...')
+
+    controls.guildShopSwitch = tabs.guild:AddSwitch('自动购买草药', function(value)
+        updateSetting('autoGuildShop', value)
+        if value then
+            GuildController:startHerbShop()
+        else
+            Scheduler:stop('guild_shop_v2')
+        end
+    end)
+
+    tabs.guild:AddButton('更新公会状态', function()
+        GuildController:openGuildPanel()
+        GuildController:updateDisplay()
+        self:updateSummary()
+    end)
+
+    controls.autoLotterySwitch = tabs.lottery:AddSwitch('自动抽法宝/技能', function(value)
+        updateSetting('autoLottery', value)
+        if value then
+            LotteryController:start()
+        else
+            LotteryController:stop()
+        end
+    end)
+
+    controls.useDiamondsSwitch = tabs.lottery:AddSwitch('启用钻石抽取', function(value)
+        updateSetting('useDiamondsForLottery', value)
+    end)
+
+    controls.autoElixirSwitch = tabs.lottery:AddSwitch('自动炼丹药', function(value)
+        updateSetting('autoElixirCraft', value)
+        ElixirCraftController:syncManualSetting()
+    end)
+    tabs.lottery:AddButton('自动交易初始化 1', function()
+        MiscController:runTradeScript(1)
+    end)
+    tabs.lottery:AddButton('自动交易初始化 2', function()
+        MiscController:runTradeScript(2)
+    end)
+
+    controls.flyingSwordSwitch = tabs.enhance:AddSwitch('升级飞剑', function(value)
+        updateSetting('autoUpgradeFlyingSword', value)
+        UpgradeController:syncModes()
+    end)
+
+    controls.weaponSkillSwitch = tabs.enhance:AddSwitch('升级法宝/技能', function(value)
+        updateSetting('autoUpgradeWeaponSkill', value)
+        UpgradeController:syncModes()
+    end)
+
+    controls.runeSwitch = tabs.enhance:AddSwitch('升级符石', function(value)
+        updateSetting('autoUpgradeRune', value)
+        UpgradeController:syncModes()
+    end)
+
+    controls.showAllSwitch = tabs.enhance:AddSwitch('显示所有货币', function(value)
+        updateSetting('autoShowAllCurrency', value)
+        if value then
+            MiscController:startShowAllCurrencies()
+        else
+            MiscController:stopShowAllCurrencies()
+        end
+    end)
+
+    tabs.enhance:AddButton('解锁世界与建筑', function()
+        UpgradeController:unlockWorldAndBuildings()
+    end)
+    tabs.enhance:AddButton('解除装备', function()
+        UpgradeController:unequipAll()
+    end)
+
+    State.ui.farmUpgradeLabel = tabs.upgrade:AddLabel('农田升级准备中...')
+    local farmDropdown = tabs.upgrade:AddDropdown('选择农田', function(text)
+        local index = tonumber((text or ''):match('(%d+)'))
+        if index then
+            OverclockController:refreshFarmSelection(index)
+            self:updateSummary()
+        end
+    end)
+
+    for index = 1, 5 do
+        farmDropdown:Add('农田' .. tostring(index))
+    end
+    self:addDropdownSpacer(farmDropdown)
+
+    tabs.upgrade:AddButton('农田目标 +1', function()
+        updateSetting({ 'batch', 'farmTarget' }, math.min(200, (tonumber(State.settings.batch.farmTarget) or 80) + 1))
+        self:updateSummary()
+    end)
+    tabs.upgrade:AddButton('农田目标 -1', function()
+        updateSetting({ 'batch', 'farmTarget' }, math.max(0, (tonumber(State.settings.batch.farmTarget) or 80) - 1))
+        self:updateSummary()
+    end)
+    tabs.upgrade:AddButton('农田升级', function()
+        OverclockController:runFarmBatch()
+    end)
+
+    State.ui.elixirUpgradeLabel = tabs.upgrade:AddLabel('炼丹炉升级准备中...')
+    local elixirDropdown = tabs.upgrade:AddDropdown('选择丹炉', function(text)
+        local index = tonumber((text or ''):match('(%d+)'))
+        if index then
+            OverclockController:refreshElixirSelection(index)
+            self:updateSummary()
+        end
+    end)
+    elixirDropdown:Add('丹炉1')
+    self:addDropdownSpacer(elixirDropdown)
+
+    tabs.upgrade:AddButton('传送炼器台', function()
+        RespawnService:teleportForge()
+    end)
+    tabs.upgrade:AddButton('丹炉目标 +1', function()
+        updateSetting({ 'batch', 'elixirTarget' }, math.min(1000, (tonumber(State.settings.batch.elixirTarget) or 80) + 1))
+        self:updateSummary()
+    end)
+    tabs.upgrade:AddButton('丹炉目标 -1', function()
+        updateSetting({ 'batch', 'elixirTarget' }, math.max(0, (tonumber(State.settings.batch.elixirTarget) or 80) - 1))
+        self:updateSummary()
+    end)
+    tabs.upgrade:AddButton('丹炉升级', function()
+        OverclockController:runElixirBatch()
+    end)
+
+    controls.safetySwitch = tabs.tools:AddSwitch('安全模式', function(value)
+        updateSetting('safetyMode', value)
+    end)
+
+    controls.blackScreenSwitch = tabs.tools:AddSwitch('黑幕开/关', function(value)
+        updateSetting('blackScreen', value)
+        SafetyController:setBlackScreen(value)
+    end)
+
+    tabs.tools:AddButton('刷新重生点', function()
+        RespawnService:refresh(true)
+    end)
+    tabs.tools:AddButton('回家', function()
+        RespawnService:teleportHome()
+    end)
+    tabs.tools:AddButton('关闭设置', function()
+        MiscController:closeSettingsOnce()
+    end)
+    tabs.tools:AddButton('每月钥匙购买', function()
+        MiscController:buyMonthlyKeys()
+    end)
+    tabs.tools:AddButton('每星期竞技场水滴购买', function()
+        MiscController:buyArenaWater()
+    end)
+    tabs.tools:AddButton('删除语言配置', function()
+        MiscController:deleteLanguageConfig()
+    end)
+    tabs.tools:AddButton('每秒击杀/金币数', function()
+        MiscController:runStatsScript()
+    end)
+    tabs.tools:AddButton('测试每日重置', function()
+        State.rewards.countdown = nil
+        DailyResetService:force()
+    end)
+
+    tabs.interface:AddButton('开启每日任务', UiOpeners.openDailyTask)
+    tabs.interface:AddButton('开启邮件', UiOpeners.openMail)
+    tabs.interface:AddButton('开启转盘', UiOpeners.openSpin)
+    tabs.interface:AddButton('开启阵法', UiOpeners.openRune)
+    tabs.interface:AddButton('开启世界树', UiOpeners.openWorldTree)
+    tabs.interface:AddButton('开启炼器台', UiOpeners.openForge)
+    tabs.interface:AddButton('开启炼丹炉', UiOpeners.openElixir)
+    tabs.interface:AddButton('开启农田', function()
+        OverclockController:refreshFarmSelection(State.settings.batch.selectedFarm or 1)
+        self:updateSummary()
+    end)
+    tabs.interface:AddButton('开启公会', function()
+        GuildController:openGuildPanel()
+    end)
+
+    State.ui.followDropdown = tabs.follow:AddDropdown('选择玩家', function(selected)
+        updateSetting({ 'follow', 'selectedPlayer' }, selected)
+        FollowController:sync()
+    end)
+    State.ui.followDropdownOptions = {}
+    self:rebuildPlayerDropdown()
+
+    controls.followSwitch = tabs.follow:AddSwitch('传送玩家到副本', function(value)
+        updateSetting({ 'follow', 'enabled' }, value)
+        FollowController:sync()
+    end)
+    tabs.follow:AddButton('触发协助事件', function()
+        FollowController:triggerAssist()
+    end)
+
+    controls.monitorSwitch = tabs.monitor:AddSwitch('智能草药监控', function(value)
+        updateSetting({ 'monitor', 'enabled' }, value)
+        MonitorController:sync()
+    end)
+    controls.monitorTradeSwitch = tabs.monitor:AddSwitch('高草药触发交易', function(value)
+        updateSetting({ 'monitor', 'autoTradeOnHighHerb' }, value)
+    end)
+    controls.monitorElixirSwitch = tabs.monitor:AddSwitch('高草药触发炼丹', function(value)
+        updateSetting({ 'monitor', 'autoElixirOnHighHerb' }, value)
+    end)
+    controls.webhookSwitch = tabs.monitor:AddSwitch('启用 Webhook', function(value)
+        updateSetting({ 'monitor', 'webhookEnabled' }, value)
+    end)
+    tabs.monitor:AddTextBox('Webhook URL', function(text)
+        updateSetting({ 'monitor', 'webhookUrl' }, tostring(text or ''))
+    end)
+    tabs.monitor:AddTextBox('高草药阈值', function(text)
+        local value = tonumber((tostring(text or '')):gsub('[^%d]', ''))
+        if value then
+            updateSetting({ 'monitor', 'highHerbThreshold' }, value)
+        end
+    end)
+    tabs.monitor:AddTextBox('低草药阈值', function(text)
+        local value = tonumber((tostring(text or '')):gsub('[^%d]', ''))
+        if value then
+            updateSetting({ 'monitor', 'lowHerbThreshold' }, value)
+        end
+    end)
+    tabs.monitor:AddButton('手动发送 Webhook', function()
+        MonitorController:sendWebhook()
+    end)
+
+    self:safeSet(controls.rewardsSwitch, State.settings.autoOnlineRewards, 'rewardsSwitch')
+    self:safeSet(controls.legacyDailySwitch, State.settings.autoLegacyDaily, 'legacyDailySwitch')
+    self:safeSet(controls.investSwitch, State.settings.autoInvest, 'investSwitch')
+    self:safeSet(controls.collectSwitch, State.settings.autoCollectHerbs, 'collectSwitch')
+    self:safeSet(controls.privilegeSwitch, State.settings.autoRefinePrivilege, 'privilegeSwitch')
+    self:safeSet(controls.worldAutoStartSwitch, State.settings.world.autoStart, 'worldAutoStartSwitch')
+    self:safeSet(controls.worldReenterSwitch, State.settings.world.autoReenter75, 'worldReenterSwitch')
+    self:safeSet(controls.dungeonSyncSwitch, State.settings.dungeon.autoSyncUi, 'dungeonSyncSwitch')
+    self:safeSet(controls.dungeonAutoStartSwitch, State.settings.dungeon.autoStart, 'dungeonAutoStartSwitch')
+    self:safeSet(controls.dungeonPlusOneSwitch, State.settings.dungeon.autoPlusOne, 'dungeonPlusOneSwitch')
+    self:safeSet(controls.dungeonFinishAllSwitch, State.settings.dungeon.autoFinishAll, 'dungeonFinishAllSwitch')
+    self:safeSet(controls.donateSwitch, State.settings.autoDonate, 'donateSwitch')
+    self:safeSet(controls.guildShopSwitch, State.settings.autoGuildShop, 'guildShopSwitch')
+    self:safeSet(controls.autoLotterySwitch, State.settings.autoLottery, 'autoLotterySwitch')
+    self:safeSet(controls.useDiamondsSwitch, State.settings.useDiamondsForLottery, 'useDiamondsSwitch')
+    self:safeSet(controls.autoElixirSwitch, State.settings.autoElixirCraft, 'autoElixirSwitch')
+    self:safeSet(controls.flyingSwordSwitch, State.settings.autoUpgradeFlyingSword, 'flyingSwordSwitch')
+    self:safeSet(controls.weaponSkillSwitch, State.settings.autoUpgradeWeaponSkill, 'weaponSkillSwitch')
+    self:safeSet(controls.runeSwitch, State.settings.autoUpgradeRune, 'runeSwitch')
+    self:safeSet(controls.showAllSwitch, State.settings.autoShowAllCurrency, 'showAllSwitch')
+    self:safeSet(controls.safetySwitch, State.settings.safetyMode, 'safetySwitch')
+    self:safeSet(controls.blackScreenSwitch, State.settings.blackScreen, 'blackScreenSwitch')
+    self:safeSet(controls.followSwitch, State.settings.follow.enabled, 'followSwitch')
+    self:safeSet(controls.monitorSwitch, State.settings.monitor.enabled, 'monitorSwitch')
+    self:safeSet(controls.monitorTradeSwitch, State.settings.monitor.autoTradeOnHighHerb, 'monitorTradeSwitch')
+    self:safeSet(controls.monitorElixirSwitch, State.settings.monitor.autoElixirOnHighHerb, 'monitorElixirSwitch')
+    self:safeSet(controls.webhookSwitch, State.settings.monitor.webhookEnabled, 'webhookSwitch')
+
+    Services.Players.PlayerAdded:Connect(function()
+        self:rebuildPlayerDropdown()
+    end)
+    Services.Players.PlayerRemoving:Connect(function()
+        self:rebuildPlayerDropdown()
+    end)
+
+    Scheduler:ensure('ui_summary_v2', function(job)
+        while job.enabled do
+            self:updateSummary()
+            task.wait(1)
+        end
+    end)
+end
+
+local function enableAntiAfk()
+    if not State.settings.autoAntiAfk then
+        return
+    end
+
     player.Idled:Connect(function()
         Services.VirtualUser:CaptureController()
         Services.VirtualUser:ClickButton2(Vector2.new())
         task.wait(2)
     end)
-    local window = library:AddWindow(
-        'Cultivation-Simulator  养成模拟器',
-        {
-            main_color = Color3.fromRGB(41, 74, 122),
-            min_size = Vector2.new(530, 315),
-            can_resize = false,
-        }
-    )
-    local function safeSetControl(control, value, controlName)
-        if control and control.Set then
-            control:Set(value)
-            return true
-        end
-        warn('控件无法设置默认值: ' .. tostring(controlName))
-        return false
-    end
-    local features = window:AddTab('自述')
-    local features1 = window:AddTab('Main')
-    local features2 = window:AddTab('副本')
-    local features3 = window:AddTab('地下城')
-    local features4 = window:AddTab('抽取')
-    local features5 = window:AddTab('杂项')
-    local features6 = window:AddTab('开启UI')
-    local features7 = window:AddTab('设定')
-    local features8 = window:AddTab('农田操作')
-    local features9 = window:AddTab('加入副本')
-    local ws = game:GetService('Workspace')
-    local Players = game.Players
-    local localPlayer = game.Players.LocalPlayer
-    local playerGui = player.PlayerGui
-    local RespawPointnum = RespawPoint:match('%d+')
-    print('重生点编号：' .. RespawPointnum)
-    local reworld = ws:WaitForChild('主場景' .. RespawPointnum)
-        :WaitForChild('重生点')
-    local TPX, TPY, TPZ =
-        reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
-    local Restart = false
-    local finishworldnum
-    local values = player:WaitForChild('值')
-    local privileges = values:WaitForChild('特权')
-    local DEFAULT_WORLD_LEVEL = 78
-    local worldSettingsFilePath = 'WorldSettings.json'
-    local function normalizeWorldSettings(settings)
-        local normalized = settings or {}
-        local worldLevel = math.floor(
-            tonumber(normalized.worldLevel) or DEFAULT_WORLD_LEVEL
-        )
-        if worldLevel < 1 then
-            worldLevel = DEFAULT_WORLD_LEVEL
-        end
-        return {
-            worldLevel = worldLevel,
-            worldMode = (normalized.worldMode == 'auto_highest')
-                and 'auto_highest'
-                or 'manual',
-            worldAutoStart = normalized.worldAutoStart == true,
-        }
-    end
-    local function loadWorldSettingsData()
-        if not isfile(worldSettingsFilePath) then
-            return {}
-        end
-        local success, fileContent = pcall(readfile, worldSettingsFilePath)
-        if not success or fileContent == '' then
-            return {}
-        end
-        local decodeSuccess, data =
-            pcall(Services.HttpService.JSONDecode, Services.HttpService, fileContent)
-        if not decodeSuccess or type(data) ~= 'table' then
-            warn('WorldSettings.json 解析失败，已回退为默认配置')
-            return {}
-        end
-        return data
-    end
-    local function saveWorldSettingsData(data)
-        local encodeSuccess, fileContent =
-            pcall(Services.HttpService.JSONEncode, Services.HttpService, data)
-        if not encodeSuccess then
-            warn('WorldSettings.json 编码失败')
-            return false
-        end
-        local writeSuccess, writeError =
-            pcall(writefile, worldSettingsFilePath, fileContent)
-        if not writeSuccess then
-            warn('WorldSettings.json 写入失败: ' .. tostring(writeError))
-            return false
-        end
-        return true
-    end
-    local function getPlayerWorldSettings()
-        local allSettings = loadWorldSettingsData()
-        return normalizeWorldSettings(allSettings[player.Name])
-    end
-    local function updatePlayerWorldSettings(updates)
-        local allSettings = loadWorldSettingsData()
-        local playerSettings = normalizeWorldSettings(allSettings[player.Name])
-        for key, value in pairs(updates) do
-            playerSettings[key] = value
-        end
-        playerSettings = normalizeWorldSettings(playerSettings)
-        allSettings[player.Name] = playerSettings
-        saveWorldSettingsData(allSettings)
-        return playerSettings
-    end
-    local gowordlevels = getPlayerWorldSettings().worldLevel
-    local isDetectionEnabled = true
-    local playerInRange = false
-    local timescheck = 0
-    local hasPrintedNoPlayer = false
-    local showone = false
-    local savemodetime = 0
-    local savemodetime2 = 0
-    local savemodebutton
-
-    -- ====================================================================
-    -- 右上角提示系统（简单版）
-    -- ====================================================================
-    local function showTopRightNotice(text, lifetime)
-        local pg = player:WaitForChild('PlayerGui')
-        local gui = pg:FindFirstChild('FarmNoticeGui')
-            or Instance.new('ScreenGui')
-        gui.Name = 'FarmNoticeGui'
-        gui.ResetOnSpawn = false
-        gui.Parent = pg
-
-        local label = gui:FindFirstChild('Notice') or Instance.new('TextLabel')
-        label.Name = 'Notice'
-        label.AnchorPoint = Vector2.new(1, 0)
-        label.Position = UDim2.new(1, -20, 0, 20)
-        label.Size = UDim2.new(0, 260, 0, 34)
-        label.BackgroundTransparency = 0.3 -- 不透明背景
-        label.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- 黑色背景
-        label.TextColor3 = Color3.fromRGB(255, 0, 0) -- 红色文字
-        label.TextScaled = true
-        label.TextWrapped = true
-        label.Font = Enum.Font.SourceSansSemibold
-        label.Text = text
-        label.Parent = gui
-
-        task.delay(lifetime or 3, function()
-            if label then
-                label:Destroy()
-            end
-            if gui and #gui:GetChildren() == 0 then
-                gui:Destroy()
-            end
-        end)
-    end
-    -- ====================================================================
-    -- 任务完成状态追踪（用于农田收菜流程）
-    -- ====================================================================
-    local donationFinished = false        -- 公会捐献是否完成
-    local herbBuyFinished = false         -- 草药购买是否完成
-    local herbCollectFinished = false     -- 草药收集是否完成
-    local farmReady = false              -- 农田5是否准备好
-    local function checkAllTasksFinished()
-        if
-            donationFinished
-            and herbBuyFinished
-            and herbCollectFinished
-            and farmReady
-        then
-            showTopRightNotice('收菜完成！', 1)
-        end
-    end
-    local function setupFeaturesTab(features)
-        local function checkPlayersInRange()
-            local character = localPlayer.Character
-            if
-                not character or not character:FindFirstChild(
-                    'HumanoidRootPart'
-                )
-            then
-                return
-            end
-            local boxPosition = character.HumanoidRootPart.Position
-            local boxSize = Vector3.new(500, 500, 500) / 2
-            playerInRange = false
-            for _, player in pairs(Players:GetPlayers()) do
-                if
-                    (player ~= localPlayer)
-                    and player.Character
-                    and player.Character:FindFirstChild('HumanoidRootPart')
-                then
-                    local playerPosition =
-                        player.Character.HumanoidRootPart.Position
-                    local inRange = (
-                        math.abs(playerPosition.X - boxPosition.X) <= boxSize.X
-                    )
-                        and (math.abs(playerPosition.Y - boxPosition.Y) <= boxSize.Y)
-                        and (
-                            math.abs(playerPosition.Z - boxPosition.Z)
-                            <= boxSize.Z
-                        )
-                    if inRange then
-                        playerInRange = true
-                        break
-                    end
-                end
-            end
-            if playerInRange then
-                if timescheck == 0 then
-                    savemodetime2 = 0
-                    savemodetime = 0
-                    timescheck = 1
-                    hasPrintedNoPlayer = true
-                end
-            elseif timescheck == 1 then
-                timescheck = 0
-                savemodetime2 = 0
-                hasPrintedNoPlayer = false
-            end
-            if not playerInRange and not hasPrintedNoPlayer then
-                savemodetime = 0
-                savemodetime2 = 0
-                hasPrintedNoPlayer = true
-            end
-        end
-        local function setupRangeDetection()
-            while true do
-                if isDetectionEnabled then
-                    checkPlayersInRange()
-                end
-                task.wait(0.1)
-            end
-        end
-        local function toggleDetection()
-            isDetectionEnabled = not isDetectionEnabled
-            print(
-                '检测已' .. ((isDetectionEnabled and '启用') or '关闭')
-            )
-            if not isDetectionEnabled then
-                savemodetime = 0
-                savemodetime2 = 0
-            end
-        end
-        local function getGiftCountdown(index)
-            local gift = Online_Gift:FindFirstChild('Online_Gift' .. index)
-            if not gift then
-                return nil
-            end
-            local countdownText = gift:FindFirstChild('按钮')
-                :FindFirstChild('倒计时').Text
-            if countdownText == 'CLAIMED!' then
-                return 0
-            elseif countdownText == 'DONE' then
-                local args = { [1] = index }
-                PathCache.Activity:FindFirstChild('\233\162\134\229\143\150\229\165\150\229\138\177'):FireServer(unpack(args))
-                return 0
-            else
-                local minutes, seconds = countdownText:match('^(%d+):(%d+)$')
-                if minutes and seconds then
-                    return (tonumber(minutes) * 60) + tonumber(seconds)
-                end
-            end
-            return nil
-        end
-        local function checkOnlineGiftcountdown()
-            local minCountdown = math.huge
-            local Countdown = {}
-            for i = 1, 6 do
-                local totalSeconds = getGiftCountdown(i)
-                if totalSeconds then
-                    Countdown[i] = totalSeconds
-                    OnlineGift_data[i] = totalSeconds
-                    if (totalSeconds < minCountdown) and (totalSeconds > 0) then
-                        minCountdown = totalSeconds
-                    end
-                else
-                    Countdown[i] = nil
-                end
-            end
-            if minCountdown ~= math.huge then
-                if localCountdownActive then
-                    for i = 1, 6 do
-                        if Countdown[i] and (Countdown[i] > 0) then
-                            Countdown[i] = Countdown[i] - 1
-                            local minutes = math.floor(Countdown[i] / 60)
-                            local seconds = Countdown[i] % 60
-                            local formattedTime =
-                                string.format('%02d:%02d', minutes, seconds)
-                            Online_Gift:FindFirstChild('Online_Gift' .. i)
-                                :FindFirstChild('按钮')
-                                :FindFirstChild('倒计时').Text =
-                                formattedTime
-                        end
-                    end
-                    minCountdown = minCountdown - 1
-                else
-                end
-            end
-        end
-        local function chaangeonlinegiftname()
-            for i = 1, 6 do
-                local giftName = '在线奖励0' .. i
-                local gift = Online_Gift:FindFirstChild(giftName)
-                if gift then
-                    gift.Name = 'Online_Gift' .. tostring(gift.LayoutOrder + 1)
-                    print('名称已更改为：' .. gift.Name)
-                else
-                    allGiftsExist = false
-                    break
-                end
-            end
-            if allGiftsExist then
-                print('在线奖励--名称--已全部更改')
-            else
-                print('名称已重复或部分名称不存在')
-            end
-        end
-        local function checkTimeAndRun()
-            task.spawn(function()
-                while true do
-                    local currentTime = os.time()
-                    local utcTime = os.date('!*t', currentTime)
-                    local utcPlus8Time = os.date('*t', currentTime + (8 * 3600))
-                    if (utcPlus8Time.hour == 0) and (utcPlus8Time.min == 0) then
-                        print(
-                            'UTC+8 时间为 00:00，开始执行更新数据...'
-                        )
-                        task.spawn(function()
-                            allGiftsExist = true
-                            chaangeonlinegiftname()
-                            task.wait(1)
-                            checkOnlineGiftcountdown()
-                        end)
-                        task.wait(60)
-                    end
-                    task.wait(1)
-                end
-            end)
-        end
-        checkTimeAndRun()
-        features4:Show()
-        local AddLabelfeatures = features:AddLabel('重生点：重生点')
-        AddLabelfeatures.Text = '重生点：'
-            .. RespawPoint
-            .. ' -- 传送错误请回家后使用底下按钮'
-        local function Respawn_Point()
-            RespawPoint = loadstring(
-                game:HttpGet(
-                    'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua'
-                )
-            )()
-            AddLabelfeatures.Text = '重生点：'
-                .. RespawPoint
-                .. ' -- 传送错误请回家后使用底下按钮'
-            print('最近的出生点：' .. RespawPoint)
-            RespawPointnum = RespawPoint:match('%d+')
-            print('重生点编号：' .. RespawPointnum)
-            reworld = workspace
-                :WaitForChild('主场景' .. RespawPointnum)
-                :WaitForChild('重生点')
-            TPX, TPY, TPZ =
-                reworld.Position.X, reworld.Position.Y + 5, reworld.Position.Z
-            print('传送座标：' .. TPX .. ' ' .. TPY .. ' ' .. TPZ)
-            player.Character:WaitForChild('HumanoidRootPart').CFrame =
-                CFrame.new(TPX, TPY, TPZ)
-        end
-        features:AddButton('重生点更改', function()
-            Respawn_Point()
-        end)
-        local function updateButtonText()
-            if isDetectionEnabled then
-                savemodebutton.Text = ' 状态：已启用安全模式'
-            else
-                savemodebutton.Text = ' 状态：以关闭安全模式'
-            end
-        end
-        savemodebutton = features:AddButton(
-            ' 状态：启用安全模式 ',
-            function()
-                inRange = false
-                playerInRange = false
-                timescheck = 0
-                hasPrintedNoPlayer = false
-                toggleDetection()
-                updateButtonText()
-            end
-        )
-        updateButtonText()
-        task.spawn(setupRangeDetection)
-        local screenGui = Instance.new('ScreenGui')
-        screenGui.Parent = game.Players.LocalPlayer:WaitForChild('PlayerGui')
-        local blackBlock = Instance.new('Frame')
-        blackBlock.Size = UDim2.new(200, 0, 200, 0)
-        blackBlock.Position = UDim2.new(0, 0, 0, 0)
-        blackBlock.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        blackBlock.Visible = false
-        blackBlock.Parent = screenGui
-        features:AddButton('黑幕开/关闭', function()
-            blackBlock.Visible = not blackBlock.Visible
-        end)
-    end
-
-    local function setupFeatures1Tab(features1)
-        local timeLabel =
-            features1:AddLabel('距离下自动获取还有 0 秒')
-        local playerGui = game.Players.LocalPlayer.PlayerGui
-        local Online_Gift = playerGui.GUI
-            :WaitForChild('二级界面')
-            :WaitForChild('节日活动商店')
-            :WaitForChild('背景')
-            :WaitForChild('右侧界面')
-            :WaitForChild('在线奖励')
-            :WaitForChild('列表')
-        local Gife_check = false
-        local onlineGiftThread = nil
-        local countdownList = {}
-        local lastExecutedDay = os.date('!%Y-%m-%d', os.time() + (8 * 3600))
-
-        local function convertToSeconds(timeText)
-            local minutes, seconds = string.match(timeText, '(%d+):(%d+)')
-            if minutes and seconds then
-                return (tonumber(minutes) * 60) + tonumber(seconds)
-            end
-            return nil
-        end
-        local function GetOnlineGiftCountdown()
-            local minTime = math.huge
-            for i = 1, 6 do
-                local rewardName = string.format('在线奖励%02d', i)
-                local rewardFolder = Online_Gift:FindFirstChild(rewardName)
-                if rewardFolder then
-                    local button = rewardFolder:FindFirstChild('按钮')
-                    local countdown = button
-                        and button:FindFirstChild('倒计时')
-                    if countdown then
-                        local countdownText = countdown.Text
-                        countdownList[rewardName] = countdownText
-                        if string.match(countdownText, 'CLAIMED!') then
-                        elseif string.match(countdownText, 'DONE') then
-                            minTime = math.min(minTime, 0)
-                        elseif string.match(countdownText, '%d+:%d+') then
-                            local totalSeconds = convertToSeconds(countdownText)
-                            if totalSeconds then
-                                minTime = math.min(minTime, totalSeconds)
-                            end
-                        end
-                    end
-                end
-            end
-            return ((minTime < math.huge) and minTime) or nil
-        end
-        local minCountdown = GetOnlineGiftCountdown()
-        local nowminCountdown = minCountdown
-        local function Online_Gift_start()
-            -- 如果倒计时到达或小于等于0，触发领取
-            if nowminCountdown and (nowminCountdown <= 0) then
-                timeLabel.Text = '倒计时结束，准备获取奖励'
-                -- 触发所有可领取的奖励
-                for i = 1, 6 do
-                    local args = { [1] = i }
-                    pcall(function()
-                        PathCache.Activity
-                            :FindFirstChild('\233\162\134\229\143\150\229\165\150\229\138\177')
-                            :FireServer(unpack(args))
-                    end)
-                end
-                -- 等待服务器响应，然后重新获取倒计时
-                task.wait(2)
-            end
-            
-            -- 每次循环都重新获取当前倒计时（获取最新状态）
-            local newMinCountdown = GetOnlineGiftCountdown()
-            
-            -- 更新倒计时状态
-            if newMinCountdown then
-                -- 如果获取到新的倒计时
-                if newMinCountdown ~= minCountdown then
-                    -- 倒计时已更新（新的奖励或领取后刷新），重置计数器
-                    minCountdown = newMinCountdown
-                    nowminCountdown = minCountdown
-                elseif nowminCountdown and nowminCountdown > 0 then
-                    -- 倒计时还在进行中，继续减少
-                    nowminCountdown = nowminCountdown - 1
-                else
-                    -- 倒计时未初始化或已归零，设置为新值
-                    nowminCountdown = newMinCountdown
-                    minCountdown = newMinCountdown
-                end
-                
-                -- 更新显示
-                if nowminCountdown and (nowminCountdown > 0) then
-                    timeLabel.Text = string.format(
-                        '距离下自动获取还有 %d 秒',
-                        nowminCountdown
-                    )
-                elseif nowminCountdown and (nowminCountdown <= 0) then
-                    -- 倒计时已归零，下次循环会触发领取
-                    timeLabel.Text = '倒计时即将结束...'
-                end
-            else
-                -- 没有倒计时，说明当前周期全部领取完成，继续等待下一次刷新
-                timeLabel.Text = '已全部领取，等待刷新...'
-            end
-        end
-        local function Online_Gift_check()
-            while Gife_check do
-                Online_Gift_start()
-                if nowminCountdown and (nowminCountdown > 0) then
-                    task.wait(1)
-                else
-                    task.wait(5)
-                end
-            end
-            onlineGiftThread = nil
-        end
-        local function ClaimOnlineRewards()
-            if Gife_check and onlineGiftThread then
-                return
-            end
-            Gife_check = true
-            onlineGiftThread = task.spawn(Online_Gift_check)
-        end
-        -- 创建按钮时引用函数
-        features1:AddButton('自动领取在线奖励', ClaimOnlineRewards)
-        -- 启动时自动执行
-        task.defer(function()
-            ClaimOnlineRewards()
-        end)
-        task.spawn(function()
-            while true do
-                local utcPlus8 = os.date('!*t', os.time() + (8 * 3600))
-                local currentLocalHour = utcPlus8.hour
-                local currentLocalDate = string.format(
-                    '%04d-%02d-%02d',
-                    utcPlus8.year,
-                    utcPlus8.month,
-                    utcPlus8.day
-                )
-                if
-                    currentLocalHour == 0
-                    and lastExecutedDay ~= currentLocalDate
-                then
-                    print('UTC+8 00:00，在线奖励刷新，继续自动领取')
-                    lastExecutedDay = currentLocalDate
-                    countdownList = {}
-                    minCountdown = nil
-                    nowminCountdown = 0
-                    ClaimOnlineRewards()
-                end
-                task.wait(60)
-            end
-        end)
-        -- 自动任务领取控制变量（局部变量）
-        local Autocollmissionbool = false
-        
-        local Autocollmission = features1:AddSwitch(
-            '自动任务领取(包括GamePass任务、奖励)',
-            function(bool)
-                Autocollmissionbool = bool
-                if Autocollmissionbool then
-                    -- 主任务循环（每20秒执行一次）
-                    task.spawn(function()
-                        while Autocollmissionbool do
-                            pcall(function()
-                                mainmissionchack()
-                                everydaymission()
-                                gamepassmission()
-                                gamepassgiftget()
-                                potionfull()
-                            end)
-                            task.wait(20)
-                        end
-                    end)
-
-                    -- dailyspin 独立循环（每500秒执行一次）
-                    task.spawn(function()
-                        while Autocollmissionbool do
-                            pcall(function()
-                                dailyspin()
-                                offlinereward()
-                                everydaygem()
-                            end)
-                            task.wait(500)
-                        end
-                    end)
-                end
-            end
-        )
-
-        safeSetControl(Autocollmission, true, 'Autocollmission')
-        -- 自动投资控制变量（局部变量）
-        local investbool = false
-        
-        local invest = features1:AddSwitch('自动执行投资', function(bool)
-            investbool = bool
-            if investbool then
-                task.spawn(function()
-                    while investbool do
-                        pcall(function()
-                            -- 领取投资
-                            for i = 1, 3 do
-                                local args = { i }
-                                PathCache.Shop:FindFirstChild('\233\147\182\232\161\140'):FindFirstChild('\233\162\134\229\143\150\231\144\134\232\180\162')
-                                    :FireServer(unpack(args))
-                            end
-                            task.wait(5)
-                            -- 升级投资
-                            for i = 1, 3 do
-                                local args = { i }
-                                PathCache.Shop:FindFirstChild('\233\147\182\232\161\140'):FindFirstChild('\232\180\173\228\185\176\231\144\134\232\180\162')
-                                    :FireServer(unpack(args))
-                            end
-                        end)
-                        task.wait(600)
-                    end
-                end)
-            end
-        end)
-        safeSetControl(invest, true, 'invest')
-        local function openFarm5()
-            pcall(function()
-                -- 使用路径缓存优化
-                local farmUI = Services.ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182')
-                    :FindFirstChild('\229\134\156\231\148\176')
-                    :FindFirstChild('\229\134\156\231\148\176UI')
-                    :FindFirstChild('\229\177\158\230\128\167\229\140\186\229\159\159')
-                if farmUI then
-                    farmUI:FireServer(5)
-                end
-            end)
-            task.wait(0.5) -- 给UI一点时间打开
-        end
-
-        -- 读取你指定路径上的数字文本
-        local function readFarm5Number()
-            local root = player:WaitForChild('PlayerGui'):WaitForChild('GUI')
-
-            local label = Utils.deepWait(root, {
-                '\228\186\140\231\186\167\231\149\140\233\157\162',
-                '\229\134\156\231\148\176',
-                '\232\131\140\230\153\175',
-                '\229\177\158\230\128\167\229\140\186\229\159\159',
-                '\230\148\182\233\155\134\230\140\137\233\146\174',
-                '\230\149\176\233\135\143\229\140\186',
-                '\230\149\176\233\135\143',
-            }, 5)
-
-            if not label or not label:IsA('TextLabel') then
-                return nil
-            end
-            -- 这里按你的描述就是“一个数字”，直接 tonumber
-            return tonumber(label.Text) or 0
-        end
-
-        -- 等待直到该数字 < 100；若 >=100 就每3秒再查一次
-        local function waitFarm5Below100(maxMinutes)
-            local deadline = os.clock() + (maxMinutes or 10) * 60 -- 最多等10分钟（可改）
-            while os.clock() < deadline do
-                local n = readFarm5Number()
-                if n == nil then
-                    warn('[农田5] 读取数字失败，3秒后重试')
-                    task.wait(3)
-                elseif n < 100 then
-                    farmReady = true
-                    print('[农田5] 数值 < 100，标记 farmReady = true')
-                    checkAllTasksFinished()
-                    return true
-                else
-                    -- 未小于100，3秒后再查
-                    task.wait(3)
-                end
-            end
-            warn('[农田5] 等待超时（超过上限仍 >=100）')
-            return false
-        end
-        -- 自动采草药控制变量（局部变量）
-        local AutoCollectherbsbool = false
-        
-        local AutoCollectherbs = features1:AddSwitch(
-            '自动采草药',
-            function(bool)
-                AutoCollectherbsbool = bool
-                if AutoCollectherbsbool then
-                    task.spawn(function()
-                        while AutoCollectherbsbool do
-                            pcall(function()
-                                for i = 1, 6 do
-                                    local args = { [1] = i, [2] = nil }
-                                    PathCache.Farm:FindFirstChild('\233\135\135\233\155\134')
-                                        :FireServer(unpack(args))
-                                    task.wait(0.1)
-                                end
-
-                                -- ?? 一轮收集完成
-                                herbCollectFinished = true
-                                print(
-                                    '[系统] 草药收集一轮完成，检查农田 5 状态…'
-                                )
-                                openFarm5()
-                                waitFarm5Below100()
-                            end)
-
-                            task.wait(60) -- 等下一轮
-                        end
-                    end)
-                end
-            end
-        )
-
-        safeSetControl(AutoCollectherbs, true, 'AutoCollectherbs')
-        features1:AddLabel(' - - 通行证解锁')
-        local Refining = features1:AddSwitch(
-            '解锁自动炼制',
-            function(bool)
-                local Refiningbool = bool
-                privileges:WaitForChild('超级炼制').Value = false
-                privileges:WaitForChild('自动炼制').Value = Refiningbool
-            end
-        )
-        safeSetControl(Refining, true, 'Refining')
-        local showAll = features1:AddSwitch('显示所有货币', function(bool)
-            ShowAllbool = bool
-            if ShowAllbool then
-                task.spawn(function()
-                    while ShowAllbool do
-                        pcall(function()
-                            local currencyPanel = PathCache.GUI.Main['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']
-                            currencyPanel['\230\180\187\229\138\168\231\137\169\229\147\129'].Visible = true
-                            currencyPanel['\231\159\191\231\159\179'].Visible = false
-                            currencyPanel['\231\172\166\231\159\179\231\178\137\230\156\171'].Visible = true
-                            currencyPanel['\231\173\137\231\186\167'].Visible = true
-                            currencyPanel['\231\180\171\233\146\187'].Visible = true
-                            currencyPanel['\232\141\137\232\141\175'].Visible = false
-                            currencyPanel['\233\135\145\229\184\129'].Visible = true
-                            currencyPanel['\233\146\187\231\159\179'].Visible = true
-                        end)
-                        task.wait(0.3)
-                    end
-                end)
-            end
-        end)
-        safeSetControl(showAll, false, 'showAll')
-        -- 方案一：函数复用模式（推荐）
-        local function RemoveRewardUI()
-            local rewardUI = playerGui.GUI:WaitForChild('二级界面')
-
-            -- 定义需要删除的子对象名称
-            local rewardUINames = {
-                '展示奖励界面',
-                '离线奖励',
-                '版本说明',
-                '7日奖励',
-            }
-            local success = false
-
-            -- 遍历所有需要删除的子对象
-            for _, name in ipairs(rewardUINames) do
-                local child = rewardUI:FindFirstChild(name)
-                if child then
-                    child:Destroy()
-                    print('成功删除: ' .. name)
-                    success = true
-                else
-                    print('未找到: ' .. name)
-                end
-            end
-
-            -- 返回是否成功删除了至少一个子对象
-            return success
-        end
-
-        -- 创建按钮并立即执行
-        features1:AddButton('删除显示获得的奖励(所有的)', function()
-            RemoveRewardUI()
-        end)
-
-        -- 启动时延迟执行
-        task.defer(function()
-            RemoveRewardUI()
-        end)
-        features1:AddButton('兑换游戏礼品码', function()
-            local gamecode = {
-                'ilovethisgame',
-                'welcome',
-                '30klikes',
-                '40klikes',
-                'halloween',
-                'artistkapouki',
-                '45klikes',
-                '60klikes',
-            }
-            for i = 1, #gamecode do
-                print(gamecode[i])
-                local args = { [1] = gamecode[i] }
-                PathCache.Events
-                    :FindFirstChild('\230\191\128\230\180\187\231\160\129')
-                    :FindFirstChild(
-                        '\231\142\169\229\174\182\229\133\145\230\141\162\230\191\128\230\180\187\231\160\129'
-                    )
-                    :FireServer(unpack(args))
-            end
-        end)
-    end
-    local function setupFeatures2Tab(features2)
-        -- 75关自动重试的全局控制变量
-        local AutoReenter = false
-        local AutoReenterThread = nil
-        local Autostartwarld = false
-        local AutostartThread = nil
-        local savedWorldSettings = getPlayerWorldSettings()
-        local worldSelectionMode = savedWorldSettings.worldMode
-        local autoHighestWorldThread = nil
-        
-        local worldnum = player
-            :WaitForChild('值')
-            :WaitForChild('主线进度')
-            :WaitForChild('world').Value
-        local newworldnum = worldnum
-        local function statisticsupdata()
-            worldnum = player
-                :WaitForChild('值')
-                :WaitForChild('主线进度')
-                :WaitForChild('world').Value
-        end
-        task.spawn(function()
-            while true do
-                statisticsupdata()
-                task.wait(1)
-            end
-        end)
-        local Difficulty_choose =
-            features2:AddLabel('  当前选择 关卡： ' .. savedWorldSettings.worldLevel)
-        local function saveCurrentWorldSettings(updates)
-            savedWorldSettings = updatePlayerWorldSettings(updates)
-        end
-        local function gowordlevelscheak(gowordlevels)
-            if gowordlevels > worldnum then
-                if gowordlevels < 10 then
-                    Difficulty_choose.Text = '  关卡未解锁 关卡： 0'
-                        .. gowordlevels
-                else
-                    Difficulty_choose.Text = '  关卡未解锁 关卡： '
-                        .. gowordlevels
-                end
-            elseif gowordlevels < 10 then
-                Difficulty_choose.Text = '  当前选择 关卡： 0'
-                    .. gowordlevels
-            else
-                    Difficulty_choose.Text = '  当前选择 关卡： '
-                        .. gowordlevels
-            end
-        end
-        local function updateAutoHighestWorldLabel()
-            if worldnum < 10 then
-                Difficulty_choose.Text = '  当前选择最高关卡： 0' .. worldnum
-            else
-                Difficulty_choose.Text = '  当前选择最高关卡： ' .. worldnum
-            end
-        end
-        local function stopAutoHighestWorldMode(silent)
-            local wasAutoHighest = worldSelectionMode == 'auto_highest'
-            worldSelectionMode = 'manual'
-            if autoHighestWorldThread then
-                task.cancel(autoHighestWorldThread)
-                autoHighestWorldThread = nil
-            end
-            if wasAutoHighest and not silent then
-                print('自动最高关卡已停止')
-            end
-        end
-        local function setManualWorldLevel(newLevel, labelOverride, silentStop)
-            stopAutoHighestWorldMode(silentStop)
-            gowordlevels = math.max(1, math.floor(tonumber(newLevel) or DEFAULT_WORLD_LEVEL))
-            if labelOverride then
-                Difficulty_choose.Text = labelOverride
-            else
-                gowordlevelscheak(gowordlevels)
-            end
-            saveCurrentWorldSettings({
-                worldLevel = gowordlevels,
-                worldMode = 'manual',
-            })
-        end
-        local function startAutoHighestWorldMode()
-            if autoHighestWorldThread then
-                task.cancel(autoHighestWorldThread)
-                autoHighestWorldThread = nil
-            end
-            worldSelectionMode = 'auto_highest'
-            print('当前选择：自动最高关卡')
-            gowordlevels = worldnum
-            newworldnum = worldnum
-            updateAutoHighestWorldLabel()
-            saveCurrentWorldSettings({
-                worldLevel = gowordlevels,
-                worldMode = worldSelectionMode,
-            })
-            autoHighestWorldThread = task.spawn(function()
-                print('自动最高关卡已启动')
-                while worldSelectionMode == 'auto_highest' do
-                    if newworldnum ~= worldnum then
-                        gowordlevels = worldnum
-                        newworldnum = worldnum
-                        finishworldnum = tonumber(gowordlevels)
-                        updateAutoHighestWorldLabel()
-                        saveCurrentWorldSettings({
-                            worldLevel = gowordlevels,
-                            worldMode = worldSelectionMode,
-                        })
-                        wait(savemodetime2)
-                        wait(savemodetime + 1)
-                        local args = { [1] = finishworldnum }
-                        PathCache.Stage
-                            :FindFirstChild(
-                                '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
-                            )
-                            :FireServer(unpack(args))
-                    end
-                    task.wait(1)
-                end
-                autoHighestWorldThread = nil
-            end)
-        end
-        local Difficulty_selection = features2:AddDropdown(
-            '                关卡难易度选择                ',
-            function(text)
-                if text == '      世界关卡简单： 01       ' then
-                    print('当前选择：简单')
-                    setManualWorldLevel(1, '  当前选择： 01')
-                elseif text == '      世界关卡普通： 21       ' then
-                    print('当前选择：普通')
-                    setManualWorldLevel(21)
-                elseif text == '      世界关卡困难： 55       ' then
-                    print('当前选择：困难')
-                    setManualWorldLevel(55)
-                elseif text == '      世界关卡专家： 64       ' then
-                    print('当前选择：专家')
-                    setManualWorldLevel(64)
-                elseif text == '      世界关卡大师： 82       ' then
-                    print('当前选择：大师')
-                    setManualWorldLevel(82)
-                elseif text == '      世界关卡      ： 101       ' then
-                    print('当前选择：专家')
-                    setManualWorldLevel(101)
-                elseif text == '      自动最高关卡        ' then
-                    startAutoHighestWorldMode()
-                end
-            end
-        )
-        local Levels1 =
-            Difficulty_selection:Add('      世界关卡简单： 01       ')
-        local Levels2 =
-            Difficulty_selection:Add('      世界关卡普通： 21       ')
-        local Levels3 =
-            Difficulty_selection:Add('      世界关卡困难： 55       ')
-        local Levels4 =
-            Difficulty_selection:Add('      世界关卡专家： 64       ')
-        local Levels5 =
-            Difficulty_selection:Add('      世界关卡大师： 82       ')
-        local Levels99 =
-            Difficulty_selection:Add('      自动最高关卡        ')
-        local Levels999 = Difficulty_selection:Add('空白')
-        features2:AddButton('选择关卡+1', function()
-            setManualWorldLevel(gowordlevels + 1)
-        end)
-        features2:AddButton('选择关卡-1', function()
-            setManualWorldLevel(gowordlevels - 1)
-        end)
-        local combatUI = playerGui.GUI
-            :WaitForChild('主界面')
-            :WaitForChild('战斗')
-            :WaitForChild('关卡信息')
-            :WaitForChild('文本')
-        local function teleporttworld1()
-            local args = { [1] = gowordlevels }
-            PathCache.Stage
-                :FindFirstChild(
-                    '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
-                )
-                :FireServer(unpack(args))
-            print('传送世界关卡：' .. gowordlevels)
-        end
-        local function teleporttworld2()
-            finishworldnum = tonumber(gowordlevels)
-            local args = { [1] = finishworldnum }
-
-            -- 使用路径缓存
-            local targetEvent = PathCache.Stage
-                :FindFirstChild(
-                    '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161'
-                )
-
-            if targetEvent then
-                pcall(function()
-                    targetEvent:FireServer(unpack(args))
-                end)
-            end
-        end
-
-        local function CheckRestart()
-            local success, result = pcall(function()
-                return playerGui.GUI
-                    :WaitForChild('主界面')
-                    :WaitForChild('战斗')
-                    :WaitForChild('胜利结果').Text
-            end)
-
-            return success and result == 'Victory'
-        end
-        function teleporthome()
-            player.Character:WaitForChild('HumanoidRootPart').CFrame =
-                CFrame.new(TPX, TPY, TPZ)
-        end
-        features2:AddButton('传送', function()
-            teleporttworld1()
-        end)
-        features2:AddSwitch('大於75自动重新进入', function(state)
-            if state then
-                -- 如果已经运行，先停止
-                if AutoReenterThread then
-                    AutoReenter = false
-                    AutoReenterThread = nil
-                    task.wait(0.1) -- 等待旧线程停止
-                end
-                
-                AutoReenter = true
-                AutoReenterThread = task.spawn(function()
-                    while AutoReenter do
-                        local text = combatUI.Text
-                        local progress = text:match("-(%d+)%/")
-                        if progress then
-                            local num = tonumber(progress)
-                            if num and num >= 75 then
-                                teleporttworld1()
-                                task.wait(1)
-                            end
-                        end
-                        task.wait(1)
-                    end
-                    AutoReenterThread = nil -- 线程结束时清空引用
-                end)
-            else
-                -- 关闭时停止循环
-                AutoReenter = false
-                AutoReenterThread = nil
-            end
-        end)
-        if savedWorldSettings.worldMode == 'auto_highest' then
-            startAutoHighestWorldMode()
-        else
-            gowordlevels = savedWorldSettings.worldLevel
-            gowordlevelscheak(gowordlevels)
-        end
-
-        local isRestoringWorldAutoStart = true
-        local function setWorldAutoStart(enabled, persist)
-            if persist == false then
-                savedWorldSettings.worldAutoStart = enabled
-            else
-                saveCurrentWorldSettings({ worldAutoStart = enabled })
-            end
-            if enabled then
-                -- 如果已经运行，先停止
-                if AutostartThread then
-                    Autostartwarld = false
-                    task.cancel(AutostartThread)
-                    AutostartThread = nil
-                    task.wait(0.1) -- 等待旧线程停止
-                end
-
-                Autostartwarld = true
-                AutostartThread = task.spawn(function()
-                    while Autostartwarld do
-                        -- 双重状态检查
-                        if not Autostartwarld then
-                            break
-                        end
-
-                        local isVictory = CheckRestart()
-
-                        if isVictory then
-                            local char = player.Character
-                            if
-                                char
-                                and char:FindFirstChild('HumanoidRootPart')
-                            then
-                                local hrp = char.HumanoidRootPart
-                                hrp.CFrame = CFrame.new(TPX, TPY, TPZ)
-                                teleporttworld2()
-
-                                -- 分段等待便于中断
-                                for i = 1, 10 do
-                                    if not Autostartwarld then
-                                        break
-                                    end
-                                    task.wait(0.5)
-                                end
-                            end
-                        else
-                            local char = player.Character
-                            if
-                                char
-                                and char:FindFirstChild('HumanoidRootPart')
-                            then
-                                local hrp = char.HumanoidRootPart
-                                if
-                                    (hrp.Position - Vector3.new(
-                                        TPX,
-                                        TPY,
-                                        TPZ
-                                    )).Magnitude
-                                    < 2.5
-                                then
-                                    teleporttworld2()
-                                end
-                            end
-                        end
-
-                        -- 每次循环前检查
-                        if not Autostartwarld then
-                            break
-                        end
-                        task.wait(0.3)
-                    end
-                    Autostartwarld = false -- 确保状态同步
-                    AutostartThread = nil -- 线程结束时清空引用
-                end)
-            else
-                -- 安全关闭线程
-                Autostartwarld = false
-                if AutostartThread then
-                    task.cancel(AutostartThread)
-                    AutostartThread = nil
-                end
-            end
-        end
-        local Autostart = features2:AddSwitch(
-            '战斗结束后自动开始(世界战斗)',
-            function(bool)
-                if isRestoringWorldAutoStart then
-                    return
-                end
-                setWorldAutoStart(bool)
-            end
-        )
-
-        safeSetControl(
-            Autostart,
-            savedWorldSettings.worldAutoStart,
-            'Autostart'
-        )
-        isRestoringWorldAutoStart = false
-        setWorldAutoStart(savedWorldSettings.worldAutoStart, false)
-        local function toggleAfkMode()
-            local AFKmod = player
-                :WaitForChild('值')
-                :WaitForChild('设置')
-                :WaitForChild('自动战斗')
-            AFKmod.Value = not AFKmod.Value
-        end
-        features2:AddButton('挂机模式', function()
-            toggleAfkMode()
-        end)
-        if savedWorldSettings.worldAutoStart then
-            toggleAfkMode()
-        end
-    end
-    setupFeaturesTab(features)
-    setupFeatures1Tab(features1)
-    setupFeatures2Tab(features2)
-    local httpService = game:GetService('HttpService')
-    local player = game.Players.LocalPlayer
-    local filePath = 'DungeonsMaxLevel.json'
-    local updDungeonui = false
-    local AutoDungeonplus1 = false
-    local Notexecuted = true
-    local AutoDungeonplusonly = false
-    local Autofinishdungeon = false
-    local dungeonFunctions = {}
-    local function extractLocalPlayerData()
-        if not isfile(filePath) then
-            error('JSON 文件不存在：' .. filePath)
-        end
-        local fileContent = readfile(filePath)
-        local success, data =
-            pcall(httpService.JSONDecode, httpService, fileContent)
-        if not success then
-            error('无法解析 JSON 文件：' .. filePath)
-        end
-        local localPlayerName = player.Name
-        local localPlayerData = data[localPlayerName]
-        if not localPlayerData then
-            error(
-                'LocalPlayer 的资料不存在於 JSON 文件中：'
-                    .. localPlayerName
-            )
-        end
-        return localPlayerData
-    end
-    local function saveDungeonFunctions(playerData)
-        for dungeonName, maxLevel in pairs(playerData) do
-            local functionName = dungeonName:gsub('MaxLevel', '')
-            dungeonFunctions[functionName] = function()
-                return maxLevel
-            end
-        end
-    end
-    local function updateDungeonFunctions()
-        local playerData = JsonHandler.getPlayerData(filePath, player.Name)
-        dungeonFunctions = {}
-        saveDungeonFunctions(playerData)
-    end
-    local function main()
-        local success, playerData = pcall(extractLocalPlayerData)
-        if success then
-            saveDungeonFunctions(playerData)
-            print('Dungeon 函数已成功创建')
-        else
-            warn('提取资料失败：' .. tostring(playerData))
-        end
-    end
-    main()
-    task.spawn(function()
-        while true do
-            if updDungeonui then
-                pcall(function()
-                    local dungeonChoice = playerGui
-                        :WaitForChild('GUI')
-                        :WaitForChild('二级界面')
-                        :WaitForChild('关卡选择')
-                        :WaitForChild('副本选择弹出框')
-                        :WaitForChild('背景')
-                        :WaitForChild('标题')
-                        :WaitForChild('名称').Text
-                    local dungeonMaxLevel = tonumber(
-                        playerGui
-                            :WaitForChild('GUI')
-                            :WaitForChild('二级界面')
-                            :WaitForChild('关卡选择')
-                            :WaitForChild('副本选择弹出框')
-                            :WaitForChild('背景')
-                            :WaitForChild('难度')
-                            :WaitForChild('难度等级')
-                            :WaitForChild('值').Text
-                    )
-                    JsonHandler.updateDungeonMaxLevel(
-                        filePath,
-                        player.Name,
-                        dungeonChoice,
-                        dungeonMaxLevel
-                    )
-                    updateDungeonFunctions()
-                end)
-            end
-            task.wait(1)
-        end
-    end)
-    local playerData = JsonHandler.getPlayerData(filePath, player.Name)
-    print('玩家初始资料:')
-    for key, value in pairs(playerData) do
-        print(key, value)
-    end
-    local Dungeonslist = playerGui
-        :WaitForChild('GUI')
-        :WaitForChild('二级界面')
-        :WaitForChild('关卡选择')
-        :WaitForChild('背景')
-        :WaitForChild('右侧界面')
-        :WaitForChild('副本')
-        :WaitForChild('列表')
-    local dropdownchoose = 0
-    local dropdownchoose2 = '1'
-    local dropdownchoose3 = 0
-    local function getDungeonKey(dungeonName)
-        local dungeon = Dungeonslist:FindFirstChild(dungeonName)
-        if dungeon then
-            local keyText =
-                dungeon:WaitForChild('钥匙'):WaitForChild('值').Text
-            local key = tonumber(string.match(keyText, '^%d+'))
-            if key then
-                return ((key < 10) and string.format('0%d', key))
-                    or tostring(key)
-            end
-        end
-        return nil
-    end
-    local function checkDungeonkey()
-        Ore_Dungeonkey = getDungeonKey('OreDungeon')
-        Gem_Dungeonkey = getDungeonKey('GemDungeon')
-        Gold_Dungeonkey = getDungeonKey('GoldDungeon')
-        Relic_Dungeonkey = getDungeonKey('RelicDungeon')
-        Rune_Dungeonkey = getDungeonKey('RuneDungeon')
-        Hover_Dungeonkey = getDungeonKey('HoverDungeon')
-    end
-    checkDungeonkey()
-    local chooselevels = features3:AddLabel('请选择地下城...')
-    local dropdown1 = features3:AddDropdown('选择地下城', function(text)
-        if text == '            矿石地下城            ' then
-            dropdownchoose = 1
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['OreDungeon']
-                    and dungeonFunctions['OreDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：矿石地下城,  钥匙：'
-                .. Ore_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif text == '            灵石地下城            ' then
-            dropdownchoose = 2
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['GemDungeon']
-                    and dungeonFunctions['GemDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：灵石地下城,  钥匙：'
-                .. Gem_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif text == '            符石地下城            ' then
-            dropdownchoose = 3
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['RuneDungeon']
-                    and dungeonFunctions['RuneDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：符石地下城,  钥匙：'
-                .. Rune_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif text == '            遗物地下城            ' then
-            dropdownchoose = 4
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['RelicDungeon']
-                    and dungeonFunctions['RelicDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：遗物地下城,  钥匙：'
-                .. Relic_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif text == '            悬浮地下城            ' then
-            dropdownchoose = 7
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['HoverDungeon']
-                    and dungeonFunctions['HoverDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：悬浮地下城,  钥匙：'
-                .. Hover_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif text == '            金币地下城            ' then
-            dropdownchoose = 6
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['GoldDungeon']
-                    and dungeonFunctions['GoldDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：金币地下城,  钥匙：'
-                .. Gold_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif text == '            活动地下城   未开启         ' then
-            dropdownchoose = 5
-            dropdownchoose2 = '未开启'
-            chooselevels.Text = '当前选择：活动地下城  未开启'
-        else
-            dropdownchoose = 8
-            chooselevels.Text = '此为占位符号无任何效果'
-        end
-    end)
-    local Dungeon1 = dropdown1:Add('            矿石地下城            ')
-    local Dungeon2 = dropdown1:Add('            灵石地下城            ')
-    local Dungeon3 = dropdown1:Add('            符石地下城            ')
-    local Dungeon4 = dropdown1:Add('            遗物地下城            ')
-    local Dungeon5 = dropdown1:Add('            悬浮地下城            ')
-    local Dungeon6 = dropdown1:Add('            金币地下城            ')
-    local Dungeon7 =
-        dropdown1:Add('            活动地下城   未开启            ')
-    local Dungeon8 = dropdown1:Add(
-        '            此为占位符号无任何效果            '
-    )
-    local function UDPDungeontext()
-        if dropdownchoose == 0 then
-            chooselevels.Text = '请选择地下城'
-        elseif dropdownchoose == 1 then
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['OreDungeon']
-                    and dungeonFunctions['OreDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：矿石地下城,  钥匙：'
-                .. Ore_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif dropdownchoose == 2 then
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['GemDungeon']
-                    and dungeonFunctions['GemDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：灵石地下城,  钥匙：'
-                .. Gem_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif dropdownchoose == 3 then
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['RuneDungeon']
-                    and dungeonFunctions['RuneDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：符石地下城,  钥匙：'
-                .. Rune_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif dropdownchoose == 4 then
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['RelicDungeon']
-                    and dungeonFunctions['RelicDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：遗物地下城,  钥匙：'
-                .. Relic_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif dropdownchoose == 7 then
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['HoverDungeon']
-                    and dungeonFunctions['HoverDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：悬浮地下城,  钥匙：'
-                .. Hover_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif dropdownchoose == 6 then
-            dropdownchoose2 = tostring(
-                (
-                    dungeonFunctions['GoldDungeon']
-                    and dungeonFunctions['GoldDungeon']()
-                ) or '0'
-            )
-            chooselevels.Text = '当前选择：金币地下城,  钥匙：'
-                .. Gold_Dungeonkey
-                .. '  ,关卡选择：'
-                .. dropdownchoose2
-        elseif dropdownchoose == 5 then
-            chooselevels.Text = '当前选择：活动地下城  未开启'
-        elseif dropdownchoose == 8 then
-            chooselevels.Text = '此为占位符号无任何效果'
-        end
-    end
-    local function UDPDungeonchoose()
-        checkDungeonkey()
-        Dungeon1.Text = '            矿石地下城   钥匙：'
-            .. Ore_Dungeonkey
-            .. '            '
-        Dungeon2.Text = '            灵石地下城   钥匙：'
-            .. Gem_Dungeonkey
-            .. '            '
-        Dungeon3.Text = '            符石地下城   钥匙：'
-            .. Rune_Dungeonkey
-            .. '            '
-        Dungeon4.Text = '            遗物地下城   钥匙：'
-            .. Relic_Dungeonkey
-            .. '            '
-        Dungeon5.Text = '            悬浮地下城   钥匙：'
-            .. Hover_Dungeonkey
-            .. '            '
-        Dungeon6.Text = '            金币地下城   钥匙：'
-            .. Gold_Dungeonkey
-            .. '            '
-        Dungeon7.Text = '            活动地下城   未开启            '
-    end
-    task.spawn(function()
-        while true do
-            pcall(function()
-                UDPDungeonchoose()
-                UDPDungeontext()
-            end)
-            task.wait(0.5)
-        end
-    end)
-    local updDungeonuiSwitch = features3:AddSwitch(
-        '同步地下城进入介面的难度',
-        function(bool)
-            updDungeonui = bool
-        end
-    )
-    safeSetControl(updDungeonuiSwitch, false, 'updDungeonuiSwitch')
-    local function updateDungeonLevel(dungeonName, dataField, newLevel)
-        JsonHandler.updatePlayerData(
-            filePath,
-            player.Name,
-            { [dataField] = newLevel }
-        )
-        updateDungeonFunctions()
-        print(
-            '更新后的 ' .. dungeonName .. ' 等级:',
-            dungeonFunctions[dungeonName]()
-        )
-    end
-    local function adjustDungeonLevel(adjustment)
-        local newLevel = dropdownchoose2 + adjustment
-        local dungeonMapping = {
-            [1] = { name = 'OreDungeon', field = 'OreDungeonMaxLevel' },
-            [2] = { name = 'GemDungeon', field = 'GemDungeonMaxLevel' },
-            [3] = { name = 'RuneDungeon', field = 'RuneDungeonMaxLevel' },
-            [4] = { name = 'RelicDungeon', field = 'RelicDungeonMaxLevel' },
-            [7] = { name = 'HoverDungeon', field = 'HoverDungeonMaxLevel' },
-            [6] = { name = 'GoldDungeon', field = 'GoldDungeonMaxLevel' },
-        }
-        local dungeon = dungeonMapping[dropdownchoose]
-        if dungeon then
-            updateDungeonLevel(dungeon.name, dungeon.field, newLevel)
-        else
-            print('未选择地下城')
-        end
-    end
-    local function DungeonTP()
-        local dropdownTP = tonumber(dropdownchoose2)
-        local args = { [1] = dropdownchoose, [2] = dropdownTP }
-        PathCache.Dungeon
-            :FindFirstChild('\232\191\155\229\133\165\229\137\175\230\156\172')
-            :FireServer(unpack(args))
-    end
-    local dungeonList = {
-        'Ore Dungeon',
-        'Gem Dungeon',
-        'Rune Dungeon',
-        'Relic Dungeon',
-        'Hover Dungeon',
-        'Gold Dungeon',
-    }
-    local dungeonKeys = {
-        ['Ore Dungeon'] = 'OreDungeon',
-        ['Gem Dungeon'] = 'GemDungeon',
-        ['Rune Dungeon'] = 'RuneDungeon',
-        ['Relic Dungeon'] = 'RelicDungeon',
-        ['Hover Dungeon'] = 'HoverDungeon',
-        ['Gold Dungeon'] = 'GoldDungeon',
-    }
-    local function getDungeonWithMostKeys()
-        local maxKeys = 0
-        local bestDungeon = nil
-        local bestDropdownIndex = 1
-        local dropdownMapping = { 1, 2, 3, 4, 7, 6 }
-        for i, name in ipairs(dungeonList) do
-            local keyCount = tonumber(getDungeonKey(dungeonKeys[name])) or 0
-            if keyCount > maxKeys then
-                maxKeys = keyCount
-                bestDungeon = name
-                bestDropdownIndex = dropdownMapping[i] or 0
-            end
-        end
-        return bestDungeon, bestDropdownIndex
-    end
-    local function selectDungeonWithMostKeys()
-        local bestDungeon, bestDropdownIndex = getDungeonWithMostKeys()
-        dropdownchoose = bestDropdownIndex
-        local dungeonName = bestDungeon
-        local dungeonLevel =
-            tostring(dungeonFunctions[dungeonKeys[dungeonName]]() or '0')
-        print('已选择最多钥匙的地下城：' .. dungeonName)
-        task.wait(0.4)
-        DungeonTP()
-    end
-    local function CheckDungeonVictory()
-        local success, result = pcall(function()
-            local victoryUI = playerGui.GUI
-                :WaitForChild('主界面')
-                :WaitForChild('战斗')
-                :WaitForChild('胜利结果')
-            return victoryUI.Visible and victoryUI.Text == 'Victory'
-        end)
-        return success and result
-    end
-
-    local function ClearVictoryUI()
-        pcall(function()
-            playerGui.GUI
-                :WaitForChild('主界面')
-                :WaitForChild('战斗')
-                :WaitForChild('胜利结果').Text =
-                ''
-        end)
-    end
-
-    -- 检测是否在复活点
-    local function IsAtRespawnPoint()
-        local char = player.Character
-        if char and char:FindFirstChild('HumanoidRootPart') then
-            local hrp = char.HumanoidRootPart
-            local distance = (hrp.Position - Vector3.new(TPX, TPY, TPZ)).Magnitude
-            return distance < 5 -- 5 格以内算到达复活点
-        end
-        return false
-    end
-
-    local function AutostartDungeonf()
-        -- Phase 1: 检查胜利
-        local victoryFound = false
-        local waitStart = os.time()
-        while not victoryFound and (os.time() - waitStart < 30) do
-            victoryFound = CheckDungeonVictory()
-            if not victoryFound then
-                -- 新增：检查是否在复活点
-                if IsAtRespawnPoint() then
-                    print('检测到回到复活点，自动开始地下城')
-                    DungeonTP()
-                    return true
-                end
-                task.wait(0.5)
-            end
-        end
-
-        -- Phase 2: 胜利逻辑（原有）
-        if victoryFound then
-            local currentKeys = 0
-            local dungeonName = 'Unknown'
-            pcall(function()
-                local levelText = playerGui.GUI
-                    :WaitForChild('主界面')
-                    :WaitForChild('战斗')
-                    :WaitForChild('关卡信息')
-                    :WaitForChild('文本').Text
-                dungeonName = string.match(levelText, '^(.-)%s%d') or 'Unknown'
-                local keyType = ({
-                    ['Ore Dungeon'] = 'OreDungeon',
-                    ['Gem Dungeon'] = 'GemDungeon',
-                    ['Rune Dungeon'] = 'RuneDungeon',
-                    ['Relic Dungeon'] = 'RelicDungeon',
-                    ['Hover Dungeon'] = 'HoverDungeon',
-                    ['Gold Dungeon'] = 'GoldDungeon',
-                })[dungeonName]
-                if keyType then
-                    currentKeys = tonumber(getDungeonKey(keyType)) or 0
-                end
-            end)
-
-            if AutoDungeonplus1 then
-                adjustDungeonLevel(1)
-                task.wait(1)
-            end
-
-            ClearVictoryUI()
-            wait(savemodetime2)
-            teleporthome()
-            task.wait(0.5)
-
-            if Autofinishdungeon and currentKeys == 0 then
-                print('自动切换到钥匙最多的地下城')
-                selectDungeonWithMostKeys()
-            else
-                DungeonTP()
-            end
-        end
-    end
-
-    local AutostartDungeonSwitch = features3:AddSwitch(
-        '战斗结束后自动开始(纯胜利检测)',
-        function(bool)
-            AutostartDungeon = bool
-            if AutostartDungeon then
-                task.spawn(function()
-                    while AutostartDungeon do
-                        local actionTaken = AutostartDungeonf()
-                        -- Only wait longer if no action was taken
-                        task.wait(actionTaken and 0.1 or 0.5)
-                    end
-                end)
-            end
-        end
-    )
-    safeSetControl(
-        AutostartDungeonSwitch,
-        false,
-        'AutostartDungeonSwitch'
-    )
-
-    local AutoDungeonplus1Switch = features3:AddSwitch(
-        '战斗结束关卡数自动+1',
-        function(bool)
-            AutoDungeonplus1 = bool
-        end
-    )
-    safeSetControl(
-        AutoDungeonplus1Switch,
-        false,
-        'AutoDungeonplus1Switch'
-    )
-    local AutofinishdungeonSwitch = features3:AddSwitch(
-        '完成所有地下城(当没有钥匙会自动跳转到最高钥匙的)--测试',
-        function(bool)
-            Autofinishdungeon = bool
-        end
-    )
-    safeSetControl(
-        AutofinishdungeonSwitch,
-        false,
-        'AutofinishdungeonSwitch'
-    )
-    features3:AddTextBox('自订输入关卡', function(text)
-        local dropdownchoose0 = string.gsub(text, '[^%d]', '')
-        local dropdownchoose3 = tonumber(dropdownchoose0)
-        if not dropdownchoose3 then
-            dropdownchoose3 = 1
-        end
-        if dropdownchoose == 1 then
-            local field = 'OreDungeonMaxLevel'
-            JsonHandler.updateField(
-                filePath,
-                player.Name,
-                field,
-                dropdownchoose3
-            )
-            updateDungeonFunctions()
-        elseif dropdownchoose == 2 then
-            local field = 'GemDungeonMaxLevel'
-            JsonHandler.updateField(
-                filePath,
-                player.Name,
-                field,
-                dropdownchoose3
-            )
-            updateDungeonFunctions()
-        elseif dropdownchoose == 3 then
-            local field = 'RuneDungeonMaxLevel'
-            JsonHandler.updateField(
-                filePath,
-                player.Name,
-                field,
-                dropdownchoose3
-            )
-            updateDungeonFunctions()
-        elseif dropdownchoose == 4 then
-            local field = 'RelicDungeonMaxLevel'
-            JsonHandler.updateField(
-                filePath,
-                player.Name,
-                field,
-                dropdownchoose3
-            )
-            updateDungeonFunctions()
-        elseif dropdownchoose == 5 then
-            local field = 'HoverDungeonMaxLevel'
-            JsonHandler.updateField(
-                filePath,
-                player.Name,
-                field,
-                dropdownchoose3
-            )
-            updateDungeonFunctions()
-        elseif dropdownchoose == 6 then
-            local field = 'GoldDungeonMaxLevel'
-            JsonHandler.updateField(
-                filePath,
-                player.Name,
-                field,
-                dropdownchoose3
-            )
-            updateDungeonFunctions()
-        else
-            print('未选择地下城')
-        end
-    end)
-    features3:AddButton('关卡选择+1', function()
-        adjustDungeonLevel(1)
-    end)
-    features3:AddButton('关卡选择-1', function()
-        adjustDungeonLevel(-1)
-    end)
-    features3:AddButton('传送', function()
-        DungeonTP()
-    end)
-    features4:AddButton('自动交易初始化', function()
-        loadstring(
-            game:HttpGet(
-                'https://github.com/supleruckydior/test/raw/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%931.json'
-            )
-        )()
-    end)
-    features4:AddButton('自动交易初始化2', function()
-        loadstring(
-            game:HttpGet(
-                'https://github.com/supleruckydior/test/raw/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json'
-            )
-        )()
-    end)
-    AutoelixirSwitch = features4:AddSwitch('自动炼丹药', function(bool)
-        Autoelixir = bool
-        if Autoelixir then
-            task.spawn(function()
-                while Autoelixir do
-                    pcall(function()
-                        PathCache.Elixir:FindFirstChild('\229\136\182\228\189\156'):FireServer()
-                    end)
-                    task.wait(0.5)
-                end
-            end)
-        end
-    end)
-    features4:AddButton('传送炼器', function()
-        local RespawPointnum = RespawPoint:match('%d+') -- 获取重生点编号
-        local player = game.Players.LocalPlayer
-        local character = player.Character
-
-        if not character then
-            player.CharacterAdded:Wait()
-            character = player.Character
-        end
-
-        local humanoidRootPart = character:WaitForChild('HumanoidRootPart')
-        local forgePath =
-            workspace['\228\184\187\229\160\180\230\153\175' .. RespawPointnum]['\229\187\186\233\128\160\231\137\169']['035\231\130\188\229\153\168\229\143\176']
-
-        if forgePath then
-            humanoidRootPart.CFrame = forgePath:GetPivot()
-        end
-    end)
-
-    local playerGui = game.Players.LocalPlayer.PlayerGui
-    local lotteryskill = playerGui.GUI
-        :WaitForChild('二级界面')
-        :WaitForChild('商店')
-        :WaitForChild('背景')
-        :WaitForChild('右侧界面')
-        :WaitForChild('召唤')
-        :WaitForChild('技能')
-    local skilllevel =
-        lotteryskill:WaitForChild('等级区域'):WaitForChild('值').text
-    skilllevel = string.gsub(skilllevel, '%D', '')
-    local skilllevel2 = lotteryskill
-        :WaitForChild('等级区域')
-        :WaitForChild('进度条')
-        :WaitForChild('值')
-        :WaitForChild('值').text
-    skilllevel2 = string.match(skilllevel2, '(%d+)/')
-    local lotteryweapon = playerGui.GUI
-        :WaitForChild('二级界面')
-        :WaitForChild('商店')
-        :WaitForChild('背景')
-        :WaitForChild('右侧界面')
-        :WaitForChild('召唤')
-        :WaitForChild('法宝')
-    local weaponlevel =
-        lotteryweapon:WaitForChild('等级区域'):WaitForChild('值').text
-    weaponlevel = string.gsub(weaponlevel, '%D', '')
-    local weaponlevel2 = lotteryweapon
-        :WaitForChild('等级区域')
-        :WaitForChild('进度条')
-        :WaitForChild('值')
-        :WaitForChild('值').text
-    weaponlevel2 = string.match(weaponlevel2, '(%d+)/')
-    local currency = player:WaitForChild('值'):WaitForChild('货币')
-    local diamonds = currency:WaitForChild('钻石').value
-    local sword_tickets = currency:WaitForChild('法宝抽奖券').value
-    local skill_tickets = currency:WaitForChild('技能抽奖券').value
-    local useDiamonds = false
-    local Autolotteryspeed = 0.3
-    local canstartticket = true
-    local canstartticket2 = true
-    local function fetchData()
-        skilllevel =
-            lotteryskill:WaitForChild('等级区域'):WaitForChild('值').text
-        skilllevel2 = lotteryskill
-            :WaitForChild('等级区域')
-            :WaitForChild('进度条')
-            :WaitForChild('值')
-            :WaitForChild('值').text
-        weaponlevel =
-            lotteryweapon:WaitForChild('等级区域'):WaitForChild('值').text
-        weaponlevel2 = lotteryweapon
-            :WaitForChild('等级区域')
-            :WaitForChild('进度条')
-            :WaitForChild('值')
-            :WaitForChild('值').text
-        sword_tickets = currency:WaitForChild('法宝抽奖券').value
-        skill_tickets = currency:WaitForChild('技能抽奖券').value
-        diamonds = currency:WaitForChild('钻石').value
-    end
-    local function updData()
-        fetchData()
-        skilllevel = tonumber(string.match(skilllevel, '%d+'))
-        skilllevel2 = tonumber(string.match(skilllevel2, '(%d+)/'))
-        weaponlevel = tonumber(string.match(weaponlevel, '%d+'))
-        weaponlevel2 = tonumber(string.match(weaponlevel2, '(%d+)/'))
-    end
-    local function useskill_ticket()
-        if canstartticket then
-            local args = { [1] = '\230\138\128\232\131\189', [2] = true }
-            pcall(function()
-                PathCache.Shop
-                    :FindFirstChild('\229\143\172\229\148\164')
-                    :FindFirstChild('\230\138\189\229\165\150')
-                    :FireServer(unpack(args))
-            end)
-        end
-    end
-    local function usesword_ticket()
-        if canstartticket2 then
-            local args = { [1] = '\230\179\149\229\174\157', [2] = true }
-            pcall(function()
-                PathCache.Shop
-                    :FindFirstChild('\229\143\172\229\148\164')
-                    :FindFirstChild('\230\138\189\229\165\150')
-                    :FireServer(unpack(args))
-            end)
-        end
-    end
-    local function Compareskilltickets()
-        if skill_tickets < 8 then
-            if useDiamonds and (diamonds >= ((8 - skill_tickets) * 50)) then
-                local compare = 8 - skill_tickets
-                useskill_ticket()
-            else
-            end
-        else
-            useskill_ticket()
-        end
-    end
-    local function Compareweapentickets()
-        if sword_tickets < 8 then
-            if useDiamonds and (diamonds >= ((8 - sword_tickets) * 50)) then
-                local compare = 8 - sword_tickets
-                usesword_ticket()
-            else
-            end
-        else
-            usesword_ticket()
-        end
-    end
-    local function Compareprogress()
-        if skilllevel2 > weaponlevel2 then
-            Compareweapentickets()
-        elseif skilllevel2 < weaponlevel2 then
-            Compareskilltickets()
-        else
-            Compareskilltickets()
-            Compareweapentickets()
-        end
-    end
-    local function Comparelevel()
-        updData()
-        if skilllevel > weaponlevel then
-            Compareweapentickets()
-        elseif skilllevel < weaponlevel then
-            Compareskilltickets()
-        else
-            Compareprogress()
-        end
-    end
-    features4:AddLabel(
-        '??同步抽取，抽奖券不足就会停止，请开启钻石抽取'
-    )
-    local lotterynum = features4:AddLabel(
-        '法宝抽奖券： '
-            .. sword_tickets
-            .. '    技能抽奖券： '
-            .. skill_tickets
-    )
-    local function updateExtractedValues()
-        local sword_ticketslable =
-            currency:WaitForChild('法宝抽奖券').value
-        local skill_ticketslable =
-            currency:WaitForChild('技能抽奖券').value
-        lotterynum.Text = '法宝抽奖券： '
-            .. sword_ticketslable
-            .. '    技能抽奖券： '
-            .. skill_ticketslable
-    end
-    task.spawn(function()
-        while true do
-            updateExtractedValues()
-            task.wait(1)
-        end
-    end)
-    local AutolotterySwitch = features4:AddSwitch(
-        '自动抽法宝/技能',
-        function(bool)
-            Autolottery = bool
-            if Autolottery then
-                canstartticket = true
-                canstartticket2 = true
-                while Autolottery do
-                    Comparelevel()
-                    wait(Autolotteryspeed)
-                    task.wait(0.4)
-                end
-            else
-                canstartticket = false
-                canstartticket2 = false
-            end
-        end
-    )
-    safeSetControl(AutolotterySwitch, false, 'AutolotterySwitch')
-    local USEDiamondSwitch = features4:AddSwitch(
-        '启用钻石抽取',
-        function(bool)
-            useDiamonds = bool
-        end
-    )
-    safeSetControl(USEDiamondSwitch, false, 'USEDiamondSwitch')
-    -- 定义执行函数
-    local function ExecuteSettingsClose()
-        local targetGui = PathCache.GUI.Secondary['\232\174\190\231\189\174']['\232\131\140\230\153\175']['\232\174\190\231\189\174\229\140\186\229\159\159']['\233\159\179\228\185\144\232\174\190\231\189\174\233\161\185']['\229\188\128\229\133\179']['\229\137\141\230\153\175']
-
-        if targetGui.Visible then
-            local argsList = {
-                '\233\159\179\228\185\144',
-                '\231\178\146\229\173\144\231\137\185\230\149\136',
-                '\228\188\164\229\174\179\230\152\190\231\164\186',
-                '\230\142\137\232\144\189\229\138\168\231\148\187',
-                '\233\159\179\230\149\136',
-                '\230\138\189\229\165\150\229\138\168\231\148\187',
-                '\230\179\149\229\174\157\229\138\168\231\148\187',
-                '\229\135\186\229\148\174\228\186\140\230\172\161\231\161\174\232\174\164',
-            }
-
-            local remotePath = PathCache.Events
-                :FindFirstChild('\232\174\190\231\189\174')
-                :FindFirstChild(
-                    '\231\142\169\229\174\182\228\191\174\230\148\185\232\174\190\231\189\174'
-                )
-
-            if remotePath then
-                for _, args in ipairs(argsList) do
-                    pcall(function()
-                        remotePath:FireServer(args)
-                    end)
-                end
-            end
-        end
-    end
-
-    -- 启动时自动执行一次
-    ExecuteSettingsClose()
-
-    -- 添加按钮功能
-    features4:AddButton('关闭设置', ExecuteSettingsClose)
-    local AutoupdFlyingSwordSwitch = features5:AddSwitch(
-        '升级飞剑',
-        function(bool)
-            AutoupdFlyingSword = bool
-            if AutoupdFlyingSword then
-                task.spawn(function()
-                    while AutoupdFlyingSword do
-                        pcall(function()
-                            PathCache.FlyingSword:FindFirstChild('\229\141\135\231\186\167'):FireServer()
-                        end)
-                        task.wait(0.2)
-                    end
-                end)
-            end
-        end
-    )
-    safeSetControl(
-        AutoupdFlyingSwordSwitch,
-        false,
-        'AutoupdFlyingSwordSwitch'
-    )
-    local AutoupdskillSwordSwitch = features5:AddSwitch(
-        '升级法宝/技能',
-        function(bool)
-            AutoupdskillSword = bool
-            if AutoupdskillSword then
-                task.spawn(function()
-                    while AutoupdskillSword do
-                        pcall(function()
-                            PathCache.Weapon:FindFirstChild('\229\141\135\231\186\167\229\133\168\233\131\168\230\179\149\229\174\157'):FireServer()
-                            PathCache.Skill:FindFirstChild('\229\141\135\231\186\167\229\133\168\233\131\168\230\138\128\232\131\189'):FireServer()
-                        end)
-                        task.wait(1.5)
-                    end
-                end)
-            end
-        end
-    )
-    safeSetControl(
-        AutoupdskillSwordSwitch,
-        false,
-        'AutoupdskillSwordSwitch'
-    )
-    local AutoupdRuneSwordSwitch = features5:AddSwitch(
-        '升级符石',
-        function(bool)
-            AutoupdRuneSwordSwitch = bool
-            if AutoupdRuneSwordSwitch then
-                task.spawn(function()
-                    while AutoupdRuneSwordSwitch do
-                        pcall(function()
-                            PathCache.Rune:FindFirstChild('\229\141\135\231\186\167'):FireServer()
-                        end)
-                        task.wait(0.2)
-                    end
-                end)
-            end
-        end
-    )
-    safeSetControl(
-        AutoupdRuneSwordSwitch,
-        false,
-        'AutoupdRuneSwordSwitch'
-    )
-    local Guidename = playerGui.GUI
-        :WaitForChild('二级界面')
-        :WaitForChild('公会')
-        :WaitForChild('背景')
-        :WaitForChild('右侧界面')
-        :WaitForChild('主页')
-        :WaitForChild('介绍')
-        :WaitForChild('名称')
-        :WaitForChild('文本')
-        :WaitForChild('文本').Text
-    local Donatetimes = playerGui.GUI
-        :WaitForChild('二级界面')
-        :WaitForChild('公会')
-        :WaitForChild('捐献')
-        :WaitForChild('背景')
-        :WaitForChild('按钮')
-        :WaitForChild('确定按钮')
-        :WaitForChild('次数').Text
-    local Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
-    local Guildname = features5:AddLabel(
-        '公会名称：未获取点击更新公会'
-            .. ' 剩余贡献次数： '
-            .. Donatetimesnumber
-    )
-    features5:AddButton('更新公会', function()
-        Donatetimes = playerGui.GUI
-            :WaitForChild('二级界面')
-            :WaitForChild('公会')
-            :WaitForChild('捐献')
-            :WaitForChild('背景')
-            :WaitForChild('按钮')
-            :WaitForChild('确定按钮')
-            :WaitForChild('次数').Text
-        Donatetimesnumber = tonumber(string.match(Donatetimes, '%d+'))
-        local event = Services.ReplicatedStorage:FindFirstChild('打开公会', true)
-        if event then
-            event:Fire('打开公会')
-        end
-        Guildname.Text = '公会名称：'
-            .. Guidename
-            .. ' 剩余贡献次数： '
-            .. Donatetimesnumber
-    end)
-    local DonationUI =
-        playerGui.GUI:WaitForChild('二级界面'):WaitForChild('公会')
-    local DonateButton = DonationUI:WaitForChild('捐献')
-        :WaitForChild('背景')
-        :WaitForChild('按钮')
-        :WaitForChild('确定按钮')
-    local DonationEvent = PathCache.Guild:WaitForChild('\230\141\144\231\140\174')
-
-    -- 创建独立控制模块
-    local donationController = {
-        enabled = false,
-        interval = 0.5,
-        maxAttempts = 3,
-        currentAttempts = 0,
-    }
-
-    local function updateGuildDisplay()
-        local counterText = DonateButton:WaitForChild('次数').Text
-        local remaining = tonumber(counterText:match('%d+')) or 0
-        Guildname.Text = ('公会名称：%s 剩余贡献次数：%d'):format(
-            Guidename,
-            remaining
-        )
-        return remaining
-    end
-
-    local function executeDonation()
-        pcall(function()
-            DonationEvent:FireServer()
-        end)
-    end
-
-    -- 创建带保护机制的捐献循环
-
-    -- 创建带保护机制的捐献循环
-    local function donationLoop()
-        while donationController.enabled do
-            local success, remaining = pcall(updateGuildDisplay)
-
-            if success and remaining > 0 then
-                executeDonation()
-                donationController.currentAttempts = 0
-            else
-                donationController.currentAttempts += 1
-            end
-
-            if
-                donationController.currentAttempts
-                >= donationController.maxAttempts
-            then
-                warn('连续失败次数过多，自动停止')
-                donationController.enabled = false
-            end
-
-            -- 如果捐献次数为 0，标记完成
-            if success and remaining == 0 then
-                donationController.enabled = false
-                donationFinished = true
-                checkAllTasksFinished()
-                print('[系统] 公会捐献已完成，准备购买草药')
-            end
-
-            task.wait(donationController.interval)
-        end
-    end
-
-    -- 初始化开关并设置自动启动
-    local AutoDonateSwitch = features5:AddSwitch(
-        '自动捐献',
-        function(isActive)
-            donationController.enabled = isActive
-            if isActive then
-                task.spawn(donationLoop)
-            end
-        end
-    )
-
-    -- 安全自启动机制
-    task.defer(function()
-        task.wait(3) -- 等待界面初始化
-        if not donationController.enabled then
-            safeSetControl(AutoDonateSwitch, true, 'AutoDonateSwitch')
-        end
-    end)
-
-    local herbController = {
-        enabled = false,
-        interval = 0.2,
-        maxAttempts = 5,
-        currentAttempts = 0,
-        highCostMode = false,
-    }
-
-    -- 数值获取函数（使用Utils.parseNumber）
-    local function getDiamond()
-        return Utils.parseNumber(
-            playerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159']['\233\146\187\231\159\179']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
-
-    local function getGuildCoin()
-        return Utils.parseNumber(
-            playerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\133\172\228\188\154\229\184\129']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
-
-    local function getRefreshCost()
-        return Utils.parseNumber(
-            playerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\183\230\150\176']['\230\140\137\233\146\174']['\229\128\188'].Text
-        )
-    end
-
-    -- 界面控制函数
-    local function toggleGuildUI(state)
-        pcall(function()
-            PathCache.GUI.Secondary['\229\133\172\228\188\154'].Visible = state
-        end)
-    end
-    local price = 400 -- 固定价格
-
-    -- 购买逻辑主循环
-
-    local function herbLoop()
-        while herbController.enabled do
-            -- 等待捐献完成
-            if not donationFinished then
-                task.wait(1)
-                continue -- 跳过本轮，直到捐献完成
-            end
-
-            -- 第一次开始买草药时提示
-            if not herbController.started then
-                print('[系统] 开始自动购买草药')
-                herbController.started = true
-            end
-
-            local boughtAny = false
-            local money = getDiamond()
-            local guilditemlist = PathCache.GUI.Secondary['\229\133\172\228\188\154']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\229\149\134\229\186\151']['\229\136\151\232\161\168']
-
-            local function tryBuy(slotIndex)
-                local item = guilditemlist:GetChildren()[slotIndex]
-                if item and item:FindFirstChild('\230\140\137\233\146\174') then
-                    local button = item['\230\140\137\233\146\174']
-                    if
-                        button['\229\186\147\229\173\152'].Text == '1 Left'
-                        and button['\229\144\141\231\167\176'].Text
-                            == 'Herb'
-                    then
-                        if money >= price then
-                            PathCache.Guild:FindFirstChild('\229\133\145\230\141\162'):FireServer(slotIndex - 2)
-                            money = money - price
-                            boughtAny = true
-                            return true
-                        else
-                            warn(
-                                '[草药购买] 货币不足，跳过槽位 '
-                                    .. slotIndex
-                            )
-                        end
-                    end
-                end
-                return false
-            end
-
-            -- 遍历所有槽位
-            for i = 1, 18 do
-                if not herbController.enabled then
-                    break
-                end
-                tryBuy(i)
-            end
-
-            local refreshCost = getRefreshCost()
-            local diamond = getDiamond()
-            local guildCoin = getGuildCoin()
-
-            -- 高成本模式
-            if refreshCost > 7000 then
-                if not herbController.highCostMode then
-                    print(
-                        '[系统] 进入高成本模式，结束草药购买任务'
-                    )
-                    herbController.highCostMode = true
-                    if not herbBuyFinished then
-                        herbBuyFinished = true
-                        checkAllTasksFinished()
-                    end
-                    herbController.enabled = false
-                end
-                toggleGuildUI(false)
-                task.wait(300)
-                break
-            else
-                herbController.highCostMode = false
-            end
-
-            -- 正常刷新
-            if
-                diamond > refreshCost
-                and guildCoin >= 400
-                and diamond >= 18000
-            then
-                pcall(function()
-                    -- 使用路径缓存优化
-                    local elixirUI = Services.ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182', true)
-                        :FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
-                    if elixirUI then
-                        elixirUI:FindFirstChild('\229\174\162\230\136\183\231\171\175UI'):FindFirstChild('\230\137\147\229\188\128\229\133\172\228\188\154'):Fire()
-                        task.wait(0.5)
-                        PathCache.Guild:FindFirstChild('\229\136\183\230\150\176\229\133\172\228\188\154\229\149\134\229\186\151'):FireServer()
-                    end
-                end)
-                task.wait(1.5)
-            else
-                print(
-                    '[草药购买] 刷新条件不满足，结束购买任务'
-                )
-                if not herbBuyFinished then
-                    herbBuyFinished = true
-                    checkAllTasksFinished()
-                end
-                herbController.enabled = false -- 停止循环
-                task.wait(30)
-            end
-        end -- 关闭 while
-    end -- 关闭 function
-
-    -- 界面控件
-    local Autoguildshop = features5:AddSwitch(
-        '自动购买草药',
-        function(state)
-            herbController.enabled = state
-            herbController.highCostMode = false -- 重置状态
-            if state then
-                task.spawn(herbLoop)
-                print('[系统] 自动购买已启动')
-            else
-                print('[系统] 自动购买已停止')
-            end
-        end
-    )
-
-    -- 安全自启动机制（添加在自动捐献代码下方）
-    task.defer(function()
-        task.wait(3) -- 等待界面初始化
-        if not herbController.enabled then
-            safeSetControl(Autoguildshop, true, 'Autoguildshop')
-        end
-    end)
-
-    features5:AddButton('解锁世界', function()
-        pcall(function()
-            local forgeEvent = PathCache.Forge:FindFirstChild('\232\167\163\233\148\129\229\187\186\231\173\145')
-            for i = 1, 30 do
-                forgeEvent:FireServer(i)
-            end
-            task.wait(1)
-            for i = 1, 30 do
-                local args = { [1] = 1 }
-                PathCache.Activity:FindFirstChild('\232\180\173\228\185\176'):FireServer(unpack(args))
-            end
-            task.wait(1)
-            for i = 1, 40 do
-                local args = { [1] = 12 }
-                PathCache.Activity:FindFirstChild('\232\180\173\228\185\176'):FireServer(unpack(args))
-            end
-        end)
-    end)
-
-    features5:AddButton('解除装备', function()
-        pcall(function()
-            for i = 1, 5 do
-                PathCache.Rune:FindFirstChild('\229\141\184\228\184\139'):FireServer(i)
-                PathCache.WorldCore:FindFirstChild('\229\141\184\228\184\139'):FireServer(i)
-            end
-        end)
-    end)
-
-    -- UI开启功能（使用Services缓存）
-    features6:AddButton('开启每日任务', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开每日任务', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开每日任务')
-        end
-    end)
-    features6:AddButton('开启邮件', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开邮件', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开邮件')
-        end
-    end)
-    features6:AddButton('开启转盘', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开转盘', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开转盘')
-        end
-    end)
-    features6:AddButton('开启阵法', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开阵法', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开阵法')
-        end
-    end)
-    features6:AddButton('开启世界树', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开世界树', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开世界树')
-        end
-    end)
-    features6:AddButton('开启练器台', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开炼器台', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开练器台')
-        end
-    end)
-    features6:AddButton('开启炼丹炉', function()
-        local event = Services.ReplicatedStorage:FindFirstChild('打开炼丹炉', true)
-        if event and event:IsA('BindableEvent') then
-            event:Fire('打开炼丹炉')
-        end
-    end)
-    features6:AddButton('每月钥匙购买', function()
-        pcall(function()
-            local remote = PathCache.Activity:FindFirstChild("\232\180\173\228\185\176")
-            if remote then
-                for i = 1, 60 do
-                    for arg = 4, 9 do
-                        remote:FireServer(arg)
-                    end
-                end
-                for i = 1, 30 do
-                    for arg = 17, 22 do
-                        remote:FireServer(arg)
-                    end
-                end
-            end
-        end)
-    end)
-    features6:AddButton('每星期竞技场水滴购买', function()
-        pcall(function()
-            for i = 1, 15 do
-                local args = {
-                    4
-                }
-                game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\231\171\158\230\138\128\229\156\186"):WaitForChild("\232\180\173\228\185\176"):FireServer(unpack(args))
-            end
-        end)
-    end)
-
-    features7:AddLabel(' -- 语言配置/language config')
-    features7:AddButton('删除语言配置/language config delete', function()
-        local HttpService = game:GetService('HttpService')
-        function deleteConfigFile()
-            if isfile('Cultivation_languageSet.json') then
-                delfile('Cultivation_languageSet.json')
-                print('配置文件 Cultivation_languageSet.json 已删除。')
-            else
-                print(
-                    '配置文件 Cultivation_languageSet.json 不存在，无法删除。'
-                )
-            end
-        end
-        deleteConfigFile()
-    end)
-    features7:AddLabel(' - - 统计')
-    features7:AddButton('每秒击杀/金币数', function()
-        loadstring(
-            game:HttpGet(
-                'https://github.com/supleruckydior/test/raw/refs/heads/main/%E9%87%91%E5%B8%81.json'
-            )
-        )()
-    end)
-    features7:AddLabel(' 有任何问题或想法请在Github上留言')
-    features7:AddButton('Github连结', function()
-        local urlToCopy = 'https://github.com/Tseting-nil'
-        if setclipboard then
-            setclipboard(urlToCopy)
-            showNotification('连结以复制！')
-        else
-            showNotification('错误！连结为：github.com/Tseting-nil')
-        end
-    end)
-
-    local UI_LOAD_DELAY = 0.03
-    local RETRY_COUNT = 3
-
-    -- 初始化界面
-    local Farm_choose = features8:AddLabel('  正在初始化...')
-    local currentFarm = 1
-    local targetLevel = 80
-    local lastFarmLevel = 0
-
-    -- 炼丹炉初始化
-    local Elixir_choose = features8:AddLabel('  正在初始化炼丹炉...')
-    local currentElixir = 1
-    local targetElixirLevel = 80
-    local lastElixirLevel = 0
-
-    -- 共用事件路径
-    -- 农田和炼丹炉事件（使用路径缓存）
-    local FARM_UPGRADE_EVENT = PathCache.Farm:WaitForChild('\229\141\135\231\186\167')
-    local ELIXIR_UPGRADE_EVENT = PathCache.Elixir:WaitForChild('\229\141\135\231\186\167')
-
-    -- 等级获取函数
-    local function GetLevel(path)
-        local finalLevel = 0
-        for _ = 1, RETRY_COUNT do
-            local success, result = pcall(function()
-                return PathCache.GUI.Secondary[path]['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188']
-            end)
-            if success and result then
-                finalLevel = tonumber(result.Text:match('%d+')) or 0
-                break
-            end
-            task.wait(UI_LOAD_DELAY)
-        end
-        return finalLevel
-    end
-
-    -- 药田显示更新
-    local function UpdateFarmDisplay()
-        Farm_choose.Text = string.format(
-            '  当前选择 农田：%d  等级：%d  目标：%d',
-            currentFarm,
-            lastFarmLevel,
-            targetLevel
-        )
-    end
-
-    -- 炼丹炉显示更新
-    local function UpdateElixirDisplay()
-        Elixir_choose.Text = string.format(
-            '  当前选择 丹炉：%d  等级：%d  目标：%d',
-            currentElixir,
-            lastElixirLevel,
-            targetElixirLevel
-        )
-    end
-
-    -- 药田等级刷新
-    local function UpdateFarmLevel()
-        task.spawn(function()
-            Farm_choose.Text =
-                string.format('  农田%d ? 读取中...', currentFarm)
-            local newLevel = GetLevel('\229\134\156\231\148\176')
-            lastFarmLevel = newLevel
-
-            for i = 1, 5 do
-                Farm_choose.Text = string.format(
-                    '  农田%d ? 当前等级：%d',
-                    currentFarm,
-                    math.floor(
-                        lastFarmLevel + (newLevel - lastFarmLevel) * (i / 5)
-                    )
-                )
-                task.wait(UI_LOAD_DELAY)
-            end
-            UpdateFarmDisplay()
-        end)
-    end
-
-    -- 炼丹炉等级刷新
-    local function UpdateElixirLevel()
-        task.spawn(function()
-            Elixir_choose.Text =
-                string.format('  丹炉%d ? 读取中...', currentElixir)
-            local newLevel = GetLevel('\231\130\188\228\184\185\231\130\137')
-            lastElixirLevel = newLevel
-
-            for i = 1, 5 do
-                Elixir_choose.Text = string.format(
-                    '  丹炉%d ? 当前等级：%d',
-                    currentElixir,
-                    math.floor(
-                        lastElixirLevel + (newLevel - lastElixirLevel) * (i / 5)
-                    )
-                )
-                task.wait(UI_LOAD_DELAY)
-            end
-            UpdateElixirDisplay()
-        end)
-    end
-
-    -- 药田选择系统
-    local Farm_selection = features8:AddDropdown('选择农田', function(text)
-        currentFarm = tonumber(text:match('%d')) or 1
-        pcall(function()
-            local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
-            if openEvent and openEvent:IsA('BindableEvent') then
-                openEvent:Fire(currentFarm)
-                task.wait(UI_LOAD_DELAY * 2)
-            end
-        end)
-        UpdateFarmLevel()
-    end)
-
-    for i = 1, 5 do
-        Farm_selection:Add('农田' .. i)
-    end
-
-    -- 药田等级控制
-    features8:AddButton('▲ 提升农田目标', function()
-        targetLevel = math.min(200, targetLevel + 1)
-        UpdateFarmDisplay()
-    end)
-
-    features8:AddButton('▼ 降低农田目标', function()
-        targetLevel = math.max(0, targetLevel - 1)
-        UpdateFarmDisplay()
-    end)
-    local isWorkingFarm = false
-    features8:AddButton('? 农田超频 (精准版)', function()
-        isWorkingFarm = not isWorkingFarm
-        task.spawn(function()
-            if isWorkingFarm then
-                local originalTarget = targetLevel
-                Farm_choose.Text = '  ? 计算强化次数中...'
-
-                pcall(function()
-                    for farmIndex = 1, 5 do
-                        if not isWorkingFarm then
-                            break
-                        end
-
-                        -- 切换农田
-                        currentFarm = farmIndex
-                        local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
-                        if openEvent and openEvent:IsA('BindableEvent') then
-                            openEvent:Fire(farmIndex)
-                            task.wait(0.1) -- 确保UI切换
-                        end
-
-                        -- 获取当前等级
-                        local currentLevel =
-                            GetLevel('\229\134\156\231\148\176')
-                        if currentLevel >= targetLevel then
-                            Farm_choose.Text = string.format(
-                                '  ? 农田%d已达标 (%d级)',
-                                farmIndex,
-                                currentLevel
-                            )
-                            task.wait(0.05)
-                        end
-
-                        -- 计算需要强化的次数
-                        local neededUpgrades = targetLevel - currentLevel
-                        Farm_choose.Text = string.format(
-                            '  ? 农田%d将强化 %d次 (%d→%d)',
-                            farmIndex,
-                            neededUpgrades,
-                            currentLevel,
-                            targetLevel
-                        )
-
-                        -- 分批发送请求 (每10次一组，组间隔0.05秒)
-                        local BATCH_SIZE = 10
-                        for i = 1, neededUpgrades do
-                            if not isWorkingFarm then
-                                break
-                            end
-
-                            pcall(
-                                FARM_UPGRADE_EVENT.FireServer,
-                                FARM_UPGRADE_EVENT,
-                                farmIndex
-                            )
-
-                            -- 分批处理
-                            if i % BATCH_SIZE == 0 then
-                                task.wait(0.05)
-                                Farm_choose.Text = string.format(
-                                    '  ? 农田%d: %d/%d次 (%.1f%%)',
-                                    farmIndex,
-                                    i,
-                                    neededUpgrades,
-                                    (i / neededUpgrades) * 100
-                                )
-                            end
-                        end
-
-                        -- 最终确认
-                        local finalLevel = GetLevel('\229\134\156\231\148\176')
-                        Farm_choose.Text = string.format(
-                            '  ? 农田%d完成 %d级 (实际+%d级)',
-                            farmIndex,
-                            finalLevel,
-                            finalLevel - currentLevel
-                        )
-                        task.wait(0.1)
-                    end
-
-                    Farm_choose.Text = '  ? 所有农田强化完毕'
-                    currentFarm = 1
-                    local openEvent = Services.ReplicatedStorage:FindFirstChild('打开农田', true)
-                    if openEvent and openEvent:IsA('BindableEvent') then
-                        openEvent:Fire(currentFarm)
-                    end
-                end)
-
-                isWorkingFarm = false
-                UpdateFarmDisplay()
-            end
-        end)
-    end)
-
-    -- 炼丹炉选择系统
-    local Elixir_selection = features8:AddDropdown(
-        '选择丹炉',
-        function(text)
-            currentElixir = tonumber(text:match('%d')) or 1
-            pcall(function()
-                game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']
-                    :Fire()
-                wait(UI_LOAD_DELAY * 2)
-            end)
-            UpdateElixirLevel()
-        end
-    )
-    Elixir_selection:Add('丹炉1')
-
-    -- 炼丹炉等级控制
-    features8:AddButton('▲ 提升丹炉目标', function()
-        targetElixirLevel = math.min(1000, targetElixirLevel + 1)
-        UpdateElixirDisplay()
-    end)
-
-    features8:AddButton('▼ 降低丹炉目标', function()
-        targetElixirLevel = math.max(0, targetElixirLevel - 1)
-        UpdateElixirDisplay()
-    end)
-
-    -- 炼丹炉超频模式
-    features8:AddButton('? 丹炉超频 (精准版)', function()
-        local isWorkingElixir = not isWorkingElixir
-        task.spawn(function()
-            if isWorkingElixir then
-                Elixir_choose.Text = '  ? 计算丹炉强化次数中...'
-
-                pcall(function()
-                    -- 开启丹炉界面
-                    game:GetService('ReplicatedStorage')['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']
-                        :Fire()
-                    task.wait(0.1) -- 基础UI等待
-
-                    -- 获取当前等级
-                    local currentLevel =
-                        GetLevel('\231\130\188\228\184\185\231\130\137')
-                    if currentLevel >= targetElixirLevel then
-                        Elixir_choose.Text = string.format(
-                            '  ? 丹炉已达标 (%d级)',
-                            currentLevel
-                        )
-                        isWorkingElixir = false
-                        return
-                    end
-
-                    -- 计算需要强化的次数
-                    local neededUpgrades = targetElixirLevel - currentLevel
-                    Elixir_choose.Text = string.format(
-                        '  ? 需要强化 %d次 (%d→%d)',
-                        neededUpgrades,
-                        currentLevel,
-                        targetElixirLevel
-                    )
-
-                    -- 分批发送请求 (每15次一组，组间隔0.03秒)
-                    local BATCH_SIZE = 15
-                    for i = 1, neededUpgrades do
-                        if not isWorkingElixir then
-                            break
-                        end
-
-                        pcall(
-                            ELIXIR_UPGRADE_EVENT.FireServer,
-                            ELIXIR_UPGRADE_EVENT
-                        )
-
-                        -- 分批处理与进度更新
-                        if i % BATCH_SIZE == 0 then
-                            task.wait(0.03)
-                            local nowLevel =
-                                GetLevel('\231\130\188\228\184\185\231\130\137')
-                            Elixir_choose.Text = string.format(
-                                '  ? 进度: %d/%d次 (实际:%d级)',
-                                i,
-                                neededUpgrades,
-                                nowLevel
-                            )
-                        end
-                    end
-
-                    -- 最终确认
-                    local finalLevel =
-                        GetLevel('\231\130\188\228\184\185\231\130\137')
-                    Elixir_choose.Text = string.format(
-                        '  ? 完成强化 (实际:%d级 提升:%d级)',
-                        finalLevel,
-                        finalLevel - currentLevel
-                    )
-                end)
-
-                isWorkingElixir = false
-            end
-        end)
-    end)
-
-    task.defer(function()
-        -- 获取当前玩家列表
-        local players = game.Players:GetPlayers()
-        local playerNames = {}
-        for _, player in pairs(players) do
-            table.insert(playerNames, player.Name)
-        end
-
-        -- 添加下拉控件
-        local selectedPlayer = ''
-        local dropdown = features9:AddDropdown(
-            '选择玩家',
-            function(selected)
-                selectedPlayer = selected
-            end
-        )
-
-        -- 手动管理选项列表
-        local dropdownOptions = {}
-
-        -- 将玩家名称添加到下拉控件中
-        local function UpdateDropdown()
-            -- 清空下拉菜单（通过移除每个选项）
-            for _, option in pairs(dropdownOptions) do
-                option:Remove()
-            end
-            dropdownOptions = {} -- 重置选项列表
-
-            -- 重新添加玩家名称
-            for _, name in pairs(playerNames) do
-                local option = dropdown:Add(name)
-                table.insert(dropdownOptions, option)
-            end
-
-            -- 在菜单最底部添加一个空白选项
-            local blankOption = dropdown:Add('') -- 空白选项
-            table.insert(dropdownOptions, blankOption)
-        end
-
-        -- 初始化下拉菜单
-        UpdateDropdown()
-
-        -- 监听玩家加入游戏的事件
-        game.Players.PlayerAdded:Connect(function(player)
-            table.insert(playerNames, player.Name)
-            UpdateDropdown()
-        end)
-
-        -- 监听玩家离开游戏的事件
-        game.Players.PlayerRemoving:Connect(function(player)
-            for i, name in ipairs(playerNames) do
-                if name == player.Name then
-                    table.remove(playerNames, i)
-                    break
-                end
-            end
-            UpdateDropdown()
-        end)
-
-        local dungeonTeleportEvent = PathCache.Stage:FindFirstChild(
-            '\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161'
-        )
-        local dungeonTriggerEvent = PathCache.Combat:FindFirstChild(
-            '\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135'
-        )
-        local AUTO_DUNGEON_RANGE = 20
-        local AUTO_DUNGEON_RETRY_INTERVAL = 1
-        local AUTO_DUNGEON_MONITOR_INTERVAL = 0.5
-        local AUTO_DUNGEON_LOST_TIMEOUT = 10
-        local autoDungeonFollowEnabled = false
-        local autoDungeonFollowThread
-        local autoDungeonFollowSwitch
-
-        local function getHumanoidRootPart(targetPlayer)
-            local character = targetPlayer and targetPlayer.Character
-            if not character then
-                return nil
-            end
-            return character:FindFirstChild('HumanoidRootPart')
-        end
-
-        local function isTargetPlayerInRange(targetPlayer)
-            local localRoot = getHumanoidRootPart(localPlayer)
-            local targetRoot = getHumanoidRootPart(targetPlayer)
-            if not localRoot or not targetRoot then
-                return false
-            end
-            return (localRoot.Position - targetRoot.Position).Magnitude
-                <= AUTO_DUNGEON_RANGE
-        end
-
-        local function requestDungeonTeleport(targetPlayer)
-            if not dungeonTeleportEvent then
-                warn('副本传送事件不存在')
-                return false
-            end
-            local success, err = pcall(function()
-                dungeonTeleportEvent:FireServer(targetPlayer)
-            end)
-            if not success then
-                warn('副本传送失败: ' .. tostring(err))
-            end
-            return success
-        end
-
-        local function triggerDungeonEvent()
-            if not dungeonTriggerEvent then
-                warn('副本触发事件不存在')
-                return false
-            end
-            local success, err = pcall(function()
-                dungeonTriggerEvent:FireServer()
-            end)
-            if not success then
-                warn('副本触发事件失败: ' .. tostring(err))
-            end
-            return success
-        end
-
-        local function stopAutoDungeonFollow()
-            autoDungeonFollowEnabled = false
-            if autoDungeonFollowThread then
-                task.cancel(autoDungeonFollowThread)
-                autoDungeonFollowThread = nil
-            end
-        end
-
-        local function startAutoDungeonFollow()
-            stopAutoDungeonFollow()
-            autoDungeonFollowEnabled = true
-            autoDungeonFollowThread = task.spawn(function()
-                local state = 'seeking'
-                local lostSince = nil
-                local hasTriggeredCurrentLock = false
-                local trackedPlayerName = nil
-
-                while autoDungeonFollowEnabled do
-                    if trackedPlayerName ~= selectedPlayer then
-                        trackedPlayerName = selectedPlayer
-                        state = 'seeking'
-                        lostSince = nil
-                        hasTriggeredCurrentLock = false
-                    end
-
-                    local targetPlayer = Services.Players:FindFirstChild(
-                        selectedPlayer
-                    )
-
-                    if not targetPlayer then
-                        state = 'seeking'
-                        lostSince = nil
-                        hasTriggeredCurrentLock = false
-                        task.wait(AUTO_DUNGEON_RETRY_INTERVAL)
-                    else
-                        local inRange = isTargetPlayerInRange(targetPlayer)
-
-                        if state == 'seeking' then
-                            if inRange then
-                                if not hasTriggeredCurrentLock then
-                                    triggerDungeonEvent()
-                                    hasTriggeredCurrentLock = true
-                                end
-                                state = 'monitoring'
-                                lostSince = nil
-                            else
-                                hasTriggeredCurrentLock = false
-                                requestDungeonTeleport(targetPlayer)
-                            end
-                            task.wait(AUTO_DUNGEON_RETRY_INTERVAL)
-                        else
-                            if inRange then
-                                lostSince = nil
-                            else
-                                if not lostSince then
-                                    lostSince = time()
-                                elseif
-                                    time() - lostSince
-                                    >= AUTO_DUNGEON_LOST_TIMEOUT
-                                then
-                                    state = 'seeking'
-                                    lostSince = nil
-                                    hasTriggeredCurrentLock = false
-                                end
-                            end
-                            task.wait(AUTO_DUNGEON_MONITOR_INTERVAL)
-                        end
-                    end
-                end
-            end)
-        end
-
-        autoDungeonFollowSwitch = features9:AddSwitch(
-            '传送玩家到副本',
-            function(bool)
-                if bool then
-                    if selectedPlayer == '' then
-                        print('请先选择一个玩家')
-                        task.defer(function()
-                            if autoDungeonFollowSwitch then
-                                safeSetControl(
-                                    autoDungeonFollowSwitch,
-                                    false,
-                                    'autoDungeonFollowSwitch'
-                                )
-                            end
-                        end)
-                        return
-                    end
-                    startAutoDungeonFollow()
-                else
-                    stopAutoDungeonFollow()
-                end
-            end
-        )
-        safeSetControl(
-            autoDungeonFollowSwitch,
-            false,
-            'autoDungeonFollowSwitch'
-        )
-
-        -- 添加第二个按钮
-        features9:AddButton('触发事件', function()
-            pcall(function()
-                if dungeonTriggerEvent then
-                    dungeonTriggerEvent:FireServer()
-                end
-            end)
-        end)
-    end)
-    -- 使用已定义的Services和player（避免重复定义）
-    local GUI = playerGui:WaitForChild('GUI')
-
-    -- 全局控制变量
-    local Autoelixir = false
-    local hasExecutedTrade = false -- 确保自动交易只执行一次
-
-    -- 获取草药数值
-    -- 获取草药数值（使用Utils.parseNumber）
-    local function getHerbValue()
-        local herbText = '0'
-        pcall(function()
-            herbText = GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\232\141\137\232\141\175']['\229\128\188'].Text
-        end)
-        return Utils.parseNumber(herbText)
-    end
-
-    -- 获取矿石数值（使用Utils.parseNumber）
-    local function getOREValue()
-        local OREText = '0'
-        pcall(function()
-            OREText = playerGui.GUI['\228\184\187\231\149\140\233\157\162']['\228\184\187\229\159\142']['\232\180\167\229\184\129\229\140\186\229\159\159\229\143\179']['\231\159\191\231\159\179']['\229\128\188'].Text
-        end)
-        return Utils.parseNumber(OREText)
-    end
-
-    -- 炼丹循环
-    local function startElixirLoop()
-        Autoelixir = true
-        while Autoelixir do
-            pcall(function()
-                PathCache.Elixir:FindFirstChild('\229\136\182\228\189\156'):FireServer()
-            end)
-            task.wait(0.2)
-        end
-    end
-
-    -- 智能监控
-    local herbprint = false
-    local lowcontrol = false
-
-    local function smartMonitor()
-        while true do
-            local currentHerbs = getHerbValue()
-            local playerName = player.Name
-
-            -- When herbs > 250k, execute trade script (once)
-            if currentHerbs > 250000 and not hasExecutedTrade then
-                herbprint = true
-                lowcontrol = true -- Set lowcontrol flag when reaching high herbs
-
-                pcall(function()
-                    loadstring(
-                        game:HttpGet(
-                            'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json'
-                        )
-                    )()
-                    hasExecutedTrade = true
-                    print(
-                        playerName
-                            .. ' --- 自动交易脚本激活! ('
-                            .. currentHerbs
-                            .. '草药)'
-                    )
-                end)
-                -- Start elixir loop if not already running
-                if not Autoelixir then
-                    task.spawn(startElixirLoop)
-                end
-
-            -- When herbs < 1000 AND we previously had high herbs (lowcontrol)
-            elseif currentHerbs < 5000 and lowcontrol then
-                Autoelixir = false
-                hasExecutedTrade = false
-                herbprint = false
-                lowcontrol = false -- Reset the control flag
-                print(
-                    playerName
-                        .. ' --- 系统重置! (剩余'
-                        .. currentHerbs
-                        .. '草药)'
-                )
-            end
-            if herbprint and hasExecutedTrade then
-                print(playerName .. ' --- ' .. currentHerbs .. '草药')
-            end
-            -- Regular status print when in high herb mode
-
-            task.wait(5)
-        end
-    end
-
-    -- 初始化检查
-    local farm5Level = 0
-    local elixirLevel = 0
-
-    -- 获取农田5等级
-    pcall(function()
-        farm5Level = tonumber(
-            PathCache.GUI.Secondary['\229\134\156\231\148\176']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
-                '%d+'
-            )
-        ) or 0
-    end)
-    PathCache.GUI.Secondary['\229\134\156\231\148\176'].Visible = false
-
-    -- 获取炼丹炉等级
-    pcall(function()
-        local elixirUI = Services.ReplicatedStorage
-            :FindFirstChild('\228\186\139\228\187\182', true)
-            :FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
-        if elixirUI then
-            elixirUI['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']:Fire()
-            task.wait(0.5)
-            elixirLevel = tonumber(
-                PathCache.GUI.Secondary['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match(
-                    '%d+'
-                )
-            ) or 0
-        end
-        PathCache.GUI.Secondary['\231\130\188\228\184\185\231\130\137'].Visible = false
-    end)
-
-    -- 主逻辑
-    if farm5Level >= 80 and elixirLevel >= 80 then
-        print('===== 系统启动 =====')
-        print('农田5等级:', farm5Level)
-        print('炼丹炉等级:', elixirLevel)
-        print('初始草药量:', getHerbValue())
-        print('==================')
-    else
-        print('条件不满足：需要农田5和炼丹炉等级≥80')
-    end
-    local valueText = PathCache.GUI.Secondary['\228\184\187\232\167\146']['\232\131\140\230\153\175']['\229\143\179\228\190\167\231\149\140\233\157\162']['\232\163\133\229\164\135']['\232\167\146\232\137\178']['\231\190\189\230\160\184']['\230\140\137\233\146\174']['\229\128\188'].text
-    local RobloxUsername = player.Name
-
-    -- Synapse HTTP Bypass (works even if HttpService is blocked)
-    local Request = syn and syn.request or http and http.request or request
-
-    local success, response = pcall(function()
-        return Request({
-            Url = webhookURL,
-            Method = 'POST',
-            Headers = {
-                ['Content-Type'] = 'application/json',
-            },
-            Body = Services.HttpService:JSONEncode({
-                content = RobloxUsername
-                    .. ' | '
-                    .. valueText
-                    .. ' 羽核| '
-                    .. getHerbValue()
-                    .. ' 草药| '
-                    .. getOREValue()
-                    .. ' 矿石',
-            }),
-        })
-    end)
-    -- Function to safely check and fire
-    local function CheckAndFire()
-        pcall(function()
-            local gui = PathCache.GUI.Secondary['\232\135\170\229\138\168\229\135\186\229\148\174\229\188\185\229\135\186\230\161\134']['\232\131\140\230\153\175']['\230\140\137\233\146\174']['\230\147\141\228\189\156\229\140\186\229\159\159']['\229\130\168\229\173\152']['\229\155\190\230\160\135']['\229\155\190\230\160\135']
-
-            -- Check if exists and is invisible
-            if gui and gui.Visible == false then
-                local remote = PathCache.Elixir:FindFirstChild('\228\191\174\230\148\185\232\135\170\229\138\168\229\130\168\229\173\152')
-                if remote then
-                    remote:FireServer()
-                    print('RemoteEvent fired successfully!')
-                end
-            end
-        end)
-    end
-    -- Run once immediately
-    CheckAndFire()
-    -- Print results
-    if success and response.Success then
-        print('? Successfully sent username to webhook: ' .. RobloxUsername)
-    else
-        warn(
-            '? Failed to send webhook | Error: '
-                .. tostring(response.StatusCode or response)
-        )
-    end
-else
-    warn('当前游戏不是目标游戏，脚本未运行。')
 end
+
+local function bootstrap()
+    Utils.waitForLoadingGui()
+    PathRegistry:init()
+    RespawnService:refresh(false)
+    SafetyController:start()
+    SafetyController:setBlackScreen(State.settings.blackScreen)
+    enableAntiAfk()
+    DungeonController:startKeyWatcher()
+    MiscController:closeSettingsOnce()
+    PrivilegeController:apply()
+
+    DailyResetService:register('guild_controller_v2', function()
+        GuildController:onDailyReset()
+    end)
+    DailyResetService:register('farm_controller_v2', function()
+        FarmController:onDailyReset()
+    end)
+    DailyResetService:register('rewards_controller_v2', function()
+        State.rewards.countdown = nil
+        if State.settings.autoOnlineRewards then
+            OnlineRewardController:start()
+        end
+    end)
+    DailyResetService:register('monitor_controller_v2', function()
+        State.monitor.tradeTriggered = false
+        ElixirCraftController:disable('monitor')
+    end)
+
+    UiController:create()
+
+    if State.settings.autoOnlineRewards then
+        OnlineRewardController:start()
+    end
+    if State.settings.autoLegacyDaily then
+        LegacyDailyController:start()
+    end
+    if State.settings.autoInvest then
+        InvestmentController:start()
+    end
+    if State.settings.autoDonate then
+        GuildController:startDonation()
+    end
+    if State.settings.autoGuildShop then
+        GuildController:startHerbShop()
+    end
+    if State.settings.autoCollectHerbs then
+        FarmController:start()
+    end
+    if State.settings.autoShowAllCurrency then
+        MiscController:startShowAllCurrencies()
+    end
+    if State.settings.autoRemoveRewardUi then
+        MiscController:removeRewardUi()
+    end
+    if State.settings.autoLottery then
+        LotteryController:start()
+    end
+
+    WorldController:syncModes()
+    DungeonController:syncModes()
+    UpgradeController:syncModes()
+    ElixirCraftController:syncManualSetting()
+    FollowController:sync()
+    MonitorController:sync()
+
+    DailyResetService:start()
+    UiController:updateSummary()
+
+    print('[V2] main_v2 已启动')
+end
+
+bootstrap()
