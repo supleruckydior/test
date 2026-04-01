@@ -1668,29 +1668,43 @@ function MiscController:buyMonthlyKeys()
         return false
     end
 
-    for round = 1, 60 do
-        for arg = 4, 9 do
-            ActionThrottle:fireServer(
-                ('monthly_key_%d_%d'):format(arg, round),
+    local function buyItemTarget(itemId, targetCount)
+        local remaining = targetCount
+        local purchased = false
+
+        while remaining > 0 do
+            local batch = remaining >= 10 and 10 or 1
+            local ok = ActionThrottle:fireServer(
+                string.format('monthly_key_buy_%d_%d_%d', itemId, batch, remaining),
                 remote,
                 0,
-                arg
+                itemId,
+                batch
             )
+
+            if not ok then
+                break
+            end
+
+            purchased = true
+            remaining = remaining - batch
+            task.wait(0.05)
         end
+
+        return purchased
     end
 
-    for round = 1, 30 do
-        for arg = 17, 22 do
-            ActionThrottle:fireServer(
-                ('monthly_key_extra_%d_%d'):format(arg, round),
-                remote,
-                0,
-                arg
-            )
-        end
+    local bought = false
+
+    for itemId = 4, 9 do
+        bought = buyItemTarget(itemId, 60) or bought
     end
 
-    return true
+    for itemId = 17, 22 do
+        bought = buyItemTarget(itemId, 30) or bought
+    end
+
+    return bought
 end
 
 function MiscController:buyArenaWater()
