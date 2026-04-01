@@ -275,6 +275,29 @@ function LegacyDailyCompat:gamepassmission()
     return claimed
 end
 
+function LegacyDailyCompat:getSortedGamePassGiftEntries(giftList)
+    if not giftList then
+        return {}
+    end
+
+    local entries = {}
+    for _, child in ipairs(giftList:GetChildren()) do
+        local index = tonumber(child.Name:match("^gamepassgift(%d+)$"))
+        if index then
+            table.insert(entries, {
+                index = index,
+                gift = child,
+            })
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        return a.index < b.index
+    end)
+
+    return entries
+end
+
 function LegacyDailyCompat:gamepassgiftget()
     local giftList = self:getGamePassGiftList()
     if not giftList then
@@ -282,26 +305,27 @@ function LegacyDailyCompat:gamepassgiftget()
     end
 
     local claimed = 0
-    for index = 1, 50 do
-        local gift = giftList:FindFirstChild("gamepassgift" .. index)
-        if gift then
-            local progress = self:deepFind(gift, { "进度预制体", "进度" })
-            local freeClaimed = self:deepFind(gift, { "免费", "背景", "领取图标" })
-            local goldClaimed = self:deepFind(gift, { "黄金", "背景", "领取图标" })
-            local progressVisible = progress and progress.Visible
+    local giftEntries = self:getSortedGamePassGiftEntries(giftList)
 
-            if progressVisible and freeClaimed and not freeClaimed.Visible then
-                if self:claimGamePassGift(1, index) then
-                    claimed = claimed + 1
-                    task.wait(Config.ClaimCooldown)
-                end
+    for _, entry in ipairs(giftEntries) do
+        local gift = entry.gift
+        local index = entry.index
+        local progress = self:deepFind(gift, { "进度预制体", "进度" })
+        local freeClaimed = self:deepFind(gift, { "免费", "背景", "领取图标" })
+        local goldClaimed = self:deepFind(gift, { "黄金", "背景", "领取图标" })
+        local progressVisible = progress and progress.Visible
+
+        if progressVisible and freeClaimed and not freeClaimed.Visible then
+            if self:claimGamePassGift(1, index) then
+                claimed = claimed + 1
+                task.wait(Config.ClaimCooldown)
             end
+        end
 
-            if progressVisible and goldClaimed and not goldClaimed.Visible then
-                if self:claimGamePassGift(2, index) then
-                    claimed = claimed + 1
-                    task.wait(Config.ClaimCooldown)
-                end
+        if progressVisible and goldClaimed and not goldClaimed.Visible then
+            if self:claimGamePassGift(2, index) then
+                claimed = claimed + 1
+                task.wait(Config.ClaimCooldown)
             end
         end
     end
