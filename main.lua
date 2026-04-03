@@ -1763,26 +1763,46 @@ local WorldController = {
     },
 }
 
-function WorldController:getUnlockedLevel()
+function WorldController:getWorldProgressValue()
+    local cached = PathRegistry.WorldProgressValue
+    if cached and cached.Parent and tonumber(cached.Value) then
+        return cached
+    end
+
     local valuesRoot = player:FindFirstChild(Constants.Paths.Values)
         or player:WaitForChild(Constants.Paths.Values, 2)
-    local progressRoot = valuesRoot
+    if not valuesRoot then
+        return nil
+    end
+
+    local progressRoot = valuesRoot:FindFirstChild(Constants.Paths.MainProgress)
+        or valuesRoot:WaitForChild(Constants.Paths.MainProgress, 2)
+        or valuesRoot:FindFirstChild(Constants.Paths.MainProgress, true)
+    local worldValue = progressRoot
         and (
-            valuesRoot:FindFirstChild(Constants.Paths.MainProgress)
-            or valuesRoot:WaitForChild(Constants.Paths.MainProgress, 2)
+            progressRoot:FindFirstChild('world')
+            or progressRoot:FindFirstChild('世界')
+            or progressRoot:FindFirstChild('world', true)
+            or progressRoot:FindFirstChild('世界', true)
         )
         or nil
-    local worldValue = progressRoot
-        and (progressRoot:FindFirstChild('world') or progressRoot:WaitForChild('world', 2))
-        or nil
 
-    if valuesRoot then
+    if not worldValue then
+        worldValue = valuesRoot:FindFirstChild('world', true)
+            or valuesRoot:FindFirstChild('世界', true)
+    end
+
+    if worldValue then
         PathRegistry.Values = valuesRoot
-    end
-    if progressRoot then
-        PathRegistry.Progress = progressRoot
+        PathRegistry.Progress = progressRoot or worldValue.Parent
+        PathRegistry.WorldProgressValue = worldValue
     end
 
+    return worldValue
+end
+
+function WorldController:getUnlockedLevel()
+    local worldValue = self:getWorldProgressValue()
     local unlocked = worldValue and tonumber(worldValue.Value) or State.world.unlocked or 1
     unlocked = math.max(1, math.floor(tonumber(unlocked) or 1))
     State.world.unlocked = unlocked
@@ -2034,6 +2054,28 @@ function DungeonController:getDungeonListRoot()
     return nil
 end
 
+function DungeonController:findDungeonSlotByDisplayName(root, config)
+    if not root or not config then
+        return nil
+    end
+
+    local expectedEnglish = (config.label or ''):gsub('%s+', '')
+    local expectedChinese = (config.zh or ''):gsub('%s+', '')
+
+    for _, child in ipairs(root:GetChildren()) do
+        local nameLabel = child:FindFirstChild('名称') or Utils.deepFind(child, { '名称' })
+        local cleanText = nameLabel
+            and tostring(nameLabel.Text or ''):gsub('%s+', '')
+            or ''
+
+        if cleanText ~= '' and (cleanText == expectedEnglish or cleanText == expectedChinese) then
+            return child
+        end
+    end
+
+    return nil
+end
+
 function DungeonController:getKeyCount(name)
     local previous = tonumber(State.dungeon.keyCounts[name]) or 0
     local root = self:getDungeonListRoot()
@@ -2043,6 +2085,7 @@ function DungeonController:getKeyCount(name)
             root:FindFirstChild(name)
             or (config and root:FindFirstChild(config.label))
             or (config and root:FindFirstChild(config.zh))
+            or self:findDungeonSlotByDisplayName(root, config)
             or root:FindFirstChild(name, true)
         )
         or nil
