@@ -2174,8 +2174,16 @@ function DungeonController:syncLevelFromPopup()
     end
 
     local selectedName
+    local popupTitle = tostring(titleLabel.Text or ''):gsub('%s+', '')
     for name, config in pairs(self.configs) do
-        if titleLabel.Text == config.label then
+        local englishTitle = tostring(config.label or ''):gsub('%s+', '')
+        local chineseTitle = tostring(config.zh or ''):gsub('%s+', '')
+        local internalTitle = tostring(config.uiName or name):gsub('%s+', '')
+        if popupTitle ~= '' and (
+            popupTitle == englishTitle
+            or popupTitle == chineseTitle
+            or popupTitle == internalTitle
+        ) then
             selectedName = name
             break
         end
