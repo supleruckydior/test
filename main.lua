@@ -1673,13 +1673,12 @@ function MiscController:buyMonthlyKeys()
         local purchased = false
 
         while remaining > 0 do
-            local batch = remaining >= 10 and 10 or 1
             local ok = ActionThrottle:fireServer(
-                string.format('monthly_key_buy_%d_%d_%d', itemId, batch, remaining),
+                string.format('monthly_key_buy_%d_%d', itemId, remaining),
                 remote,
                 0,
                 itemId,
-                batch
+                1
             )
 
             if not ok then
@@ -1687,7 +1686,7 @@ function MiscController:buyMonthlyKeys()
             end
 
             purchased = true
-            remaining = remaining - batch
+            remaining = remaining - 1
             task.wait(0.05)
         end
 
