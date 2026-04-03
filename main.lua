@@ -37,6 +37,7 @@ local Constants = {
         'https://github.com/supleruckydior/test/raw/refs/heads/main/%E8%87%AA%E5%8A%A8%E4%BA%A4%E6%98%932.json',
     },
     StatsScriptUrl = 'https://github.com/supleruckydior/test/raw/refs/heads/main/%E9%87%91%E5%B8%81.json',
+    RuneFilterScriptUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E7%AC%A6%E6%96%87%E7%AD%9B%E9%80%89.lua',
     GithubUrl = 'https://github.com/Tseting-nil',
     GiftCodes = {
         'ilovethisgame',
@@ -544,6 +545,9 @@ local State = {
         lastEnteredUiName = nil,
         lastEnteredInternalName = nil,
         lastEnteredLevel = nil,
+        lastEnterAt = 0,
+        pendingVictory = false,
+        awaitingResult = false,
     },
     lottery = {
         diamonds = 0,
@@ -1750,6 +1754,14 @@ function MiscController:runStatsScript()
     return ExternalAssets:runScript(Constants.StatsScriptUrl, 'stats_script')
 end
 
+function MiscController:runRuneFilterScript()
+    local ok = ExternalAssets:runScript(Constants.RuneFilterScriptUrl, 'rune_filter_script')
+    if ok then
+        Utils.showTopRightNotice('已执行符文筛选脚本', 2)
+    end
+    return ok
+end
+
 function MiscController:copyGithubLink()
     if type(setclipboard) == 'function' then
         setclipboard(Constants.GithubUrl)
@@ -2163,6 +2175,9 @@ function DungeonController:enterSelected()
     State.dungeon.lastEnteredUiName = config.uiName
     State.dungeon.lastEnteredInternalName = State.settings.dungeon.selected
     State.dungeon.lastEnteredLevel = level
+    State.dungeon.lastEnterAt = os.clock()
+    State.dungeon.pendingVictory = false
+    State.dungeon.awaitingResult = true
     return ActionThrottle:fireServer(
         'dungeon_enter_' .. config.uiName,
         PathRegistry.Remotes.DungeonEnter,
@@ -2212,6 +2227,7 @@ end
 
 function DungeonController:clearVictory()
     local label = self:getVictoryLabel()
+    State.dungeon.pendingVictory = false
     if label then
         label.Text = ''
     end
@@ -2296,14 +2312,69 @@ function DungeonController:startKeyWatcher()
     end)
 end
 
+function DungeonController:startVictoryWatcher()
+    Scheduler:ensure('dungeon_victory_watch_v2', function(job)
+        while job.enabled do
+            if
+                State.settings.dungeon.autoStart
+                and State.dungeon.awaitingResult
+                and self:isVictory()
+            then
+                State.dungeon.pendingVictory = true
+            end
+            task.wait(0.03)
+        end
+    end)
+end
+
+function DungeonController:stopVictoryWatcher()
+    Scheduler:stop('dungeon_victory_watch_v2')
+end
+
+function DungeonController:waitForBattleOutcome(job, timeoutSeconds)
+    local deadline = os.clock() + (timeoutSeconds or 30)
+
+    while job.enabled and State.settings.dungeon.autoStart do
+        if SafetyController:isPaused() then
+            return 'paused'
+        end
+
+        if State.dungeon.pendingVictory or self:isVictory() then
+            return 'victory'
+        end
+
+        if
+            RespawnService:isAtRespawn(5)
+            and (os.clock() - (tonumber(State.dungeon.lastEnterAt) or 0)) >= 0.75
+        then
+            return 'respawn'
+        end
+
+        if os.clock() >= deadline then
+            return 'timeout'
+        end
+
+        task.wait(0.05)
+    end
+
+    return 'stopped'
+end
+
 function DungeonController:startAutoStart()
     Scheduler:ensure('dungeon_auto_start_v2', function(job)
         while job.enabled and State.settings.dungeon.autoStart do
             if SafetyController:isPaused() then
                 task.wait(1)
             else
-                if self:isVictory() then
-                    local currentKey = self:getSelectedConfig().uiName
+                if not State.dungeon.awaitingResult then
+                    State.dungeon.awaitingResult = true
+                end
+
+                local outcome = self:waitForBattleOutcome(job, 30)
+
+                if outcome == 'victory' then
+                    local currentKey = State.dungeon.lastEnteredUiName
+                        or self:getSelectedConfig().uiName
                     local currentCount = tonumber(State.dungeon.keyCounts[currentKey]) or 0
 
                     if State.settings.dungeon.autoPlusOne then
@@ -2316,16 +2387,17 @@ function DungeonController:startAutoStart()
                         self:setSelected(bestName)
                     end
 
+                    State.dungeon.awaitingResult = false
                     self:clearVictory()
                     RespawnService:teleportHome()
                     task.wait(0.5)
                     self:enterSelected()
-                    task.wait(2)
-                elseif RespawnService:isAtRespawn(5) then
-                    self:enterSelected()
-                    task.wait(2)
-                else
                     task.wait(0.5)
+                elseif outcome == 'respawn' then
+                    self:enterSelected()
+                    task.wait(0.1)
+                else
+                    task.wait(0.1)
                 end
             end
         end
@@ -2344,8 +2416,12 @@ function DungeonController:syncModes()
     end
 
     if State.settings.dungeon.autoStart then
+        self:startVictoryWatcher()
         self:startAutoStart()
     else
+        State.dungeon.pendingVictory = false
+        State.dungeon.awaitingResult = false
+        self:stopVictoryWatcher()
         self:stopAutoStart()
     end
 end
@@ -3606,6 +3682,9 @@ function UiController:create()
     end)
     tabs.tools:AddButton('每秒击杀/金币数', function()
         MiscController:runStatsScript()
+    end)
+    tabs.tools:AddButton('符文筛选(不懂得别按)', function()
+        MiscController:runRuneFilterScript()
     end)
     tabs.tools:AddButton('测试每日重置', function()
         State.rewards.countdown = nil
