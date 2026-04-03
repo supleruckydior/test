@@ -541,6 +541,9 @@ local State = {
         lastAutoAdjustAt = 0,
         lastAutoAdjustName = nil,
         lastAutoAdjustLevel = nil,
+        lastEnteredUiName = nil,
+        lastEnteredInternalName = nil,
+        lastEnteredLevel = nil,
     },
     lottery = {
         diamonds = 0,
@@ -1969,6 +1972,15 @@ function DungeonController:getSelectedConfig()
     return self.configs[State.settings.dungeon.selected] or self.configs.OreDungeon
 end
 
+function DungeonController:getInternalNameByUiName(uiName)
+    for name, config in pairs(self.configs) do
+        if config.uiName == uiName then
+            return name
+        end
+    end
+    return nil
+end
+
 function DungeonController:getSelectedLevel()
     local key = self:getSelectedConfig()
     return math.max(1, tonumber(State.settings.dungeon.levels[key.uiName]) or 1)
@@ -1988,6 +2000,16 @@ function DungeonController:setSelectedLevel(level)
     local config = self:getSelectedConfig()
     local levels = Utils.cloneTable(State.settings.dungeon.levels)
     levels[config.uiName] = math.max(1, math.floor(tonumber(level) or 1))
+    updateSetting({ 'dungeon', 'levels' }, levels)
+end
+
+function DungeonController:setLevelForUiName(uiName, level)
+    if not uiName then
+        return
+    end
+
+    local levels = Utils.cloneTable(State.settings.dungeon.levels)
+    levels[uiName] = math.max(1, math.floor(tonumber(level) or 1))
     updateSetting({ 'dungeon', 'levels' }, levels)
 end
 
@@ -2138,6 +2160,9 @@ end
 function DungeonController:enterSelected()
     local config = self:getSelectedConfig()
     local level = self:getSelectedLevel()
+    State.dungeon.lastEnteredUiName = config.uiName
+    State.dungeon.lastEnteredInternalName = State.settings.dungeon.selected
+    State.dungeon.lastEnteredLevel = level
     return ActionThrottle:fireServer(
         'dungeon_enter_' .. config.uiName,
         PathRegistry.Remotes.DungeonEnter,
@@ -2145,6 +2170,32 @@ function DungeonController:enterSelected()
         config.id,
         level
     )
+end
+
+function DungeonController:applyAutoPlusOne()
+    local enteredUiName = State.dungeon.lastEnteredUiName
+        or self:getSelectedConfig().uiName
+    local enteredInternalName = State.dungeon.lastEnteredInternalName
+        or self:getInternalNameByUiName(enteredUiName)
+        or State.settings.dungeon.selected
+    local baseLevel = tonumber(State.dungeon.lastEnteredLevel)
+    if not baseLevel or baseLevel <= 0 then
+        local levels = State.settings.dungeon.levels or {}
+        baseLevel = tonumber(levels[enteredUiName]) or self:getSelectedLevel()
+    end
+
+    if enteredInternalName then
+        self:setSelected(enteredInternalName)
+    end
+
+    local nextLevel = math.max(1, math.floor(tonumber(baseLevel) or 1) + 1)
+    self:setLevelForUiName(enteredUiName, nextLevel)
+    State.dungeon.lastEnteredUiName = enteredUiName
+    State.dungeon.lastEnteredInternalName = enteredInternalName
+    State.dungeon.lastEnteredLevel = nextLevel
+    State.dungeon.lastAutoAdjustAt = os.clock()
+    State.dungeon.lastAutoAdjustName = enteredUiName
+    State.dungeon.lastAutoAdjustLevel = nextLevel
 end
 
 function DungeonController:getVictoryLabel()
@@ -2256,8 +2307,8 @@ function DungeonController:startAutoStart()
                     local currentCount = tonumber(State.dungeon.keyCounts[currentKey]) or 0
 
                     if State.settings.dungeon.autoPlusOne then
-                        self:adjustLevel(1, 'auto_plus_one')
-                        task.wait(0.2)
+                        self:applyAutoPlusOne()
+                        task.wait(1)
                     end
 
                     if State.settings.dungeon.autoFinishAll and currentCount <= 0 then
