@@ -538,6 +538,9 @@ local State = {
     },
     dungeon = {
         keyCounts = {},
+        lastAutoAdjustAt = 0,
+        lastAutoAdjustName = nil,
+        lastAutoAdjustLevel = nil,
     },
     lottery = {
         diamonds = 0,
@@ -1988,8 +1991,16 @@ function DungeonController:setSelectedLevel(level)
     updateSetting({ 'dungeon', 'levels' }, levels)
 end
 
-function DungeonController:adjustLevel(delta)
-    self:setSelectedLevel(self:getSelectedLevel() + delta)
+function DungeonController:adjustLevel(delta, source)
+    local config = self:getSelectedConfig()
+    local newLevel = self:getSelectedLevel() + delta
+    self:setSelectedLevel(newLevel)
+
+    if source == 'auto_plus_one' then
+        State.dungeon.lastAutoAdjustAt = os.clock()
+        State.dungeon.lastAutoAdjustName = config.uiName
+        State.dungeon.lastAutoAdjustLevel = math.max(1, math.floor(tonumber(newLevel) or 1))
+    end
 end
 
 function DungeonController:getCurrentGuiRoot()
@@ -2191,6 +2202,22 @@ function DungeonController:syncLevelFromPopup()
 
     local level = tonumber(difficultyValue.Text)
     if selectedName and level and level > 0 then
+        local selectedConfig = self.configs[selectedName]
+        local lastAdjustAt = tonumber(State.dungeon.lastAutoAdjustAt) or 0
+        local adjustAge = os.clock() - lastAdjustAt
+        local isRecentAutoAdjust = adjustAge >= 0 and adjustAge < 4
+        if selectedConfig and isRecentAutoAdjust then
+            local lastAdjustedName = State.dungeon.lastAutoAdjustName
+            local lastAdjustedLevel = tonumber(State.dungeon.lastAutoAdjustLevel)
+            if
+                lastAdjustedName == selectedConfig.uiName
+                and lastAdjustedLevel
+                and level ~= lastAdjustedLevel
+            then
+                return
+            end
+        end
+
         self:setSelected(selectedName)
         self:setSelectedLevel(level)
     end
@@ -2229,7 +2256,7 @@ function DungeonController:startAutoStart()
                     local currentCount = tonumber(State.dungeon.keyCounts[currentKey]) or 0
 
                     if State.settings.dungeon.autoPlusOne then
-                        self:adjustLevel(1)
+                        self:adjustLevel(1, 'auto_plus_one')
                         task.wait(0.2)
                     end
 
