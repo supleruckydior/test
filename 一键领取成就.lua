@@ -5,9 +5,9 @@ local ReplicatedStorage = game:GetService('ReplicatedStorage')
 
 -- 配置参数
 local PART1_START = 1   -- 第一部分起始值
-local PART1_END = 70    -- 第一部分结束值
+local PART1_END = 99    -- 第一部分结束值
 local PART2_START = 1   -- 第二部分起始值
-local PART2_END = 70    -- 第二部分结束值
+local PART2_END = 99    -- 第二部分结束值
 local DELAY_BETWEEN_CALLS = 0  -- 每次调用之间的延迟（秒）
 
 -- 获取事件
