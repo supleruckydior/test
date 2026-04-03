@@ -1757,8 +1757,27 @@ local WorldController = {
 }
 
 function WorldController:getUnlockedLevel()
-    local worldValue = PathRegistry.Progress and PathRegistry.Progress:FindFirstChild('world')
-    local unlocked = worldValue and tonumber(worldValue.Value) or 1
+    local valuesRoot = player:FindFirstChild(Constants.Paths.Values)
+        or player:WaitForChild(Constants.Paths.Values, 2)
+    local progressRoot = valuesRoot
+        and (
+            valuesRoot:FindFirstChild(Constants.Paths.MainProgress)
+            or valuesRoot:WaitForChild(Constants.Paths.MainProgress, 2)
+        )
+        or nil
+    local worldValue = progressRoot
+        and (progressRoot:FindFirstChild('world') or progressRoot:WaitForChild('world', 2))
+        or nil
+
+    if valuesRoot then
+        PathRegistry.Values = valuesRoot
+    end
+    if progressRoot then
+        PathRegistry.Progress = progressRoot
+    end
+
+    local unlocked = worldValue and tonumber(worldValue.Value) or State.world.unlocked or 1
+    unlocked = math.max(1, math.floor(tonumber(unlocked) or 1))
     State.world.unlocked = unlocked
     return unlocked
 end
