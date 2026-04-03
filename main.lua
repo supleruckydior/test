@@ -501,8 +501,15 @@ end
 
 function SettingsStore:load()
     local loaded = Utils.readJsonFile(Constants.SettingsFile)
+    local hasPersistedSettings = type(loaded) == 'table' and next(loaded) ~= nil
     local settings = Utils.mergeDefaults(defaultSettings, loaded)
-    return self:migrateLegacy(settings)
+
+    if not hasPersistedSettings then
+        settings = self:migrateLegacy(settings)
+        self:save(settings)
+    end
+
+    return settings
 end
 
 function SettingsStore:save(settings)
