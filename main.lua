@@ -1965,25 +1965,90 @@ function DungeonController:adjustLevel(delta)
     self:setSelectedLevel(self:getSelectedLevel() + delta)
 end
 
+function DungeonController:getCurrentGuiRoot()
+    local currentPlayerGui = player:FindFirstChild('PlayerGui')
+        or player:WaitForChild('PlayerGui', 2)
+    local guiRoot = currentPlayerGui
+        and (
+            currentPlayerGui:FindFirstChild('GUI')
+            or currentPlayerGui:WaitForChild('GUI', 2)
+        )
+        or nil
+
+    if currentPlayerGui then
+        playerGui = currentPlayerGui
+    end
+
+    if guiRoot then
+        PathRegistry.GUI = PathRegistry.GUI or {}
+        PathRegistry.GUI.Root = guiRoot
+        PathRegistry.GUI.Main = guiRoot:FindFirstChild(Constants.Paths.MainGui)
+            or PathRegistry.GUI.Main
+        PathRegistry.GUI.Secondary = guiRoot:FindFirstChild(Constants.Paths.SecondaryGui)
+            or PathRegistry.GUI.Secondary
+    end
+
+    return guiRoot or (PathRegistry.GUI and PathRegistry.GUI.Root) or nil
+end
+
 function DungeonController:getDungeonListRoot()
-    return Utils.deepWait(PathRegistry.GUI.Root, {
-        Constants.Paths.SecondaryGui,
-        '关卡选择',
-        '背景',
-        '右侧界面',
-        '副本',
-        '列表',
-    }, 2)
+    local guiRoot = self:getCurrentGuiRoot()
+    if not guiRoot then
+        return nil
+    end
+
+    local candidatePaths = {
+        {
+            Constants.Paths.SecondaryGui,
+            '关卡选择',
+            '背景',
+            '右侧界面',
+            '副本',
+            '列表',
+        },
+        {
+            Constants.Paths.SecondaryGui,
+            '关卡选择',
+            '副本选择弹出框',
+            '背景',
+            '右侧界面',
+            '副本',
+            '列表',
+        },
+    }
+
+    for _, path in ipairs(candidatePaths) do
+        local root = Utils.deepFind(guiRoot, path) or Utils.deepWait(guiRoot, path, 1)
+        if root then
+            return root
+        end
+    end
+
+    return nil
 end
 
 function DungeonController:getKeyCount(name)
+    local previous = tonumber(State.dungeon.keyCounts[name]) or 0
     local root = self:getDungeonListRoot()
-    local slot = root and root:FindFirstChild(name)
-    local valueLabel = slot and Utils.deepWait(slot, { '钥匙', '值' }, 1)
-    if not valueLabel then
-        return 0
+    local config = self.configs[name]
+    local slot = root
+        and (
+            root:FindFirstChild(name)
+            or (config and root:FindFirstChild(config.label))
+            or (config and root:FindFirstChild(config.zh))
+            or root:FindFirstChild(name, true)
+        )
+        or nil
+    local valueLabel = slot
+        and (Utils.deepFind(slot, { '钥匙', '值' }) or Utils.deepWait(slot, { '钥匙', '值' }, 1))
+        or nil
+
+    if not valueLabel or not valueLabel:IsA('TextLabel') then
+        return previous
     end
-    return tonumber((valueLabel.Text or ''):match('^%d+')) or 0
+
+    local count = tonumber((valueLabel.Text or ''):match('(%d+)'))
+    return count or previous
 end
 
 function DungeonController:refreshKeyCounts()
