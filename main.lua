@@ -2189,6 +2189,65 @@ function DungeonController:getBestDungeonByKeysExcluding(excludedUiName)
     return bestName, math.max(bestCount, 0)
 end
 
+function DungeonController:findBestAvailableDungeon(excludedUiName, retries)
+    local attempts = math.max(1, tonumber(retries) or 3)
+
+    for _ = 1, attempts do
+        local bestName = nil
+        local bestCount = 0
+
+        for _, name in ipairs(self.dungeonOrder) do
+            local config = self.configs[name]
+            if config and config.uiName ~= excludedUiName then
+                local count = self:getKeyCount(name)
+                State.dungeon.keyCounts[config.uiName] = count
+                if count > bestCount then
+                    bestName = name
+                    bestCount = count
+                end
+            end
+        end
+
+        if bestName and bestCount > 0 then
+            return bestName, bestCount
+        end
+
+        task.wait(0.1)
+    end
+
+    return nil, 0
+end
+
+function DungeonController:ensureAutoStartTarget(excludedUiName)
+    local selectedConfig = self:getSelectedConfig()
+    local currentCount = self:getKeyCount(selectedConfig.uiName)
+
+    State.dungeon.keyCounts[selectedConfig.uiName] = currentCount
+    State.dungeon.keyCounts[State.settings.dungeon.selected] = currentCount
+
+    if currentCount > 0 then
+        return true
+    end
+
+    State.dungeon.awaitingResult = false
+    State.dungeon.pendingVictory = false
+
+    if not State.settings.dungeon.autoFinishAll then
+        return false
+    end
+
+    local bestName, bestCount = self:findBestAvailableDungeon(
+        excludedUiName or selectedConfig.uiName,
+        3
+    )
+    if bestName and bestCount > 0 then
+        self:setSelected(bestName)
+        return true
+    end
+
+    return false
+end
+
 function DungeonController:enterSelected()
     local config = self:getSelectedConfig()
     local level = self:getSelectedLevel()
@@ -2421,8 +2480,12 @@ function DungeonController:startAutoStart()
                     if self:isDungeonCombatActive() then
                         State.dungeon.awaitingResult = true
                     else
-                        self:enterSelected()
-                        task.wait(0.1)
+                        if self:ensureAutoStartTarget() then
+                            self:enterSelected()
+                            task.wait(0.1)
+                        else
+                            task.wait(0.3)
+                        end
                     end
                 else
                     local outcome = self:waitForBattleOutcome(job, 30)
@@ -2431,6 +2494,7 @@ function DungeonController:startAutoStart()
                         local currentKey = State.dungeon.lastEnteredUiName
                             or self:getSelectedConfig().uiName
                         local currentCount = self:getKeyCount(currentKey)
+                        local shouldReenter = currentCount > 0
 
                         if State.settings.dungeon.autoPlusOne then
                             self:applyAutoPlusOne()
@@ -2438,21 +2502,35 @@ function DungeonController:startAutoStart()
                         end
 
                         if State.settings.dungeon.autoFinishAll and currentCount <= 0 then
-                            local bestName, bestCount = self:getBestDungeonByKeysExcluding(currentKey)
+                            local bestName, bestCount = self:findBestAvailableDungeon(currentKey, 3)
                             if bestName and bestCount > 0 then
                                 self:setSelected(bestName)
+                                shouldReenter = true
+                            else
+                                shouldReenter = false
                             end
+                        elseif currentCount <= 0 then
+                            shouldReenter = false
                         end
 
                         State.dungeon.awaitingResult = false
                         self:clearVictory()
                         RespawnService:teleportHome()
                         task.wait(0.5)
-                        self:enterSelected()
-                        task.wait(0.5)
+                        if shouldReenter and self:ensureAutoStartTarget(currentKey) then
+                            self:enterSelected()
+                            task.wait(0.5)
+                        else
+                            task.wait(0.3)
+                        end
                     elseif outcome == 'respawn' then
-                        self:enterSelected()
-                        task.wait(0.1)
+                        State.dungeon.awaitingResult = false
+                        if self:ensureAutoStartTarget() then
+                            self:enterSelected()
+                            task.wait(0.1)
+                        else
+                            task.wait(0.3)
+                        end
                     elseif outcome == 'timeout' then
                         State.dungeon.awaitingResult = false
                         task.wait(0.1)
