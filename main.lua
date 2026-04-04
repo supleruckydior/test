@@ -2169,6 +2169,26 @@ function DungeonController:getBestDungeonByKeys()
     return bestName, math.max(bestCount, 0)
 end
 
+function DungeonController:getBestDungeonByKeysExcluding(excludedUiName)
+    self:refreshKeyCounts()
+
+    local bestName = nil
+    local bestCount = -1
+
+    for _, name in ipairs(self.dungeonOrder) do
+        local config = self.configs[name]
+        if config and config.uiName ~= excludedUiName then
+            local count = tonumber(State.dungeon.keyCounts[config.uiName]) or 0
+            if count > bestCount then
+                bestName = name
+                bestCount = count
+            end
+        end
+    end
+
+    return bestName, math.max(bestCount, 0)
+end
+
 function DungeonController:enterSelected()
     local config = self:getSelectedConfig()
     local level = self:getSelectedLevel()
@@ -2218,6 +2238,37 @@ function DungeonController:getVictoryLabel()
         Constants.Paths.Combat,
         '胜利结果',
     }, 2)
+end
+
+function DungeonController:getCombatInfoText()
+    local label = Utils.deepWait(PathRegistry.GUI.Main, {
+        Constants.Paths.Combat,
+        '关卡信息',
+        '文本',
+    }, 2)
+    return label and tostring(label.Text or '') or ''
+end
+
+function DungeonController:isDungeonCombatActive()
+    local combatInfo = self:getCombatInfoText()
+    if combatInfo == '' then
+        return false
+    end
+
+    local compactText = combatInfo:gsub('%s+', '')
+    for name, config in pairs(self.configs) do
+        local englishTitle = tostring(config.label or ''):gsub('%s+', '')
+        local chineseTitle = tostring(config.zh or ''):gsub('%s+', '')
+        local internalTitle = tostring(config.uiName or name):gsub('%s+', '')
+        if compactText:find(englishTitle, 1, true)
+            or compactText:find(chineseTitle, 1, true)
+            or compactText:find(internalTitle, 1, true)
+        then
+            return true
+        end
+    end
+
+    return false
 end
 
 function DungeonController:isVictory()
@@ -2367,37 +2418,47 @@ function DungeonController:startAutoStart()
                 task.wait(1)
             else
                 if not State.dungeon.awaitingResult then
-                    State.dungeon.awaitingResult = true
-                end
-
-                local outcome = self:waitForBattleOutcome(job, 30)
-
-                if outcome == 'victory' then
-                    local currentKey = State.dungeon.lastEnteredUiName
-                        or self:getSelectedConfig().uiName
-                    local currentCount = tonumber(State.dungeon.keyCounts[currentKey]) or 0
-
-                    if State.settings.dungeon.autoPlusOne then
-                        self:applyAutoPlusOne()
-                        task.wait(1)
+                    if self:isDungeonCombatActive() then
+                        State.dungeon.awaitingResult = true
+                    else
+                        self:enterSelected()
+                        task.wait(0.1)
                     end
-
-                    if State.settings.dungeon.autoFinishAll and currentCount <= 0 then
-                        local bestName = self:getBestDungeonByKeys()
-                        self:setSelected(bestName)
-                    end
-
-                    State.dungeon.awaitingResult = false
-                    self:clearVictory()
-                    RespawnService:teleportHome()
-                    task.wait(0.5)
-                    self:enterSelected()
-                    task.wait(0.5)
-                elseif outcome == 'respawn' then
-                    self:enterSelected()
-                    task.wait(0.1)
                 else
-                    task.wait(0.1)
+                    local outcome = self:waitForBattleOutcome(job, 30)
+
+                    if outcome == 'victory' then
+                        local currentKey = State.dungeon.lastEnteredUiName
+                            or self:getSelectedConfig().uiName
+                        local currentCount = self:getKeyCount(currentKey)
+
+                        if State.settings.dungeon.autoPlusOne then
+                            self:applyAutoPlusOne()
+                            task.wait(1)
+                        end
+
+                        if State.settings.dungeon.autoFinishAll and currentCount <= 0 then
+                            local bestName, bestCount = self:getBestDungeonByKeysExcluding(currentKey)
+                            if bestName and bestCount > 0 then
+                                self:setSelected(bestName)
+                            end
+                        end
+
+                        State.dungeon.awaitingResult = false
+                        self:clearVictory()
+                        RespawnService:teleportHome()
+                        task.wait(0.5)
+                        self:enterSelected()
+                        task.wait(0.5)
+                    elseif outcome == 'respawn' then
+                        self:enterSelected()
+                        task.wait(0.1)
+                    elseif outcome == 'timeout' then
+                        State.dungeon.awaitingResult = false
+                        task.wait(0.1)
+                    else
+                        task.wait(0.1)
+                    end
                 end
             end
         end
