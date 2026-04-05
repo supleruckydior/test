@@ -43,6 +43,7 @@ local Constants = {
     },
     StatsScriptUrl = 'https://github.com/supleruckydior/test/raw/refs/heads/main/%E9%87%91%E5%B8%81.json',
     RuneFilterScriptUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E7%AC%A6%E6%96%87%E7%AD%9B%E9%80%89.lua',
+    yiwuScriptUrl = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E9%81%97%E7%89%A9%E5%8D%87%E7%BA%A7.lua"))()',
     GithubUrl = 'https://github.com/Tseting-nil',
     GiftCodes = {
         'ilovethisgame',
@@ -1812,6 +1813,13 @@ function MiscController:runRuneFilterScript()
     local ok = ExternalAssets:runScript(Constants.RuneFilterScriptUrl, 'rune_filter_script')
     if ok then
         Utils.showTopRightNotice('已执行符文筛选脚本', 2)
+    end
+    return ok
+end
+function MiscController:runyiwuScript()
+    local ok = ExternalAssets:runScript(Constants.yiwuScriptUrl, 'yiwu_script')
+    if ok then
+        Utils.showTopRightNotice('已执行遗物脚本', 2)
     end
     return ok
 end
@@ -3924,6 +3932,9 @@ function UiController:create()
     end)
     tabs.tools:AddButton('符文筛选(不懂得别按)', function()
         MiscController:runRuneFilterScript()
+    end)
+    tabs.tools:AddButton('遗物升级菜单', function()
+        MiscController:runyiwuScript()
     end)
     tabs.tools:AddButton('测试每日重置', function()
         State.rewards.countdown = nil
