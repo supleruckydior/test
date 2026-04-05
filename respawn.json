@@ -235,12 +235,21 @@ function LegacyDailyCompat:claimGamePassGift(tier, index)
 end
 
 function LegacyDailyCompat:claimAllMail()
-    if not self:canRunAction("claim_all_mail", Config.MailCooldown) then
+    self:ensureDailyState()
+    if self:isDailyDone("claimallmail") then
         return false
     end
 
     local remote = self:getCommonRemote({ "邮件", "领取全部邮件" })
-    return self:fireRemote(remote)
+    local fired = self:fireRemote(remote)
+    if fired then
+        self:markDailyDone("claimallmail")
+    end
+    return fired
+end
+
+function LegacyDailyCompat:claimallmail()
+    return self:claimAllMail()
 end
 
 function LegacyDailyCompat:mainmissionchack()
@@ -334,6 +343,11 @@ function LegacyDailyCompat:gamepassgiftget()
 end
 
 function LegacyDailyCompat:everydaygem()
+    self:ensureDailyState()
+    if self:isDailyDone("everydaygem") then
+        return 0
+    end
+
     local playerGui = self:getPlayerGui()
     local gemRoot = self:deepWait(playerGui, {
         "GUI",
@@ -363,12 +377,15 @@ function LegacyDailyCompat:everydaygem()
         end
     end
 
+    if claimed > 0 then
+        self:markDailyDone("everydaygem")
+    end
+
     return claimed
 end
 
 function LegacyDailyCompat:dailyspin()
     self:ensureDailyState()
-    self:claimAllMail()
 
     if self:isDailyDone("dailyspin") then
         return false
@@ -444,6 +461,9 @@ end
 
 function LegacyDailyCompat:installGlobals()
     local bound = {
+        claimallmail = function()
+            return self:claimallmail()
+        end,
         mainmissionchack = function()
             return self:mainmissionchack()
         end,
