@@ -1871,8 +1871,50 @@ function WorldController:enterSelectedWorld()
     return ActionThrottle:fireServer('world_enter_' .. tostring(level), PathRegistry.Remotes.WorldEnter, 0.3, level)
 end
 
+function WorldController:getAutoBattleValue()
+    local settingsRoot = PathRegistry.Settings
+    if not settingsRoot or not settingsRoot.Parent then
+        local valuesRoot = player:FindFirstChild(Constants.Paths.Values)
+            or player:WaitForChild(Constants.Paths.Values, 2)
+        settingsRoot = valuesRoot
+            and (
+                valuesRoot:FindFirstChild(Constants.Paths.SettingsValue)
+                or valuesRoot:WaitForChild(Constants.Paths.SettingsValue, 2)
+                or valuesRoot:FindFirstChild(Constants.Paths.SettingsValue, true)
+            )
+            or nil
+        if settingsRoot then
+            PathRegistry.Settings = settingsRoot
+        end
+    end
+
+    local value = settingsRoot and settingsRoot:FindFirstChild(Constants.Paths.AutoBattle)
+        or nil
+    if value and value:IsA('BoolValue') then
+        return value
+    end
+    return nil
+end
+
+function WorldController:ensureAutoBattleEnabled(timeoutSeconds)
+    local deadline = os.clock() + (tonumber(timeoutSeconds) or 2)
+
+    repeat
+        local value = self:getAutoBattleValue()
+        if value then
+            if not value.Value then
+                value.Value = true
+            end
+            return value.Value
+        end
+        task.wait(0.1)
+    until os.clock() >= deadline
+
+    return nil
+end
+
 function WorldController:toggleAutoBattle()
-    local value = PathRegistry.Settings and PathRegistry.Settings:FindFirstChild(Constants.Paths.AutoBattle)
+    local value = self:getAutoBattleValue()
     if value and value:IsA('BoolValue') then
         value.Value = not value.Value
         return value.Value
@@ -1925,11 +1967,14 @@ function WorldController:startAutoStart()
                     RespawnService:teleportHome()
                     task.wait(0.5)
                     self:enterSelectedWorld()
+                    self:ensureAutoBattleEnabled(2)
                     task.wait(3)
                 elseif RespawnService:isAtRespawn(3) then
                     self:enterSelectedWorld()
+                    self:ensureAutoBattleEnabled(2)
                     task.wait(2)
                 else
+                    self:ensureAutoBattleEnabled(0.3)
                     task.wait(0.3)
                 end
             end
@@ -1955,6 +2000,7 @@ function WorldController:syncModes()
     end
 
     if State.settings.world.autoStart then
+        self:ensureAutoBattleEnabled(2)
         self:startAutoStart()
     else
         self:stopAutoStart()
