@@ -1,7 +1,3 @@
---!strict
--- LocalScript
--- 可放在 StarterPlayer > StarterPlayerScripts 或 StarterGui 里
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
@@ -9,18 +5,82 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local isMobile = UserInputService.TouchEnabled
+local camera = workspace.CurrentCamera
+local viewport = camera and camera.ViewportSize or Vector2.new(720, 1280)
+
+local isSmallMobile = isMobile and viewport.X <= 720
+local isShortScreen = isMobile and viewport.Y <= 1280
+
 local isCollapsed = false
 local isRunning = false
 
-local function create(className: string, props: {[string]: any}, children: {Instance}?)
+local panelWidth
+local panelHeight
+local headerHeight
+local windowPos
+local bodyTop
+local bodyBottom
+local boxHeight
+local rowHeight
+local topButtonSize
+local titleMaxSize
+local panelCorner
+local bodyPadding
+local topButtonGap
+
+if isSmallMobile then
+    panelWidth = 0.72
+    panelHeight = isShortScreen and 0.30 or 0.33
+    headerHeight = 40
+    windowPos = UDim2.new(0.5, 0, 0.58, 0)
+    bodyTop = 48
+    bodyBottom = 54
+    boxHeight = 34
+    rowHeight = 36
+    topButtonSize = 30
+    titleMaxSize = 16
+    panelCorner = 12
+    bodyPadding = 8
+    topButtonGap = 44
+elseif isMobile then
+    panelWidth = 0.78
+    panelHeight = 0.36
+    headerHeight = 42
+    windowPos = UDim2.new(0.5, 0, 0.56, 0)
+    bodyTop = 50
+    bodyBottom = 58
+    boxHeight = 36
+    rowHeight = 38
+    topButtonSize = 32
+    titleMaxSize = 17
+    panelCorner = 13
+    bodyPadding = 10
+    topButtonGap = 46
+else
+    panelWidth = 0.34
+    panelHeight = 0.52
+    headerHeight = 46
+    windowPos = UDim2.new(0.5, 0, 0.55, 0)
+    bodyTop = 54
+    bodyBottom = 66
+    boxHeight = 38
+    rowHeight = 42
+    topButtonSize = 34
+    titleMaxSize = 20
+    panelCorner = 14
+    bodyPadding = 10
+    topButtonGap = 50
+end
+
+local function create(className, props, children)
     local instance = Instance.new(className)
 
-    for key, value in props do
+    for key, value in pairs(props) do
         instance[key] = value
     end
 
     if children then
-        for _, child in children do
+        for _, child in ipairs(children) do
             child.Parent = instance
         end
     end
@@ -29,22 +89,18 @@ local function create(className: string, props: {[string]: any}, children: {Inst
 end
 
 local gui = create("ScreenGui", {
-    Name = "ToolPanelGui",
+    Name = "SmallToolPanelGui",
     ResetOnSpawn = false,
     IgnoreGuiInset = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 }, nil)
-
 gui.Parent = playerGui
-
-local panelWidth = isMobile and 0.88 or 0.34
-local panelHeight = isMobile and 0.48 or 0.52
 
 local main = create("Frame", {
     Name = "Main",
     AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.fromScale(0.5, 0.55),
-    Size = UDim2.fromScale(panelWidth, panelHeight),
+    Position = windowPos,
+    Size = UDim2.new(panelWidth, 0, panelHeight, 0),
     BackgroundColor3 = Color3.fromRGB(26, 29, 36),
     BorderSizePixel = 0,
     Active = true,
@@ -53,32 +109,32 @@ local main = create("Frame", {
 main.Parent = gui
 
 create("UICorner", {
-    CornerRadius = UDim.new(0, 14),
+    CornerRadius = UDim.new(0, panelCorner),
 }, nil).Parent = main
 
 create("UIStroke", {
-    Color = Color3.fromRGB(70, 76, 92),
-    Thickness = 1.2,
-    Transparency = 0.2,
+    Color = Color3.fromRGB(78, 86, 104),
+    Thickness = 1,
+    Transparency = 0.15,
 }, nil).Parent = main
 
 local header = create("Frame", {
     Name = "Header",
-    Size = UDim2.new(1, 0, 0, isMobile and 54 or 46),
+    Size = UDim2.new(1, 0, 0, headerHeight),
     BackgroundColor3 = Color3.fromRGB(34, 38, 48),
     BorderSizePixel = 0,
 }, nil)
 header.Parent = main
 
 create("UICorner", {
-    CornerRadius = UDim.new(0, 14),
+    CornerRadius = UDim.new(0, panelCorner),
 }, nil).Parent = header
 
 local title = create("TextLabel", {
     Name = "Title",
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 14, 0, 0),
-    Size = UDim2.new(1, -120, 1, 0),
+    Position = UDim2.new(0, 12, 0, 0),
+    Size = UDim2.new(1, -(topButtonGap + topButtonSize + 24), 1, 0),
     Font = Enum.Font.GothamBold,
     Text = "Tool Panel",
     TextColor3 = Color3.fromRGB(245, 247, 250),
@@ -88,15 +144,15 @@ local title = create("TextLabel", {
 title.Parent = header
 
 create("UITextSizeConstraint", {
-    MaxTextSize = isMobile and 22 or 20,
-    MinTextSize = 14,
+    MaxTextSize = titleMaxSize,
+    MinTextSize = 11,
 }, nil).Parent = title
 
 local collapseButton = create("TextButton", {
     Name = "CollapseButton",
     AnchorPoint = Vector2.new(1, 0.5),
-    Position = UDim2.new(1, -58, 0.5, 0),
-    Size = UDim2.fromOffset(isMobile and 40 or 34, isMobile and 40 or 34),
+    Position = UDim2.new(1, -(topButtonGap), 0.5, 0),
+    Size = UDim2.new(0, topButtonSize, 0, topButtonSize),
     BackgroundColor3 = Color3.fromRGB(73, 134, 255),
     BorderSizePixel = 0,
     Font = Enum.Font.GothamBold,
@@ -113,8 +169,8 @@ create("UICorner", {
 local closeButton = create("TextButton", {
     Name = "CloseButton",
     AnchorPoint = Vector2.new(1, 0.5),
-    Position = UDim2.new(1, -12, 0.5, 0),
-    Size = UDim2.fromOffset(isMobile and 40 or 34, isMobile and 40 or 34),
+    Position = UDim2.new(1, -10, 0.5, 0),
+    Size = UDim2.new(0, topButtonSize, 0, topButtonSize),
     BackgroundColor3 = Color3.fromRGB(220, 74, 74),
     BorderSizePixel = 0,
     Font = Enum.Font.GothamBold,
@@ -131,23 +187,23 @@ create("UICorner", {
 local body = create("Frame", {
     Name = "Body",
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 12, 0, isMobile and 62 or 54),
-    Size = UDim2.new(1, -24, 1, -(isMobile and 74 or 66)),
+    Position = UDim2.new(0, 12, 0, bodyTop),
+    Size = UDim2.new(1, -24, 1, -bodyBottom),
 }, nil)
 body.Parent = main
 
 local layout = create("UIListLayout", {
-    Padding = UDim.new(0, 10),
+    Padding = UDim.new(0, bodyPadding),
     FillDirection = Enum.FillDirection.Vertical,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, nil)
 layout.Parent = body
 
-local function makeLabel(text: string): TextLabel
+local function makeLabel(text)
     local label = create("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 22),
+        Size = UDim2.new(1, 0, 0, 18),
         Font = Enum.Font.GothamSemibold,
         Text = text,
         TextColor3 = Color3.fromRGB(220, 224, 230),
@@ -156,16 +212,16 @@ local function makeLabel(text: string): TextLabel
     }, nil)
 
     create("UITextSizeConstraint", {
-        MaxTextSize = 18,
-        MinTextSize = 12,
+        MaxTextSize = isMobile and 14 or 18,
+        MinTextSize = 10,
     }, nil).Parent = label
 
     return label
 end
 
-local function makeBox(defaultText: string): TextBox
+local function makeBox(defaultText)
     local box = create("TextBox", {
-        Size = UDim2.new(1, 0, 0, isMobile and 44 or 38),
+        Size = UDim2.new(1, 0, 0, boxHeight),
         BackgroundColor3 = Color3.fromRGB(43, 48, 59),
         BorderSizePixel = 0,
         ClearTextOnFocus = false,
@@ -181,8 +237,8 @@ local function makeBox(defaultText: string): TextBox
     }, nil).Parent = box
 
     create("UITextSizeConstraint", {
-        MaxTextSize = 18,
-        MinTextSize = 12,
+        MaxTextSize = isMobile and 15 or 18,
+        MinTextSize = 10,
     }, nil).Parent = box
 
     return box
@@ -194,20 +250,20 @@ repeatsLabel.Parent = body
 local repeatsBox = makeBox("150")
 repeatsBox.Parent = body
 
-local arg1Label = makeLabel("Arg1 Range  (格式: 1,10)")
+local arg1Label = makeLabel("Arg1 Range  例如: 1,10")
 arg1Label.Parent = body
 
 local arg1Box = makeBox("1,10")
 arg1Box.Parent = body
 
-local arg2Label = makeLabel("Arg2 Range  (格式: 1,4)")
+local arg2Label = makeLabel("Arg2 Range  例如: 1,4")
 arg2Label.Parent = body
 
 local arg2Box = makeBox("1,4")
 arg2Box.Parent = body
 
 local statusLabel = create("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 26),
+    Size = UDim2.new(1, 0, 0, 22),
     BackgroundTransparency = 1,
     Font = Enum.Font.Gotham,
     Text = "Status: Idle",
@@ -218,12 +274,12 @@ local statusLabel = create("TextLabel", {
 statusLabel.Parent = body
 
 create("UITextSizeConstraint", {
-    MaxTextSize = 18,
-    MinTextSize = 12,
+    MaxTextSize = isMobile and 14 or 18,
+    MinTextSize = 10,
 }, nil).Parent = statusLabel
 
 local buttonRow = create("Frame", {
-    Size = UDim2.new(1, 0, 0, isMobile and 50 or 42),
+    Size = UDim2.new(1, 0, 0, rowHeight),
     BackgroundTransparency = 1,
 }, nil)
 buttonRow.Parent = body
@@ -232,12 +288,12 @@ local rowLayout = create("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
     VerticalAlignment = Enum.VerticalAlignment.Center,
-    Padding = UDim.new(0, 10),
+    Padding = UDim.new(0, 8),
 }, nil)
 rowLayout.Parent = buttonRow
 
 local runButton = create("TextButton", {
-    Size = UDim2.new(0.5, -5, 1, 0),
+    Size = UDim2.new(0.5, -4, 1, 0),
     BackgroundColor3 = Color3.fromRGB(60, 179, 113),
     BorderSizePixel = 0,
     Font = Enum.Font.GothamBold,
@@ -252,7 +308,7 @@ create("UICorner", {
 }, nil).Parent = runButton
 
 local stopButton = create("TextButton", {
-    Size = UDim2.new(0.5, -5, 1, 0),
+    Size = UDim2.new(0.5, -4, 1, 0),
     BackgroundColor3 = Color3.fromRGB(214, 137, 16),
     BorderSizePixel = 0,
     Font = Enum.Font.GothamBold,
@@ -266,39 +322,45 @@ create("UICorner", {
     CornerRadius = UDim.new(0, 10),
 }, nil).Parent = stopButton
 
-local function parseRange(text: string): (number, number)?
+local function parseRange(text)
     local a, b = string.match(text, "^(%d+)%s*,%s*(%d+)$")
     if not a or not b then
-        return nil
+        return nil, nil
     end
 
     local minValue = tonumber(a)
     local maxValue = tonumber(b)
 
     if not minValue or not maxValue or minValue > maxValue then
-        return nil
+        return nil, nil
     end
 
     return minValue, maxValue
 end
 
-local function setStatus(text: string, color: Color3)
+local function setStatus(text, color)
     statusLabel.Text = text
     statusLabel.TextColor3 = color
 end
 
-local function runAction(arg1: number, arg2: number)
-    -- 在这里换成你自己项目里的合法逻辑
+local function runAction(arg1, arg2)
+    -- 把这里替换成你自己项目里的合法逻辑
     print("Run action:", arg1, arg2)
 end
 
 local expandedSize = main.Size
-local collapsedSize = UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, header.Size.Y.Offset)
+local collapsedSize = UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, headerHeight)
 
 local function updateCollapseState()
     body.Visible = not isCollapsed
-    main.Size = if isCollapsed then collapsedSize else expandedSize
-    collapseButton.Text = if isCollapsed then "+" else "-"
+
+    if isCollapsed then
+        main.Size = collapsedSize
+        collapseButton.Text = "+"
+    else
+        main.Size = expandedSize
+        collapseButton.Text = "-"
+    end
 end
 
 collapseButton.MouseButton1Click:Connect(function()
@@ -344,8 +406,12 @@ runButton.MouseButton1Click:Connect(function()
 
     task.spawn(function()
         local total = 0
+        local round
 
         for round = 1, repeats do
+            local arg1
+            local arg2
+
             if not isRunning then
                 break
             end
@@ -361,15 +427,20 @@ runButton.MouseButton1Click:Connect(function()
                     end
 
                     runAction(arg1, arg2)
-                    total += 1
-                    setStatus(("Status: Round %d/%d | Total %d"):format(round, repeats, total), Color3.fromRGB(120, 220, 140))
+                    total = total + 1
+
+                    setStatus(
+                        "Status: Round " .. round .. "/" .. repeats .. " | Total " .. total,
+                        Color3.fromRGB(120, 220, 140)
+                    )
+
                     task.wait()
                 end
             end
         end
 
         if isRunning then
-            setStatus(("Status: Done | Total %d"):format(total), Color3.fromRGB(145, 215, 160))
+            setStatus("Status: Done | Total " .. total, Color3.fromRGB(145, 215, 160))
         else
             setStatus("Status: Stopped", Color3.fromRGB(255, 210, 120))
         end
