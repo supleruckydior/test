@@ -29,6 +29,11 @@ local Constants = {
     LegacyWorldSettingsFile = 'WorldSettings.json',
     LegacyDungeonSettingsFile = 'DungeonsMaxLevel.json',
     LegacyLanguageFile = 'Cultivation_languageSet.json',
+    LegacyCompatFiles = {
+        'C:/Users/Administrator/Downloads/respawn.lua',
+        'C:\\Users\\Administrator\\Downloads\\respawn.lua',
+        'respawn.lua',
+    },
     DailyOffset = 8 * 3600,
     UILibraryUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
     RespawnScriptUrl = 'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua',
@@ -279,6 +284,25 @@ function Utils.tryDeleteFile(path)
         return false
     end
     return pcall(delfile, path)
+end
+
+function Utils.tryLoadLuaFile(path)
+    local content = Utils.tryReadFile(path)
+    if not content or content == '' then
+        return false, 'missing'
+    end
+
+    local chunk = loadstring(content)
+    if type(chunk) ~= 'function' then
+        return false, 'compile'
+    end
+
+    local ok, result = pcall(chunk)
+    if not ok then
+        return false, tostring(result)
+    end
+
+    return true, result
 end
 
 function Utils.readJsonFile(path)
@@ -1465,6 +1489,8 @@ end
 
 local LegacyDailyController = {
     missingFunctions = {},
+    compatLoadAttempted = false,
+    compatLoadSource = nil,
     primaryFunctions = {
         'mainmissionchack',
         'everydaymission',
@@ -1473,17 +1499,45 @@ local LegacyDailyController = {
         'potionfull',
     },
     secondaryFunctions = {
+        'claimallmail',
         'dailyspin',
         'offlinereward',
         'everydaygem',
     },
 }
 
+function LegacyDailyController:ensureCompatLoaded()
+    if Utils.getGlobalFunction('potionfull') and Utils.getGlobalFunction('mainmissionchack') then
+        return true
+    end
+
+    if self.compatLoadAttempted then
+        return false
+    end
+
+    self.compatLoadAttempted = true
+
+    for _, path in ipairs(Constants.LegacyCompatFiles) do
+        local ok = Utils.tryLoadLuaFile(path)
+        if ok and Utils.getGlobalFunction('potionfull') then
+            self.compatLoadSource = path
+            self.missingFunctions = {}
+            return true
+        end
+    end
+
+    return false
+end
+
 function LegacyDailyController:runList(functionNames)
+    self:ensureCompatLoaded()
+
     for _, functionName in ipairs(functionNames) do
         local ok, err = Utils.callGlobalFunction(functionName)
         if ok == false and err == 'missing' then
             self.missingFunctions[functionName] = true
+        else
+            self.missingFunctions[functionName] = nil
         end
     end
 end
@@ -1499,7 +1553,7 @@ function LegacyDailyController:start()
     Scheduler:ensure('legacy_daily_secondary_v2', function(job)
         while job.enabled and State.settings.autoLegacyDaily do
             self:runList(self.secondaryFunctions)
-            task.wait(500)
+            task.wait(60)
         end
     end)
 end
