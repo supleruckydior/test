@@ -4,85 +4,80 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local isMobile = UserInputService.TouchEnabled
-local camera = workspace.CurrentCamera
-local viewport = camera and camera.ViewportSize or Vector2.new(720, 1280)
-
-local isSmallMobile = isMobile and viewport.X <= 720
-local isShortScreen = isMobile and viewport.Y <= 1280
-
 local isCollapsed = false
 local isRunning = false
 
-local panelWidth
-local panelHeight
-local headerHeight
-local windowPos
-local bodyTop
-local bodyBottom
-local boxHeight
-local rowHeight
-local topButtonSize
-local titleMaxSize
-local panelCorner
-local bodyPadding
-local topButtonGap
+local function clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
 
-if isSmallMobile then
-    panelWidth = 0.72
-    panelHeight = isShortScreen and 0.30 or 0.33
-    headerHeight = 40
-    windowPos = UDim2.new(0.5, 0, 0.58, 0)
-    bodyTop = 48
-    bodyBottom = 54
-    boxHeight = 34
-    rowHeight = 36
-    topButtonSize = 30
-    titleMaxSize = 16
-    panelCorner = 12
-    bodyPadding = 8
-    topButtonGap = 44
-elseif isMobile then
-    panelWidth = 0.78
-    panelHeight = 0.36
-    headerHeight = 42
-    windowPos = UDim2.new(0.5, 0, 0.56, 0)
-    bodyTop = 50
-    bodyBottom = 58
-    boxHeight = 36
-    rowHeight = 38
-    topButtonSize = 32
-    titleMaxSize = 17
-    panelCorner = 13
-    bodyPadding = 10
-    topButtonGap = 46
-else
-    panelWidth = 0.34
-    panelHeight = 0.52
-    headerHeight = 46
-    windowPos = UDim2.new(0.5, 0, 0.55, 0)
-    bodyTop = 54
-    bodyBottom = 66
-    boxHeight = 38
-    rowHeight = 42
-    topButtonSize = 34
-    titleMaxSize = 20
-    panelCorner = 14
-    bodyPadding = 10
-    topButtonGap = 50
+    if value > maxValue then
+        return maxValue
+    end
+
+    return value
 end
 
-local function create(className, props, children)
+local function getViewportSize()
+    local camera = workspace.CurrentCamera
+    if camera then
+        return camera.ViewportSize
+    end
+
+    return Vector2.new(720, 1280)
+end
+
+local function getMetrics()
+    local viewport = getViewportSize()
+    local isMobile = UserInputService.TouchEnabled
+
+    local metrics = {
+        isMobile = isMobile,
+        width = 360,
+        height = 330,
+        headerHeight = 46,
+        buttonSize = 32,
+        padding = 10,
+        labelHeight = 18,
+        inputHeight = 36,
+        rowHeight = 38,
+        titleTextSize = 15,
+        labelTextSize = 13,
+        inputTextSize = 14,
+        statusTextSize = 13,
+        corner = 12,
+        strokeThickness = 1,
+        scrollBarThickness = 4,
+    }
+
+    if isMobile then
+        metrics.width = math.floor(clamp(viewport.X * 0.68, 250, 320))
+        metrics.height = math.floor(clamp(viewport.Y * 0.34, 220, 310))
+        metrics.headerHeight = 40
+        metrics.buttonSize = 28
+        metrics.padding = 8
+        metrics.labelHeight = 16
+        metrics.inputHeight = 32
+        metrics.rowHeight = 34
+        metrics.titleTextSize = 13
+        metrics.labelTextSize = 11
+        metrics.inputTextSize = 12
+        metrics.statusTextSize = 11
+        metrics.corner = 10
+        metrics.scrollBarThickness = 3
+    end
+
+    return metrics
+end
+
+local M = getMetrics()
+
+local function create(className, props)
     local instance = Instance.new(className)
 
     for key, value in pairs(props) do
         instance[key] = value
-    end
-
-    if children then
-        for _, child in ipairs(children) do
-            child.Parent = instance
-        end
     end
 
     return instance
@@ -91,137 +86,132 @@ end
 local gui = create("ScreenGui", {
     Name = "SmallToolPanelGui",
     ResetOnSpawn = false,
-    IgnoreGuiInset = false,
+    IgnoreGuiInset = true,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-}, nil)
+})
 gui.Parent = playerGui
 
 local main = create("Frame", {
     Name = "Main",
     AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = windowPos,
-    Size = UDim2.new(panelWidth, 0, panelHeight, 0),
+    Position = UDim2.new(0.5, 0, 0.58, 0),
+    Size = UDim2.new(0, M.width, 0, M.height),
     BackgroundColor3 = Color3.fromRGB(26, 29, 36),
     BorderSizePixel = 0,
     Active = true,
-    Draggable = true,
-}, nil)
+})
 main.Parent = gui
 
 create("UICorner", {
-    CornerRadius = UDim.new(0, panelCorner),
-}, nil).Parent = main
+    CornerRadius = UDim.new(0, M.corner),
+}).Parent = main
 
 create("UIStroke", {
     Color = Color3.fromRGB(78, 86, 104),
-    Thickness = 1,
-    Transparency = 0.15,
-}, nil).Parent = main
+    Thickness = M.strokeThickness,
+    Transparency = 0.12,
+}).Parent = main
 
 local header = create("Frame", {
     Name = "Header",
-    Size = UDim2.new(1, 0, 0, headerHeight),
+    Size = UDim2.new(1, 0, 0, M.headerHeight),
     BackgroundColor3 = Color3.fromRGB(34, 38, 48),
     BorderSizePixel = 0,
-}, nil)
+    Active = true,
+})
 header.Parent = main
 
 create("UICorner", {
-    CornerRadius = UDim.new(0, panelCorner),
-}, nil).Parent = header
+    CornerRadius = UDim.new(0, M.corner),
+}).Parent = header
 
 local title = create("TextLabel", {
     Name = "Title",
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 12, 0, 0),
-    Size = UDim2.new(1, -(topButtonGap + topButtonSize + 24), 1, 0),
+    Size = UDim2.new(1, -(M.buttonSize * 2 + 40), 1, 0),
     Font = Enum.Font.GothamBold,
     Text = "Tool Panel",
     TextColor3 = Color3.fromRGB(245, 247, 250),
-    TextScaled = true,
+    TextSize = M.titleTextSize,
     TextXAlignment = Enum.TextXAlignment.Left,
-}, nil)
+})
 title.Parent = header
-
-create("UITextSizeConstraint", {
-    MaxTextSize = titleMaxSize,
-    MinTextSize = 11,
-}, nil).Parent = title
 
 local collapseButton = create("TextButton", {
     Name = "CollapseButton",
     AnchorPoint = Vector2.new(1, 0.5),
-    Position = UDim2.new(1, -(topButtonGap), 0.5, 0),
-    Size = UDim2.new(0, topButtonSize, 0, topButtonSize),
+    Position = UDim2.new(1, -(M.buttonSize + 16), 0.5, 0),
+    Size = UDim2.new(0, M.buttonSize, 0, M.buttonSize),
     BackgroundColor3 = Color3.fromRGB(73, 134, 255),
     BorderSizePixel = 0,
     Font = Enum.Font.GothamBold,
     Text = "-",
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextScaled = true,
-}, nil)
+    TextSize = M.titleTextSize,
+})
 collapseButton.Parent = header
 
 create("UICorner", {
     CornerRadius = UDim.new(1, 0),
-}, nil).Parent = collapseButton
+}).Parent = collapseButton
 
 local closeButton = create("TextButton", {
     Name = "CloseButton",
     AnchorPoint = Vector2.new(1, 0.5),
-    Position = UDim2.new(1, -10, 0.5, 0),
-    Size = UDim2.new(0, topButtonSize, 0, topButtonSize),
+    Position = UDim2.new(1, -8, 0.5, 0),
+    Size = UDim2.new(0, M.buttonSize, 0, M.buttonSize),
     BackgroundColor3 = Color3.fromRGB(220, 74, 74),
     BorderSizePixel = 0,
     Font = Enum.Font.GothamBold,
     Text = "X",
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextScaled = true,
-}, nil)
+    TextSize = M.titleTextSize,
+})
 closeButton.Parent = header
 
 create("UICorner", {
     CornerRadius = UDim.new(1, 0),
-}, nil).Parent = closeButton
+}).Parent = closeButton
 
-local body = create("Frame", {
+local body = create("ScrollingFrame", {
     Name = "Body",
+    Position = UDim2.new(0, M.padding, 0, M.headerHeight + M.padding),
+    Size = UDim2.new(1, -(M.padding * 2), 1, -(M.headerHeight + M.padding * 2)),
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 12, 0, bodyTop),
-    Size = UDim2.new(1, -24, 1, -bodyBottom),
-}, nil)
+    BorderSizePixel = 0,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ScrollBarThickness = M.scrollBarThickness,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+})
 body.Parent = main
 
-local layout = create("UIListLayout", {
-    Padding = UDim.new(0, bodyPadding),
+local bodyLayout = create("UIListLayout", {
     FillDirection = Enum.FillDirection.Vertical,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
     SortOrder = Enum.SortOrder.LayoutOrder,
-}, nil)
-layout.Parent = body
+    Padding = UDim.new(0, M.padding),
+})
+bodyLayout.Parent = body
 
 local function makeLabel(text)
     local label = create("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 18),
+        Size = UDim2.new(1, 0, 0, M.labelHeight),
         Font = Enum.Font.GothamSemibold,
         Text = text,
         TextColor3 = Color3.fromRGB(220, 224, 230),
-        TextScaled = true,
+        TextSize = M.labelTextSize,
         TextXAlignment = Enum.TextXAlignment.Left,
-    }, nil)
-
-    create("UITextSizeConstraint", {
-        MaxTextSize = isMobile and 14 or 18,
-        MinTextSize = 10,
-    }, nil).Parent = label
+    })
 
     return label
 end
 
 local function makeBox(defaultText)
     local box = create("TextBox", {
-        Size = UDim2.new(1, 0, 0, boxHeight),
+        Size = UDim2.new(1, 0, 0, M.inputHeight),
         BackgroundColor3 = Color3.fromRGB(43, 48, 59),
         BorderSizePixel = 0,
         ClearTextOnFocus = false,
@@ -229,17 +219,12 @@ local function makeBox(defaultText)
         PlaceholderText = defaultText,
         Text = defaultText,
         TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextScaled = true,
-    }, nil)
+        TextSize = M.inputTextSize,
+    })
 
     create("UICorner", {
-        CornerRadius = UDim.new(0, 10),
-    }, nil).Parent = box
-
-    create("UITextSizeConstraint", {
-        MaxTextSize = isMobile and 15 or 18,
-        MinTextSize = 10,
-    }, nil).Parent = box
+        CornerRadius = UDim.new(0, 8),
+    }).Parent = box
 
     return box
 end
@@ -263,25 +248,20 @@ local arg2Box = makeBox("1,4")
 arg2Box.Parent = body
 
 local statusLabel = create("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 22),
+    Size = UDim2.new(1, 0, 0, M.labelHeight + 4),
     BackgroundTransparency = 1,
     Font = Enum.Font.Gotham,
     Text = "Status: Idle",
     TextColor3 = Color3.fromRGB(145, 215, 160),
-    TextScaled = true,
+    TextSize = M.statusTextSize,
     TextXAlignment = Enum.TextXAlignment.Left,
-}, nil)
+})
 statusLabel.Parent = body
 
-create("UITextSizeConstraint", {
-    MaxTextSize = isMobile and 14 or 18,
-    MinTextSize = 10,
-}, nil).Parent = statusLabel
-
 local buttonRow = create("Frame", {
-    Size = UDim2.new(1, 0, 0, rowHeight),
+    Size = UDim2.new(1, 0, 0, M.rowHeight),
     BackgroundTransparency = 1,
-}, nil)
+})
 buttonRow.Parent = body
 
 local rowLayout = create("UIListLayout", {
@@ -289,7 +269,7 @@ local rowLayout = create("UIListLayout", {
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
     VerticalAlignment = Enum.VerticalAlignment.Center,
     Padding = UDim.new(0, 8),
-}, nil)
+})
 rowLayout.Parent = buttonRow
 
 local runButton = create("TextButton", {
@@ -299,13 +279,13 @@ local runButton = create("TextButton", {
     Font = Enum.Font.GothamBold,
     Text = "Run",
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextScaled = true,
-}, nil)
+    TextSize = M.inputTextSize,
+})
 runButton.Parent = buttonRow
 
 create("UICorner", {
-    CornerRadius = UDim.new(0, 10),
-}, nil).Parent = runButton
+    CornerRadius = UDim.new(0, 8),
+}).Parent = runButton
 
 local stopButton = create("TextButton", {
     Size = UDim2.new(0.5, -4, 1, 0),
@@ -314,13 +294,13 @@ local stopButton = create("TextButton", {
     Font = Enum.Font.GothamBold,
     Text = "Stop",
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextScaled = true,
-}, nil)
+    TextSize = M.inputTextSize,
+})
 stopButton.Parent = buttonRow
 
 create("UICorner", {
-    CornerRadius = UDim.new(0, 10),
-}, nil).Parent = stopButton
+    CornerRadius = UDim.new(0, 8),
+}).Parent = stopButton
 
 local function parseRange(text)
     local a, b = string.match(text, "^(%d+)%s*,%s*(%d+)$")
@@ -344,21 +324,20 @@ local function setStatus(text, color)
 end
 
 local function runAction(arg1, arg2)
-    -- 把这里替换成你自己项目里的合法逻辑
+    -- 在这里换成你自己项目里的合法逻辑
     print("Run action:", arg1, arg2)
 end
 
-local expandedSize = main.Size
-local collapsedSize = UDim2.new(main.Size.X.Scale, main.Size.X.Offset, 0, headerHeight)
+local expandedHeight = M.height
 
 local function updateCollapseState()
-    body.Visible = not isCollapsed
-
     if isCollapsed then
-        main.Size = collapsedSize
+        body.Visible = false
+        main.Size = UDim2.new(0, M.width, 0, M.headerHeight)
         collapseButton.Text = "+"
     else
-        main.Size = expandedSize
+        body.Visible = true
+        main.Size = UDim2.new(0, M.width, 0, expandedHeight)
         collapseButton.Text = "-"
     end
 end
@@ -448,5 +427,48 @@ runButton.MouseButton1Click:Connect(function()
         isRunning = false
     end)
 end)
+
+do
+    local dragging = false
+    local dragInput = nil
+    local dragStart = nil
+    local startPos = nil
+
+    local function updateDrag(input)
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = main.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    header.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            updateDrag(input)
+        end
+    end)
+end
 
 updateCollapseState()
