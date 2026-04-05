@@ -324,8 +324,17 @@ local function setStatus(text, color)
 end
 
 local function runAction(arg1, arg2)
-    -- 在这里换成你自己项目里的合法逻辑
-    print("Run action:", arg1, arg2)
+    local args = {
+        [1] = arg1,
+        [2] = arg2,
+    }
+
+    game:GetService("ReplicatedStorage")
+        :FindFirstChild("\228\186\139\228\187\182")
+        :FindFirstChild("\229\133\172\231\148\168")
+        :FindFirstChild("\233\129\151\231\137\169")
+        :FindFirstChild("\229\141\135\231\186\167")
+        :FireServer(unpack(args))
 end
 
 local expandedHeight = M.height
