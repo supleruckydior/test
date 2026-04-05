@@ -422,7 +422,6 @@ runButton.MouseButton1Click:Connect(function()
                         Color3.fromRGB(120, 220, 140)
                     )
 
-                    task.wait()
                 end
             end
         end
