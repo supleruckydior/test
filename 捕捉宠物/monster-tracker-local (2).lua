@@ -448,6 +448,21 @@ do
     end
 end
 
+local function clampNumber(value, minValue, maxValue)
+    if maxValue < minValue then
+        return minValue
+    end
+    return math.max(minValue, math.min(maxValue, value))
+end
+
+local function getViewportSize()
+    local camera = workspace.CurrentCamera
+    if camera then
+        return camera.ViewportSize
+    end
+    return Vector2.new(360, 640)
+end
+
 local function promptForCardKey(message, defaultKey)
     if not screenGui or not screenGui.Parent then
         return nil, "UI not ready"
@@ -467,9 +482,15 @@ local function promptForCardKey(message, defaultKey)
     overlay.ZIndex = 40
     overlay.Parent = screenGui
 
+    local viewportSize = getViewportSize()
+    local dialogWidth = math.floor(math.min(320, math.max(260, viewportSize.X - 24)))
+    local dialogHeight = 178
+    local dialogX = math.floor((viewportSize.X - dialogWidth) / 2)
+    local dialogY = math.floor((viewportSize.Y - dialogHeight) / 2)
+
     local dialog = Instance.new("Frame")
-    dialog.Size = UDim2.new(0, 320, 0, 178)
-    dialog.Position = UDim2.new(0, 32, 0, 62)
+    dialog.Size = UDim2.new(0, dialogWidth, 0, dialogHeight)
+    dialog.Position = UDim2.new(0, math.max(8, dialogX), 0, math.max(20, dialogY))
     dialog.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
     dialog.BorderSizePixel = 0
     dialog.ZIndex = 41
@@ -820,12 +841,14 @@ local function makeDraggable(targetFrame, handle)
         end
 
         local delta = input.Position - dragStart
-        targetFrame.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
+        local viewportSize = getViewportSize()
+        local margin = 4
+        local maxX = math.max(margin, viewportSize.X - targetFrame.AbsoluteSize.X - margin)
+        local maxY = math.max(margin, viewportSize.Y - targetFrame.AbsoluteSize.Y - margin)
+        local nextX = clampNumber(startPosition.X.Offset + delta.X, margin, maxX)
+        local nextY = clampNumber(startPosition.Y.Offset + delta.Y, margin, maxY)
+
+        targetFrame.Position = UDim2.new(0, nextX, 0, nextY)
     end)
 end
 
@@ -1350,6 +1373,10 @@ end
 screenGui = Instance.new("ScreenGui")
 screenGui.Name = "MonsterTracker_WebUI"
 screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function()
+    screenGui.IgnoreGuiInset = false
+end)
 screenGui.Parent = guiParent
 
 local frame = Instance.new("Frame")
@@ -1372,6 +1399,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 14
 title.TextColor3 = Color3.fromRGB(0, 255, 136)
 title.Text = "Monster Tracker (Web/API)"
+title.TextTruncate = Enum.TextTruncate.AtEnd
 title.Parent = frame
 makeDraggable(frame, title)
 
@@ -1384,6 +1412,7 @@ status.Font = Enum.Font.Gotham
 status.TextSize = 12
 status.TextColor3 = Color3.fromRGB(180, 180, 180)
 status.Text = "状态：初始化..."
+status.TextTruncate = Enum.TextTruncate.AtEnd
 status.Parent = frame
 
 local closeBtn = Instance.new("TextButton")
@@ -1400,6 +1429,22 @@ closeBtn.Parent = frame
 local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 6)
 closeCorner.Parent = closeBtn
+
+local isCollapsed = false
+local collapseBtn = Instance.new("TextButton")
+collapseBtn.Size = UDim2.new(0, 44, 0, 22)
+collapseBtn.Position = UDim2.new(1, -100, 0, 6)
+collapseBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+collapseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+collapseBtn.Font = Enum.Font.GothamBold
+collapseBtn.TextSize = 12
+collapseBtn.Text = "-"
+collapseBtn.BorderSizePixel = 0
+collapseBtn.Parent = frame
+
+local collapseCorner = Instance.new("UICorner")
+collapseCorner.CornerRadius = UDim.new(0, 6)
+collapseCorner.Parent = collapseBtn
 
 local keyBtn = Instance.new("TextButton")
 keyBtn.Size = UDim2.new(0, 58, 0, 22)
@@ -1470,6 +1515,7 @@ guideStatusLabel.Font = Enum.Font.Gotham
 guideStatusLabel.TextSize = 10
 guideStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 guideStatusLabel.Text = "状态: 等待PathTool..."
+guideStatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
 guideStatusLabel.Parent = frame
 
 bossFarmToggleBtn = Instance.new("TextButton")
@@ -1507,13 +1553,19 @@ bossFarmStatusLabel.Font = Enum.Font.Gotham
 bossFarmStatusLabel.TextSize = 10
 bossFarmStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 bossFarmStatusLabel.Text = "刷Boss: 待机"
+bossFarmStatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
 bossFarmStatusLabel.Parent = frame
 
-bossDropdownFrame = Instance.new("Frame")
+bossDropdownFrame = Instance.new("ScrollingFrame")
 bossDropdownFrame.Size = UDim2.new(1, -24, 0, #BOSS_OPTIONS * 24 + 8)
 bossDropdownFrame.Position = UDim2.new(0, 12, 0, 138)
 bossDropdownFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 bossDropdownFrame.BorderSizePixel = 0
+bossDropdownFrame.ScrollBarThickness = 4
+bossDropdownFrame.CanvasSize = UDim2.new(0, 0, 0, #BOSS_OPTIONS * 24 + 8)
+bossDropdownFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+bossDropdownFrame.ClipsDescendants = true
+bossDropdownFrame.Active = true
 bossDropdownFrame.Visible = false
 bossDropdownFrame.ZIndex = 20
 bossDropdownFrame.Parent = frame
@@ -1565,6 +1617,10 @@ for index, option in ipairs(BOSS_OPTIONS) do
 end
 
 bossDropdownBtn.MouseButton1Click:Connect(function()
+    if isCollapsed then
+        bossDropdownFrame.Visible = false
+        return
+    end
     bossDropdownFrame.Visible = not bossDropdownFrame.Visible
 end)
 
@@ -1621,9 +1677,106 @@ padding.PaddingLeft = UDim.new(0, 8)
 padding.PaddingRight = UDim.new(0, 8)
 padding.Parent = list
 
+local isCompactLayout = false
+
+local function applyResponsiveLayout()
+    local viewportSize = getViewportSize()
+    local viewportWidth = math.max(260, viewportSize.X)
+    local viewportHeight = math.max(260, viewportSize.Y)
+    local margin = viewportWidth <= 340 and 8 or 12
+    local availableWidth = math.max(240, viewportWidth - margin * 2)
+    local availableHeight = math.max(240, viewportHeight - margin * 2)
+    local frameWidth = math.floor(math.min(360, availableWidth))
+    local expandedHeight = math.floor(math.min(420, availableHeight))
+    local frameHeight = isCollapsed and 56 or expandedHeight
+
+    isCompactLayout = frameWidth <= 340 or (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+    frame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
+
+    local maxX = math.max(margin, viewportWidth - frameWidth - margin)
+    local maxY = math.max(margin, viewportHeight - frameHeight - margin)
+    local frameX = clampNumber(frame.Position.X.Offset, margin, maxX)
+    local frameY = clampNumber(frame.Position.Y.Offset, margin, maxY)
+    frame.Position = UDim2.new(0, frameX, 0, frameY)
+
+    local closeWidth = isCompactLayout and 38 or 44
+    local collapseWidth = isCompactLayout and 38 or 44
+    local keyWidth = isCompactLayout and 50 or 58
+    closeBtn.Size = UDim2.new(0, closeWidth, 0, 22)
+    closeBtn.Position = UDim2.new(1, -(closeWidth + 8), 0, 6)
+    collapseBtn.Size = UDim2.new(0, collapseWidth, 0, 22)
+    collapseBtn.Position = UDim2.new(1, -(closeWidth + collapseWidth + 14), 0, 6)
+    keyBtn.Size = UDim2.new(0, keyWidth, 0, 22)
+    keyBtn.Position = UDim2.new(1, -(closeWidth + collapseWidth + keyWidth + 20), 0, 6)
+    title.Size = UDim2.new(1, -(closeWidth + collapseWidth + keyWidth + 34), 0, 24)
+    collapseBtn.Text = isCollapsed and "+" or "-"
+
+    status.Size = UDim2.new(1, -16, 0, 18)
+    guideBtn.Size = UDim2.new(0, isCompactLayout and 96 or 100, 0, 24)
+    guideStatusLabel.Position = UDim2.new(0, isCompactLayout and 114 or 120, 0, 54)
+    guideStatusLabel.Size = UDim2.new(1, -(isCompactLayout and 126 or 132), 0, 18)
+    bossFarmToggleBtn.Size = UDim2.new(0, isCompactLayout and 104 or 112, 0, 24)
+
+    local dropdownFullHeight = #BOSS_OPTIONS * 24 + 8
+    local dropdownHeight = math.min(dropdownFullHeight, math.max(96, frameHeight - 146))
+    bossDropdownFrame.Size = UDim2.new(1, -24, 0, dropdownHeight)
+    bossDropdownFrame.CanvasSize = UDim2.new(0, 0, 0, dropdownFullHeight)
+
+    list.ScrollBarThickness = isCompactLayout and 4 or 6
+    list.Size = UDim2.new(1, -16, 0, math.max(64, frameHeight - 166))
+
+    guideBtn.Visible = not isCollapsed
+    guideStatusLabel.Visible = not isCollapsed
+    bossFarmToggleBtn.Visible = not isCollapsed
+    bossDropdownBtn.Visible = not isCollapsed
+    bossFarmStatusLabel.Visible = not isCollapsed
+    list.Visible = not isCollapsed
+    if isCollapsed then
+        bossDropdownFrame.Visible = false
+    end
+end
+
+local viewportResizeConnection = nil
+local currentCameraConnection = nil
+local function bindViewportResize()
+    if viewportResizeConnection then
+        viewportResizeConnection:Disconnect()
+        viewportResizeConnection = nil
+    end
+
+    local camera = workspace.CurrentCamera
+    if camera then
+        viewportResizeConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsiveLayout)
+    end
+end
+
+collapseBtn.MouseButton1Click:Connect(function()
+    isCollapsed = not isCollapsed
+    if isCollapsed then
+        bossDropdownFrame.Visible = false
+    end
+    applyResponsiveLayout()
+end)
+
+applyResponsiveLayout()
+bindViewportResize()
+currentCameraConnection = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    bindViewportResize()
+    applyResponsiveLayout()
+end)
+task.defer(applyResponsiveLayout)
+
 local alive = true
 closeBtn.MouseButton1Click:Connect(function()
     alive = false
+    if viewportResizeConnection then
+        viewportResizeConnection:Disconnect()
+        viewportResizeConnection = nil
+    end
+    if currentCameraConnection then
+        currentCameraConnection:Disconnect()
+        currentCameraConnection = nil
+    end
     ClearUndineGuide()
     screenGui:Destroy()
 end)
@@ -1662,8 +1815,13 @@ local function render(monsters)
     end)
 
     for _, m in ipairs(valid) do
+        local actionWidth = isCompactLayout and 58 or 70
+        local actionHeight = isCompactLayout and 36 or 40
+        local rowHeight = isCompactLayout and 88 or 84
+        local textRightPadding = actionWidth + 20
+
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 84)
+        row.Size = UDim2.new(1, 0, 0, rowHeight)
         row.BackgroundColor3 = Color3.fromRGB(35, 35, 46)
         row.BorderSizePixel = 0
         row.Parent = list
@@ -1673,7 +1831,7 @@ local function render(monsters)
         rc.Parent = row
 
         local name = Instance.new("TextLabel")
-        name.Size = UDim2.new(1, -90, 0, 18)
+        name.Size = UDim2.new(1, -textRightPadding, 0, 18)
         name.Position = UDim2.new(0, 10, 0, 8)
         name.BackgroundTransparency = 1
         name.TextXAlignment = Enum.TextXAlignment.Left
@@ -1681,10 +1839,11 @@ local function render(monsters)
         name.TextSize = 12
         name.TextColor3 = Color3.fromRGB(255, 255, 255)
         name.Text = tostring(m.title or "发现 Undine/鹿")
+        name.TextTruncate = Enum.TextTruncate.AtEnd
         name.Parent = row
 
         local sub = Instance.new("TextLabel")
-        sub.Size = UDim2.new(1, -90, 0, 16)
+        sub.Size = UDim2.new(1, -textRightPadding, 0, 16)
         sub.Position = UDim2.new(0, 10, 0, 28)
         sub.BackgroundTransparency = 1
         sub.TextXAlignment = Enum.TextXAlignment.Left
@@ -1694,10 +1853,11 @@ local function render(monsters)
         local pc = tonumber(m.playerCount or m.player_count or 0) or 0
         local remain = formatRemaining(m.expireAt)
         sub.Text = string.format("人数:%s  剩余:%ss", tostring(pc), remain)
+        sub.TextTruncate = Enum.TextTruncate.AtEnd
         sub.Parent = row
 
         local info = Instance.new("TextLabel")
-        info.Size = UDim2.new(1, -90, 0, 16)
+        info.Size = UDim2.new(1, -textRightPadding, 0, 16)
         info.Position = UDim2.new(0, 10, 0, 46)
         info.BackgroundTransparency = 1
         info.TextXAlignment = Enum.TextXAlignment.Left
@@ -1739,15 +1899,16 @@ local function render(monsters)
 
         info.Text = string.format("点击:%s  %s  属性:%s", tostring(clickCount), attackStatus, tostring(special))
         info.TextColor3 = attackColor
+        info.TextTruncate = Enum.TextTruncate.AtEnd
         info.Parent = row
 
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 70, 0, 40)
-        btn.Position = UDim2.new(1, -78, 0, 22)
+        btn.Size = UDim2.new(0, actionWidth, 0, actionHeight)
+        btn.Position = UDim2.new(1, -(actionWidth + 8), 0, isCompactLayout and 24 or 22)
         btn.BackgroundColor3 = Color3.fromRGB(0, 255, 136)
         btn.TextColor3 = Color3.fromRGB(0, 0, 0)
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 12
+        btn.TextSize = isCompactLayout and 11 or 12
         btn.Text = "加入"
         btn.BorderSizePixel = 0
         btn.Parent = row
