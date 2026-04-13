@@ -145,12 +145,8 @@ local AUTO_ABYSS = {
     LOOP_DELAY = 0.5,
     enabled = false,
     running = false,
-    joinEnabled = false,
-    joinRunning = false,
     selectedTmplId = 1001,
     selectedPlayers = 1,
-    selectedJoinOwnerUserId = nil,
-    selectedJoinOwnerName = "任意房主",
     lastStatus = "",
     lastPrintedStatus = "",
     lastStatusPrintAt = 0,
@@ -162,9 +158,6 @@ local AUTO_ABYSS = {
     difficultyFrame = nil,
     playerBtn = nil,
     playerFrame = nil,
-    joinToggleBtn = nil,
-    ownerBtn = nil,
-    ownerFrame = nil,
     options = {
         { tmplId = 1001, label = "Normal" },
         { tmplId = 1002, label = "Hard" },
@@ -185,7 +178,6 @@ local AUTO_ABYSS = {
     },
 }
 local runAutoAbyssOnce = nil
-local runAutoAbyssJoinOnce = nil
 local AbyssFlow = nil
 
 local ACTIVE_ATTACK_RADIUS = 50
@@ -1178,141 +1170,6 @@ AUTO_ABYSS.getPlayerText = function()
     return string.format("人数: %d", tonumber(AUTO_ABYSS.selectedPlayers) or 1)
 end
 
-AUTO_ABYSS.formatOwnerPlayerName = function(targetPlayer)
-    if not targetPlayer then
-        return nil
-    end
-    local displayName = tostring(targetPlayer.DisplayName or "")
-    local userName = tostring(targetPlayer.Name or "")
-    if displayName ~= "" and userName ~= "" and string.lower(displayName) ~= string.lower(userName) then
-        return string.format("%s (@%s)", displayName, userName)
-    end
-    return userName ~= "" and userName or displayName or ("UID " .. tostring(targetPlayer.UserId))
-end
-
-AUTO_ABYSS.findPlayerByUserId = function(userId)
-    userId = tonumber(userId)
-    if not userId then
-        return nil
-    end
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        if otherPlayer.UserId == userId then
-            return otherPlayer
-        end
-    end
-    return nil
-end
-
-AUTO_ABYSS.getJoinOwnerPlayers = function()
-    local otherPlayers = {}
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        if otherPlayer ~= player then
-            table.insert(otherPlayers, otherPlayer)
-        end
-    end
-    table.sort(otherPlayers, function(a, b)
-        local aName = string.lower(AUTO_ABYSS.formatOwnerPlayerName(a) or tostring(a.UserId))
-        local bName = string.lower(AUTO_ABYSS.formatOwnerPlayerName(b) or tostring(b.UserId))
-        if aName == bName then
-            return tonumber(a.UserId) < tonumber(b.UserId)
-        end
-        return aName < bName
-    end)
-    return otherPlayers
-end
-
-AUTO_ABYSS.setSelectedJoinOwner = function(userId, displayName)
-    userId = tonumber(userId)
-    if not userId or userId <= 0 then
-        AUTO_ABYSS.selectedJoinOwnerUserId = nil
-        AUTO_ABYSS.selectedJoinOwnerName = "任意房主"
-        return
-    end
-    AUTO_ABYSS.selectedJoinOwnerUserId = userId
-    local targetPlayer = AUTO_ABYSS.findPlayerByUserId(userId)
-    AUTO_ABYSS.selectedJoinOwnerName = displayName or AUTO_ABYSS.formatOwnerPlayerName(targetPlayer) or ("UID " .. tostring(userId))
-end
-
-AUTO_ABYSS.validateSelectedJoinOwner = function()
-    if not AUTO_ABYSS.selectedJoinOwnerUserId then
-        AUTO_ABYSS.selectedJoinOwnerName = "任意房主"
-        return nil
-    end
-    local targetPlayer = AUTO_ABYSS.findPlayerByUserId(AUTO_ABYSS.selectedJoinOwnerUserId)
-    if not targetPlayer then
-        AUTO_ABYSS.setSelectedJoinOwner(nil)
-        return nil
-    end
-    AUTO_ABYSS.selectedJoinOwnerName = AUTO_ABYSS.formatOwnerPlayerName(targetPlayer) or AUTO_ABYSS.selectedJoinOwnerName or "任意房主"
-    return targetPlayer
-end
-
-AUTO_ABYSS.getJoinText = function()
-    return "自动入队: " .. (AUTO_ABYSS.joinEnabled and "ON" or "OFF")
-end
-
-AUTO_ABYSS.getOwnerText = function()
-    AUTO_ABYSS.validateSelectedJoinOwner()
-    return "房主: " .. tostring(AUTO_ABYSS.selectedJoinOwnerName or "任意房主")
-end
-
-AUTO_ABYSS.refreshOwnerDropdown = function()
-    local ownerFrame = AUTO_ABYSS.ownerFrame
-    if not ownerFrame then
-        return
-    end
-    AUTO_ABYSS.validateSelectedJoinOwner()
-    for _, child in ipairs(ownerFrame:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-
-    local options = {
-        {
-            userId = nil,
-            label = "任意房主",
-        },
-    }
-    for _, otherPlayer in ipairs(AUTO_ABYSS.getJoinOwnerPlayers()) do
-        table.insert(options, {
-            userId = otherPlayer.UserId,
-            label = AUTO_ABYSS.formatOwnerPlayerName(otherPlayer) or ("UID " .. tostring(otherPlayer.UserId)),
-        })
-    end
-
-    for index, option in ipairs(options) do
-        local optionBtn = Instance.new("TextButton")
-        optionBtn.Size = UDim2.new(1, 0, 0, 22)
-        optionBtn.LayoutOrder = index
-        local isSelected = (option.userId == nil and AUTO_ABYSS.selectedJoinOwnerUserId == nil) or (tonumber(option.userId) == tonumber(AUTO_ABYSS.selectedJoinOwnerUserId))
-        optionBtn.BackgroundColor3 = isSelected and Color3.fromRGB(52, 94, 78) or Color3.fromRGB(45, 45, 58)
-        optionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        optionBtn.Font = Enum.Font.Gotham
-        optionBtn.TextSize = 11
-        optionBtn.TextXAlignment = Enum.TextXAlignment.Left
-        optionBtn.TextTruncate = Enum.TextTruncate.AtEnd
-        optionBtn.Text = "  " .. tostring(option.label)
-        optionBtn.BorderSizePixel = 0
-        optionBtn.ZIndex = 23
-        optionBtn.Parent = ownerFrame
-
-        local optionCorner = Instance.new("UICorner")
-        optionCorner.CornerRadius = UDim.new(0, 5)
-        optionCorner.Parent = optionBtn
-
-        optionBtn.MouseButton1Click:Connect(function()
-            AUTO_ABYSS.setSelectedJoinOwner(option.userId, option.label)
-            ownerFrame.Visible = false
-            AUTO_ABYSS.updateControls()
-            AUTO_ABYSS.setStatus("自动入队: 已选择 " .. tostring(option.label), Color3.fromRGB(180, 180, 180))
-        end)
-    end
-
-    local optionCount = math.max(1, #options)
-    ownerFrame.CanvasSize = UDim2.new(0, 0, 0, optionCount * 24 + 8)
-end
-
 AUTO_ABYSS.isTmplUnlocked = function(tmplId)
     tmplId = tonumber(tmplId)
     if tmplId == 1001 then
@@ -1410,7 +1267,6 @@ end
 
 AUTO_ABYSS.updateControls = function()
     pcall(function()
-        AUTO_ABYSS.validateSelectedJoinOwner()
         if AUTO_ABYSS.toggleBtn and AUTO_ABYSS.toggleBtn.Parent then
             AUTO_ABYSS.toggleBtn.Text = "自动Abyss: " .. (AUTO_ABYSS.enabled and "ON" or "OFF")
             AUTO_ABYSS.toggleBtn.BackgroundColor3 = AUTO_ABYSS.enabled and Color3.fromRGB(0, 255, 136) or Color3.fromRGB(60, 60, 75)
@@ -1421,15 +1277,6 @@ AUTO_ABYSS.updateControls = function()
         end
         if AUTO_ABYSS.playerBtn and AUTO_ABYSS.playerBtn.Parent then
             AUTO_ABYSS.playerBtn.Text = AUTO_ABYSS.getPlayerText()
-        end
-        if AUTO_ABYSS.joinToggleBtn and AUTO_ABYSS.joinToggleBtn.Parent then
-            AUTO_ABYSS.joinToggleBtn.Text = AUTO_ABYSS.getJoinText()
-            AUTO_ABYSS.joinToggleBtn.BackgroundColor3 = AUTO_ABYSS.joinEnabled and Color3.fromRGB(0, 255, 136) or Color3.fromRGB(60, 60, 75)
-            AUTO_ABYSS.joinToggleBtn.TextColor3 = AUTO_ABYSS.joinEnabled and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
-        end
-        if AUTO_ABYSS.ownerBtn and AUTO_ABYSS.ownerBtn.Parent then
-            AUTO_ABYSS.ownerBtn.Text = AUTO_ABYSS.getOwnerText()
-            AUTO_ABYSS.ownerBtn.BackgroundColor3 = AUTO_ABYSS.selectedJoinOwnerUserId and Color3.fromRGB(52, 94, 78) or Color3.fromRGB(45, 45, 58)
         end
     end)
 end
@@ -3978,114 +3825,6 @@ function AbyssFlow.findNearestEntry(maxDistance)
     return nil, "no_abyss_entry"
 end
 
-function AbyssFlow.parseTeamEntry(node)
-    local showId = tonumber(tostring(node and node.Name or ""):match("^Abyss_(%d+)$"))
-    if not showId then
-        return nil
-    end
-
-    local _, hrp = getCharacterAndRootPart()
-    local position = AbyssFlow.entryPosition(node)
-    local teamInfo = {
-        AbyssTmplId = tonumber(node:GetAttribute("AbyssTmplId")) or nil,
-        MaxAmount = tonumber(node:GetAttribute("MaxAmount")) or nil,
-        CreateTick = tonumber(node:GetAttribute("CreateTick")) or nil,
-        LeaderId = nil,
-        LeaderLevel = nil,
-        MemberIds = {},
-    }
-    local attributes = {}
-    pcall(function()
-        attributes = node:GetAttributes()
-    end)
-    for attrName, attrValue in pairs(attributes or {}) do
-        local ownerId = tonumber(tostring(attrName):match("^Owner_(%d+)$"))
-        if ownerId then
-            teamInfo.LeaderId = ownerId
-            teamInfo.LeaderLevel = tonumber(attrValue) or attrValue
-        else
-            local memberId = tonumber(tostring(attrName):match("^Mem_(%d+)$"))
-            if memberId then
-                teamInfo.MemberIds[memberId] = tonumber(attrValue) or attrValue
-            end
-        end
-    end
-
-    local amount = teamInfo.LeaderId and 1 or 0
-    for _ in pairs(teamInfo.MemberIds) do
-        amount = amount + 1
-    end
-    teamInfo.Amount = amount
-
-    local leaderPlayer = AUTO_ABYSS.findPlayerByUserId(teamInfo.LeaderId)
-    return {
-        node = node,
-        showId = showId,
-        position = position,
-        distance = (hrp and position) and (hrp.Position - position).Magnitude or math.huge,
-        teamInfo = teamInfo,
-        leaderPlayer = leaderPlayer,
-        leaderName = AUTO_ABYSS.formatOwnerPlayerName(leaderPlayer) or (teamInfo.LeaderId and ("UID " .. tostring(teamInfo.LeaderId)) or "未知房主"),
-    }
-end
-
-function AbyssFlow.nodeHasPlayer(node, userId)
-    userId = tonumber(userId)
-    if not node or not userId then
-        return false
-    end
-    return node:GetAttribute("Owner_" .. tostring(userId)) ~= nil or node:GetAttribute("Mem_" .. tostring(userId)) ~= nil
-end
-
-function AbyssFlow.findSelfTeamEntry(tmplId)
-    local userId = player and player.UserId
-    if not userId then
-        return nil, nil
-    end
-    local matchedEntry = nil
-    pcall(function()
-        for _, inst in ipairs(workspace:GetDescendants()) do
-            local entry = AbyssFlow.parseTeamEntry(inst)
-            if entry and AbyssFlow.nodeHasPlayer(inst, userId) then
-                if not tmplId or tonumber(entry.teamInfo and entry.teamInfo.AbyssTmplId) == tonumber(tmplId) then
-                    matchedEntry = entry
-                    break
-                end
-            end
-        end
-    end)
-    return matchedEntry, matchedEntry and matchedEntry.teamInfo or nil
-end
-
-function AbyssFlow.findPreferredJoinTeam(ownerUserId, tmplId)
-    ownerUserId = tonumber(ownerUserId)
-    local bestEntry = nil
-    pcall(function()
-        for _, inst in ipairs(workspace:GetDescendants()) do
-            local entry = AbyssFlow.parseTeamEntry(inst)
-            local teamInfo = entry and entry.teamInfo
-            if entry and teamInfo and teamInfo.LeaderId then
-                local teamTmplId = tonumber(teamInfo.AbyssTmplId)
-                local maxAmount = tonumber(teamInfo.MaxAmount) or AbyssFlow.getTmplLimit(teamTmplId)
-                local amount = tonumber(teamInfo.Amount) or 0
-                local isMatch = (not ownerUserId or tonumber(teamInfo.LeaderId) == ownerUserId)
-                    and (not tmplId or teamTmplId == tonumber(tmplId))
-                    and amount > 0
-                    and (maxAmount <= 0 or amount < maxAmount)
-                    and tonumber(teamInfo.LeaderId) ~= tonumber(player and player.UserId)
-                if isMatch then
-                    if not bestEntry
-                        or entry.distance < bestEntry.distance
-                        or (entry.distance == bestEntry.distance and (tonumber(teamInfo.CreateTick) or 0) > (tonumber(bestEntry.teamInfo and bestEntry.teamInfo.CreateTick) or 0)) then
-                        bestEntry = entry
-                    end
-                end
-            end
-        end
-    end)
-    return bestEntry
-end
-
 function AbyssFlow.selfTeamInfo(node)
     local userId = player and player.UserId
     local teamInfo = PathTool and PathTool.AreaAbyssShower and PathTool.AreaAbyssShower._selfTeamInfo
@@ -4535,7 +4274,7 @@ function AbyssFlow.rewardScore(reward)
     local tmplId = tonumber(reward.TmplId)
     local count = tonumber(reward.Count) or 0
     if res == "CommonItem" and tmplId == 18 then
-        return 20000
+        return 600
     end
     if res == "Value" and reward.ValueType == "HuoBi_13" then
         if count >= 100 then
