@@ -1,0 +1,506 @@
+local Services = {
+    Players = game:GetService("Players"),
+    ReplicatedStorage = game:GetService("ReplicatedStorage"),
+}
+
+local player = Services.Players.LocalPlayer
+local env = (type(getgenv) == "function" and getgenv()) or _G
+
+if type(env.__CultivationLegacyDailyCompat) == "table" then
+    return env.__CultivationLegacyDailyCompat
+end
+
+local Config = {
+    DailyOffset = 8 * 3600,
+    PathRenameUrl = "https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/RAN",
+    ClaimCooldown = 0.05,
+    MailCooldown = 30,
+    PotionCooldown = 1,
+}
+
+local LegacyDailyCompat = {
+    state = {
+        dateKey = "",
+        dailyFlags = {},
+        actionTimestamps = {},
+    },
+}
+
+local function safeCall(fn, ...)
+    local ok, result = pcall(fn, ...)
+    if ok then
+        return result
+    end
+    return nil
+end
+
+function LegacyDailyCompat:getUtc8DateKey(timestamp)
+    local utc8 = os.date("!*t", (timestamp or os.time()) + Config.DailyOffset)
+    return string.format("%04d-%02d-%02d", utc8.year, utc8.month, utc8.day)
+end
+
+function LegacyDailyCompat:ensureDailyState()
+    local dateKey = self:getUtc8DateKey()
+    if self.state.dateKey ~= dateKey then
+        self.state.dateKey = dateKey
+        self.state.dailyFlags = {}
+    end
+end
+
+function LegacyDailyCompat:isDailyDone(name)
+    self:ensureDailyState()
+    return self.state.dailyFlags[name] == true
+end
+
+function LegacyDailyCompat:markDailyDone(name)
+    self:ensureDailyState()
+    self.state.dailyFlags[name] = true
+end
+
+function LegacyDailyCompat:canRunAction(name, cooldown)
+    local now = os.clock()
+    local lastAt = self.state.actionTimestamps[name] or 0
+    if now - lastAt < (cooldown or 0) then
+        return false
+    end
+    self.state.actionTimestamps[name] = now
+    return true
+end
+
+function LegacyDailyCompat:getPlayerGui()
+    if not player then
+        return nil
+    end
+
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        return playerGui
+    end
+
+    return player:WaitForChild("PlayerGui", 5)
+end
+
+function LegacyDailyCompat:deepWait(parent, path, timeout)
+    local current = parent
+    for _, name in ipairs(path) do
+        current = current and current:WaitForChild(name, timeout or 2)
+        if not current then
+            return nil
+        end
+    end
+    return current
+end
+
+function LegacyDailyCompat:deepFind(parent, path)
+    local current = parent
+    for _, name in ipairs(path) do
+        current = current and current:FindFirstChild(name)
+        if not current then
+            return nil
+        end
+    end
+    return current
+end
+
+function LegacyDailyCompat:getCommonRoot()
+    return self:deepWait(Services.ReplicatedStorage, { "事件", "公用" }, 2)
+end
+
+function LegacyDailyCompat:getCommonRemote(path)
+    local root = self:getCommonRoot()
+    return self:deepWait(root, path, 2)
+end
+
+function LegacyDailyCompat:fireRemote(remote, ...)
+    if not remote then
+        return false
+    end
+    safeCall(remote.FireServer, remote, ...)
+    return true
+end
+
+function LegacyDailyCompat:runPathRenameOnce()
+    if env.__CultivationLegacyPathRenameLoaded then
+        return true
+    end
+
+    local ok = pcall(function()
+        loadstring(game:HttpGet(Config.PathRenameUrl))()
+    end)
+
+    if ok then
+        env.__CultivationLegacyPathRenameLoaded = true
+        return true
+    end
+
+    return false
+end
+
+function LegacyDailyCompat:getMainMissionPrompt()
+    local playerGui = self:getPlayerGui()
+    return self:deepWait(playerGui, {
+        "GUI",
+        "主界面",
+        "主城",
+        "主线任务",
+        "按钮",
+        "提示",
+    }, 2)
+end
+
+function LegacyDailyCompat:getDailyMissionList()
+    local playerGui = self:getPlayerGui()
+    return self:deepWait(playerGui, {
+        "GUI",
+        "二级界面",
+        "每日任务",
+        "背景",
+        "任务列表",
+    }, 2)
+end
+
+function LegacyDailyCompat:getGamePassMissionList()
+    local playerGui = self:getPlayerGui()
+    return self:deepWait(playerGui, {
+        "GUI",
+        "二级界面",
+        "商店",
+        "通行证任务",
+        "背景",
+        "任务列表",
+    }, 2)
+end
+
+function LegacyDailyCompat:getGamePassGiftList()
+    local playerGui = self:getPlayerGui()
+    return self:deepWait(playerGui, {
+        "GUI",
+        "二级界面",
+        "商店",
+        "背景",
+        "右侧界面",
+        "月通行证",
+        "背景",
+        "奖励区",
+        "奖励列表",
+    }, 2)
+end
+
+function LegacyDailyCompat:getTaskProgress(frame)
+    local nameLabel = frame and frame:FindFirstChild("名称")
+    if not nameLabel or not nameLabel:IsA("TextLabel") then
+        return nil, nil
+    end
+
+    local taskProgress = nameLabel.Text:match("%((%d+/%d+)%)")
+    if not taskProgress then
+        return nil, nil
+    end
+
+    local current, target = taskProgress:match("(%d+)%/(%d+)")
+    return tonumber(current), tonumber(target)
+end
+
+function LegacyDailyCompat:claimVisibleMissionFrames(listRoot, remote, afterClaim)
+    if not listRoot or not remote then
+        return 0
+    end
+
+    local claimed = 0
+    for _, child in ipairs(listRoot:GetChildren()) do
+        if child:IsA("Frame") and child.Visible then
+            local missionId = tonumber(child.Name)
+            local current, target = self:getTaskProgress(child)
+            if missionId and current and target and target > 0 and current >= target then
+                self:fireRemote(remote, missionId)
+                claimed = claimed + 1
+                if type(afterClaim) == "function" then
+                    afterClaim()
+                end
+                task.wait(Config.ClaimCooldown)
+            end
+        end
+    end
+
+    return claimed
+end
+
+function LegacyDailyCompat:claimGamePassGift(tier, index)
+    local remote = self:getCommonRemote({ "月通行证", "领取" })
+    if not remote then
+        return false
+    end
+
+    return self:fireRemote(remote, tier, index)
+end
+
+function LegacyDailyCompat:claimAllMail()
+    self:ensureDailyState()
+    if self:isDailyDone("claimallmail") then
+        return false
+    end
+
+    local remote = self:getCommonRemote({ "邮件", "领取全部邮件" })
+    local fired = self:fireRemote(remote)
+    if fired then
+        self:markDailyDone("claimallmail")
+    end
+    return fired
+end
+
+function LegacyDailyCompat:claimallmail()
+    return self:claimAllMail()
+end
+
+function LegacyDailyCompat:mainmissionchack()
+    local prompt = self:getMainMissionPrompt()
+    if not prompt or not prompt.Visible then
+        return false
+    end
+
+    local remote = self:getCommonRemote({ "主线任务", "领取奖励" })
+    return self:fireRemote(remote)
+end
+
+function LegacyDailyCompat:everydaymission()
+    local listRoot = self:getDailyMissionList()
+    local remote = self:getCommonRemote({ "每日任务", "领取奖励" })
+    return self:claimVisibleMissionFrames(listRoot, remote)
+end
+
+function LegacyDailyCompat:gamepassmission()
+    local refreshRemote = self:getCommonRemote({ "月通行证", "获取数据" })
+    local listRoot = self:getGamePassMissionList()
+    local claimRemote = self:getCommonRemote({ "月通行证", "完成任务" })
+    local refreshed = false
+
+    local claimed = self:claimVisibleMissionFrames(listRoot, claimRemote, function()
+        if not refreshed and refreshRemote then
+            self:fireRemote(refreshRemote)
+            refreshed = true
+        end
+    end)
+
+    return claimed
+end
+
+function LegacyDailyCompat:getSortedGamePassGiftEntries(giftList)
+    if not giftList then
+        return {}
+    end
+
+    local entries = {}
+    for _, child in ipairs(giftList:GetChildren()) do
+        local index = tonumber(child.Name:match("^gamepassgift(%d+)$"))
+        if index then
+            table.insert(entries, {
+                index = index,
+                gift = child,
+            })
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        return a.index < b.index
+    end)
+
+    return entries
+end
+
+function LegacyDailyCompat:gamepassgiftget()
+    local giftList = self:getGamePassGiftList()
+    if not giftList then
+        return 0
+    end
+
+    local claimed = 0
+    local giftEntries = self:getSortedGamePassGiftEntries(giftList)
+
+    for _, entry in ipairs(giftEntries) do
+        local gift = entry.gift
+        local index = entry.index
+        local progress = self:deepFind(gift, { "进度预制体", "进度" })
+        local freeClaimed = self:deepFind(gift, { "免费", "背景", "领取图标" })
+        local goldClaimed = self:deepFind(gift, { "黄金", "背景", "领取图标" })
+        local progressVisible = progress and progress.Visible
+
+        if progressVisible and freeClaimed and not freeClaimed.Visible then
+            if self:claimGamePassGift(1, index) then
+                claimed = claimed + 1
+                task.wait(Config.ClaimCooldown)
+            end
+        end
+
+        if progressVisible and goldClaimed and not goldClaimed.Visible then
+            if self:claimGamePassGift(2, index) then
+                claimed = claimed + 1
+                task.wait(Config.ClaimCooldown)
+            end
+        end
+    end
+
+    return claimed
+end
+
+function LegacyDailyCompat:everydaygem()
+    self:ensureDailyState()
+    if self:isDailyDone("everydaygem") then
+        return 0
+    end
+
+    local playerGui = self:getPlayerGui()
+    local gemRoot = self:deepWait(playerGui, {
+        "GUI",
+        "二级界面",
+        "商店",
+        "背景",
+        "右侧界面",
+        "每日灵石",
+    }, 2)
+    local remote = self:getCommonRemote({ "商店", "每日灵石", "领取每日灵石" })
+
+    if not gemRoot or not remote then
+        return 0
+    end
+
+    local claimed = 0
+    for index = 1, 4 do
+        local button = gemRoot:FindFirstChild("钻石" .. index)
+        local tipVisible = button
+            and self:deepFind(button, { "领取按钮", "按钮", "提示" })
+
+        if tipVisible and tipVisible.Visible then
+            if self:fireRemote(remote, index) then
+                claimed = claimed + 1
+                task.wait(Config.ClaimCooldown)
+            end
+        end
+    end
+
+    if claimed > 0 then
+        self:markDailyDone("everydaygem")
+    end
+
+    return claimed
+end
+
+function LegacyDailyCompat:dailyspin()
+    self:ensureDailyState()
+
+    if self:isDailyDone("dailyspin") then
+        return false
+    end
+
+    local remote = self:getCommonRemote({ "转盘", "抽奖" })
+    if not remote then
+        return false
+    end
+
+    for _ = 1, 6 do
+        self:fireRemote(remote)
+        task.wait(Config.ClaimCooldown)
+    end
+
+    self:markDailyDone("dailyspin")
+    return true
+end
+
+function LegacyDailyCompat:offlinereward()
+    self:ensureDailyState()
+    if self:isDailyDone("offlinereward") then
+        return false
+    end
+
+    local remote = self:getCommonRemote({ "离线奖励", "领奖" })
+    if not remote then
+        return false
+    end
+
+    local fired = self:fireRemote(remote)
+    if fired then
+        self:markDailyDone("offlinereward")
+    end
+    return fired
+end
+
+function LegacyDailyCompat:potionfull()
+    if not self:canRunAction("potionfull", Config.PotionCooldown) then
+        return false
+    end
+
+    local playerGui = self:getPlayerGui()
+    local amountLabel = self:deepWait(playerGui, {
+        "GUI",
+        "二级界面",
+        "主角",
+        "背景",
+        "右侧界面",
+        "小绿瓶",
+        "形象",
+        "货币",
+        "货币数",
+    }, 2)
+
+    if not amountLabel or not amountLabel:IsA("TextLabel") then
+        return false
+    end
+
+    local current, total = amountLabel.Text:match("(%d+)%s*/%s*(%d+)")
+    if tonumber(current) ~= tonumber(total) then
+        return false
+    end
+
+    local remote = self:getCommonRemote({ "祝福", "祝福" })
+    return self:fireRemote(remote, 1)
+end
+
+function LegacyDailyCompat:forceDailyReset()
+    self.state.dateKey = ""
+    self:ensureDailyState()
+end
+
+function LegacyDailyCompat:installGlobals()
+    local bound = {
+        claimallmail = function()
+            return self:claimallmail()
+        end,
+        mainmissionchack = function()
+            return self:mainmissionchack()
+        end,
+        everydaymission = function()
+            return self:everydaymission()
+        end,
+        gamepassmission = function()
+            return self:gamepassmission()
+        end,
+        gamepassgiftget = function()
+            return self:gamepassgiftget()
+        end,
+        everydaygem = function()
+            return self:everydaygem()
+        end,
+        dailyspin = function()
+            return self:dailyspin()
+        end,
+        offlinereward = function()
+            return self:offlinereward()
+        end,
+        potionfull = function()
+            return self:potionfull()
+        end,
+    }
+
+    for name, fn in pairs(bound) do
+        env[name] = fn
+        _G[name] = fn
+    end
+end
+
+LegacyDailyCompat:runPathRenameOnce()
+LegacyDailyCompat:ensureDailyState()
+LegacyDailyCompat:installGlobals()
+
+env.__CultivationLegacyDailyCompat = LegacyDailyCompat
+_G.__CultivationLegacyDailyCompat = LegacyDailyCompat
+
+return LegacyDailyCompat

@@ -1,0 +1,958 @@
+--!strict
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+local Players = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    warn("[初始化] LocalPlayer 不存在，脚本终止")
+    return
+end
+
+local FPS_BOOST_URL = "https://raw.githubusercontent.com/CasperFlyModz/discord.gg-rips/main/FPSBooster.lua"
+local fpsBoostApplied = false
+
+local function applyFpsBoost()
+    local success, err = pcall(function()
+        _G.Ignore = {}
+        _G.Settings = {
+            Players = {
+                ["Ignore Me"] = true,
+                ["Ignore Others"] = true,
+                ["Ignore Tools"] = true,
+            },
+            Meshes = {
+                NoMesh = true,
+                NoTexture = true,
+                Destroy = false,
+            },
+            Images = {
+                Invisible = true,
+                Destroy = true,
+            },
+            Explosions = {
+                Smaller = true,
+                Invisible = true,
+                Destroy = true,
+            },
+            Particles = {
+                Invisible = true,
+                Destroy = true,
+            },
+            TextLabels = {
+                LowerQuality = true,
+                Invisible = true,
+                Destroy = false,
+            },
+            MeshParts = {
+                LowerQuality = true,
+                Invisible = true,
+                NoTexture = true,
+                NoMesh = true,
+                Destroy = false,
+            },
+            Other = {
+                ["FPS Cap"] = 60,
+                ["No Camera Effects"] = true,
+                ["No Clothes"] = true,
+                ["Low Water Graphics"] = true,
+                ["No Shadows"] = true,
+                ["Low Rendering"] = true,
+                ["Low Quality Parts"] = true,
+                ["Low Quality Models"] = true,
+                ["Reset Materials"] = true,
+            },
+        }
+
+        local chunk = loadstring(game:HttpGet(FPS_BOOST_URL))
+        if type(chunk) ~= "function" then
+            error("FPSBoost loadstring 失败")
+        end
+        chunk()
+    end)
+
+    if success then
+        print("[FPSBoost] 已融合并执行")
+    else
+        warn("[FPSBoost] 执行失败:", err)
+    end
+end
+
+local BLOCKED_PLACE_ID = 18645473062
+local STARTUP_DELAY_SECONDS = 7
+local GUI_INIT_WAIT_SECONDS = 2
+local INITIAL_DELAY_MIN = 0
+local INITIAL_DELAY_MAX = 8
+local MAIN_COOLDOWN_MIN = 10
+local MAIN_COOLDOWN_MAX = 18
+
+local BASE_WALK_SPEED = 68
+local MIN_DYNAMIC_SPEED = 66
+local MAX_DYNAMIC_SPEED = 70
+local SPEED_CHANGE_MIN = 4
+local SPEED_CHANGE_MAX = 8
+
+local FIXED_PATH_HEIGHT = 10
+local FIXED_TARGET_POSITION = Vector3.new(-513, 10, -511)
+local USE_FIXED_TARGET = true
+
+local MOVE_TIMEOUT_SECONDS = 210
+local WAYPOINT_TIMEOUT_SECONDS = 12
+local WAYPOINT_REACH_DISTANCE = 5.0
+local MOVE_REFRESH_INTERVAL_SECONDS = 0.7
+local STUCK_CHECK_INTERVAL = 1.8
+local STUCK_DISTANCE_THRESHOLD = 1.0
+local STUCK_CONFIRM_COUNT = 2
+local POSITION_JUMP_THRESHOLD = 90
+local MAX_REPATH_ATTEMPTS = 6
+local REPATH_DELAY_SECONDS = 0.6
+local SEGMENT_CLEARANCE_HALF_WIDTH = 1.25
+local SEGMENT_CLEARANCE_HEIGHT_OFFSET = 2.0
+local SEGMENT_CLEARANCE_PADDING = 1.5
+local SEGMENT_CLEARANCE_MIN_DISTANCE = 2.0
+local SEGMENT_CLEARANCE_END_TOLERANCE = 0.75
+
+local SEARCH_RADIUS = 110
+local SEARCH_STEP = 8
+local SEARCH_ANGLE_STEP = 20
+
+local REWARD_UI_REMOVE_CHANCE = 0.005
+local SHORT_IDLE_SECONDS = 1.2
+local EXIT_MARKER_FILENAME_SUFFIX = ".txt"
+local EXIT_MARKER_CONTENT = "Yummytool"
+local EXIT_MARKER_WRITE_ATTEMPTS = 3
+local EXIT_MARKER_RETRY_DELAY_SECONDS = 0.2
+
+local SECONDARY_GUI_NAME = "\228\186\140\231\186\167\231\149\140\233\157\162"
+local REWARD_VISIBLE_GUI_NAME = "\229\177\149\231\164\186\229\165\150\229\138\177\231\149\140\233\157\162"
+local CRYSTAL_CONTAINER_NAME = "\229\141\149\228\189\141\229\175\185\232\177\161"
+
+local EVENTS_FOLDER_NAME = "\228\186\139\228\187\182"
+local CLIENT_FOLDER_NAME = "\229\174\162\230\136\183\231\171\175"
+local CLIENT_UI_FOLDER_NAME = "\229\174\162\230\136\183\231\171\175UI"
+local RETURN_TO_CITY_EVENT_NAME = "\229\155\158\229\159\142"
+
+local REWARD_UI_NAMES = {
+    "离线奖励",
+    "版本说明",
+    "7日奖励",
+}
+
+type PathProfile = {
+    agentRadius: number,
+    agentHeight: number,
+    waypointSpacing: number,
+    agentCanJump: boolean,
+}
+
+type MoveFailureReason =
+    "gui_visible"
+    | "character_invalid"
+    | "humanoid_dead"
+    | "move_timeout"
+    | "waypoint_timeout"
+    | "position_jump"
+    | "stuck"
+    | "path_blocked"
+
+local PATH_PROFILES: { PathProfile } = {
+    -- 以 Roblox 默认人形寻路参数为基准：Radius=2, Height=5, Spacing=4
+    { agentRadius = 2.0, agentHeight = 5.0, waypointSpacing = 4.0, agentCanJump = true },
+    { agentRadius = 2.2, agentHeight = 5.0, waypointSpacing = 4.0, agentCanJump = true },
+    { agentRadius = 2.4, agentHeight = 5.0, waypointSpacing = 6.0, agentCanJump = true },
+    { agentRadius = 1.8, agentHeight = 5.0, waypointSpacing = 4.0, agentCanJump = true },
+}
+
+local RNG = Random.new(math.floor(os.clock() * 1000) + LocalPlayer.UserId)
+local cachedCrystal: Instance? = nil
+local cachedCrystalContainer: Instance? = nil
+local cachedPlayerGui: PlayerGui? = nil
+local cachedRootGui: Instance? = nil
+local cachedRewardRoot: Instance? = nil
+local preferredProfileIndex = 1
+
+local SEARCH_ANGLE_OFFSETS: { number } = { 0 }
+do
+    for offset = SEARCH_ANGLE_STEP, 180, SEARCH_ANGLE_STEP do
+        table.insert(SEARCH_ANGLE_OFFSETS, offset)
+        table.insert(SEARCH_ANGLE_OFFSETS, -offset)
+    end
+end
+
+local cachedCharacter: Model? = nil
+local cachedHumanoid: Humanoid? = nil
+local cachedHrp: BasePart? = nil
+
+local function invalidateRigCache()
+    cachedCharacter = nil
+    cachedHumanoid = nil
+    cachedHrp = nil
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    invalidateRigCache()
+end)
+
+LocalPlayer.CharacterRemoving:Connect(function()
+    invalidateRigCache()
+end)
+
+local function flat(v: Vector3): Vector3
+    return Vector3.new(v.X, 0, v.Z)
+end
+
+local function flattenPathTarget(v: Vector3): Vector3
+    return Vector3.new(v.X, FIXED_PATH_HEIGHT, v.Z)
+end
+
+local function isWaypointSegmentTooTight(fromPos: Vector3, toPos: Vector3): boolean
+    local delta = flat(toPos - fromPos)
+    local distance = delta.Magnitude
+    if distance <= SEGMENT_CLEARANCE_MIN_DISTANCE then
+        return false
+    end
+
+    local direction = delta.Unit
+    local right = Vector3.new(-direction.Z, 0, direction.X)
+    local offsets: { number } = { 0, SEGMENT_CLEARANCE_HALF_WIDTH, -SEGMENT_CLEARANCE_HALF_WIDTH }
+
+    local filterInstances: { Instance } = {}
+    local character = LocalPlayer.Character
+    if character then
+        table.insert(filterInstances, character)
+    end
+    local crystalContainer = Workspace:FindFirstChild(CRYSTAL_CONTAINER_NAME)
+    if crystalContainer then
+        table.insert(filterInstances, crystalContainer)
+    end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = filterInstances
+    params.IgnoreWater = true
+
+    local rayLength = distance + SEGMENT_CLEARANCE_PADDING
+    local blockedRays = 0
+    for _, offset in ipairs(offsets) do
+        local origin = Vector3.new(fromPos.X, fromPos.Y + SEGMENT_CLEARANCE_HEIGHT_OFFSET, fromPos.Z) + (right * offset)
+        local hit = Workspace:Raycast(origin, direction * rayLength, params)
+        if hit and hit.Distance <= (distance - SEGMENT_CLEARANCE_END_TOLERANCE) then
+            blockedRays += 1
+        end
+    end
+
+    return blockedRays >= 2
+end
+
+local function getCurrentRig(): (Model?, Humanoid?, BasePart?)
+    local currentCharacter = LocalPlayer.Character
+    if cachedCharacter and cachedHumanoid and cachedHrp and cachedCharacter == currentCharacter then
+        if cachedCharacter.Parent and cachedHumanoid.Parent and cachedHrp.Parent then
+            return cachedCharacter, cachedHumanoid, cachedHrp
+        end
+        invalidateRigCache()
+    end
+
+    local character = LocalPlayer.Character
+    if not character or not character.Parent then
+        invalidateRigCache()
+        return nil, nil, nil
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp or not hrp:IsA("BasePart") then
+        invalidateRigCache()
+        return character, nil, nil
+    end
+
+    cachedCharacter = character
+    cachedHumanoid = humanoid
+    cachedHrp = hrp
+
+    return character, humanoid, hrp
+end
+
+local function waitForRig(timeoutSeconds: number): (Model?, Humanoid?, BasePart?)
+    local deadline = os.clock() + timeoutSeconds
+    while os.clock() < deadline do
+        local character, humanoid, hrp = getCurrentRig()
+        if character and humanoid and hrp then
+            return character, humanoid, hrp
+        end
+        task.wait(0.1)
+    end
+    return nil, nil, nil
+end
+
+local function resolveRewardGuiRoot(): Instance?
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") :: PlayerGui?
+    if playerGui ~= cachedPlayerGui then
+        cachedPlayerGui = playerGui
+        cachedRootGui = nil
+        cachedRewardRoot = nil
+    end
+
+    if not playerGui then
+        return nil
+    end
+
+    if not cachedRootGui or cachedRootGui.Parent ~= playerGui then
+        cachedRootGui = playerGui:FindFirstChild("GUI")
+        cachedRewardRoot = nil
+    end
+
+    local rootGui = cachedRootGui
+    if not rootGui then
+        return nil
+    end
+
+    if not cachedRewardRoot or cachedRewardRoot.Parent ~= rootGui then
+        cachedRewardRoot = rootGui:FindFirstChild(SECONDARY_GUI_NAME)
+    end
+
+    return cachedRewardRoot
+end
+
+local function isAbortGuiVisible(): boolean
+    local rewardRoot = resolveRewardGuiRoot()
+    if not rewardRoot then
+        return false
+    end
+
+    local rewardGui = rewardRoot:FindFirstChild(REWARD_VISIBLE_GUI_NAME)
+    return rewardGui ~= nil and rewardGui:IsA("GuiObject") and rewardGui.Visible
+end
+
+local function writeExitMarkerBeforeShutdown(): boolean
+    local writeFileFn = (writefile :: any)
+    if type(writeFileFn) ~= "function" then
+        warn("[退出标记] 当前执行器不支持 writefile，已阻止 Shutdown")
+        return false
+    end
+
+    local markerPath = LocalPlayer.Name .. EXIT_MARKER_FILENAME_SUFFIX
+    local readFileFn = (readfile :: any)
+    local isFileFn = (isfile :: any)
+
+    for attempt = 1, EXIT_MARKER_WRITE_ATTEMPTS do
+        local writeSuccess, writeErr = pcall(function()
+            writefile(markerPath, EXIT_MARKER_CONTENT)
+        end)
+
+        if writeSuccess then
+            local canVerify = type(readFileFn) == "function" and type(isFileFn) == "function"
+            if not canVerify then
+                print(string.format("[退出标记] 已写入 %s", markerPath))
+                return true
+            end
+
+            local verifySuccess, verified = pcall(function()
+                if not isFileFn(markerPath) then
+                    return false
+                end
+                local content = tostring(readFileFn(markerPath))
+                return content == EXIT_MARKER_CONTENT
+            end)
+
+            if verifySuccess and verified then
+                print(string.format("[退出标记] 已写入并校验 %s", markerPath))
+                return true
+            end
+        else
+            warn(string.format("[退出标记] 写入失败 (attempt=%d): %s", attempt, tostring(writeErr)))
+        end
+
+        task.wait(EXIT_MARKER_RETRY_DELAY_SECONDS)
+    end
+
+    warn(string.format("[退出标记] 未写入成功，已阻止 Shutdown: %s", markerPath))
+    return false
+end
+
+local function shutdownIfAbortGuiVisible(context: string): boolean
+    if not isAbortGuiVisible() then
+        return false
+    end
+
+    if not writeExitMarkerBeforeShutdown() then
+        return false
+    end
+
+    warn(string.format("[%s] 检测到奖励GUI可见，已写入退出标记，执行 Shutdown", context))
+    game:Shutdown()
+    return true
+end
+
+local function waitWithGuiAbort(seconds: number, context: string): boolean
+    local deadline = os.clock() + seconds
+    while os.clock() < deadline do
+        if shutdownIfAbortGuiVisible(context) then
+            return false
+        end
+        task.wait(0.1)
+    end
+    return true
+end
+
+local function removeRewardUI(): boolean
+    local rewardRoot = resolveRewardGuiRoot()
+    if not rewardRoot then
+        return false
+    end
+
+    local removed = 0
+    for _, name in ipairs(REWARD_UI_NAMES) do
+        local child = rewardRoot:FindFirstChild(name)
+        if child then
+            child:Destroy()
+            removed += 1
+        end
+    end
+
+    if removed > 0 then
+        print(string.format("[奖励界面] 已删除 %d 个节点", removed))
+    end
+    return removed > 0
+end
+
+local function getCrystalContainer(): Instance?
+    if cachedCrystalContainer and cachedCrystalContainer.Parent == Workspace then
+        return cachedCrystalContainer
+    end
+
+    local container = Workspace:FindFirstChild(CRYSTAL_CONTAINER_NAME)
+    if container ~= cachedCrystalContainer then
+        cachedCrystal = nil
+    end
+    cachedCrystalContainer = container
+    return cachedCrystalContainer
+end
+
+local function checkCrystalExists(): boolean
+    local container = getCrystalContainer()
+    if not container then
+        return false
+    end
+    return container:GetChildren()[1] ~= nil
+end
+
+local function getInstancePosition(instance: Instance): Vector3?
+    if instance:IsA("BasePart") then
+        return instance.Position
+    end
+    if instance:IsA("Model") then
+        return instance:GetPivot().Position
+    end
+    local part = instance:FindFirstChildWhichIsA("BasePart", true)
+    if part then
+        return part.Position
+    end
+    return nil
+end
+
+local function findAvailableCrystal(startPos: Vector3): Instance?
+    if cachedCrystal and cachedCrystal.Parent then
+        return cachedCrystal
+    end
+
+    local container = getCrystalContainer()
+    if not container then
+        return nil
+    end
+
+    local children = container:GetChildren()
+    if #children == 0 then
+        return nil
+    end
+
+    local startFlat = flat(startPos)
+    local nearestCrystal: Instance? = nil
+    local nearestDist = math.huge
+
+    for _, crystal in ipairs(children) do
+        local pos = getInstancePosition(crystal)
+        if pos then
+            local dist = (startFlat - flat(pos)).Magnitude
+            if dist < nearestDist then
+                nearestDist = dist
+                nearestCrystal = crystal
+            end
+        end
+    end
+
+    if not nearestCrystal then
+        cachedCrystal = children[1]
+        return cachedCrystal
+    end
+
+    cachedCrystal = nearestCrystal
+    return cachedCrystal
+end
+
+local function resolveTargetPosition(targetModel: Instance?): Vector3?
+    if USE_FIXED_TARGET then
+        return FIXED_TARGET_POSITION
+    end
+    if not targetModel then
+        return nil
+    end
+    return getInstancePosition(targetModel)
+end
+
+local function fireReturnToCity()
+    local ok, err = pcall(function()
+        ((ReplicatedStorage :: any)[EVENTS_FOLDER_NAME][CLIENT_FOLDER_NAME][CLIENT_UI_FOLDER_NAME][RETURN_TO_CITY_EVENT_NAME] :: any):Fire()
+    end)
+
+    if not ok then
+        warn("[回城] 触发失败:", err)
+    else
+        print("[回城] 已触发回城事件")
+    end
+end
+
+local function computePathWithProfile(startPos: Vector3, targetPos: Vector3, profile: PathProfile): (Path?, string?)
+    local path = PathfindingService:CreatePath({
+        AgentRadius = profile.agentRadius,
+        AgentHeight = profile.agentHeight,
+        AgentCanJump = profile.agentCanJump,
+        WaypointSpacing = profile.waypointSpacing,
+        Costs = { Water = 1 },
+    })
+
+    local ok, err = pcall(function()
+        path:ComputeAsync(startPos, flattenPathTarget(targetPos))
+    end)
+
+    if not ok then
+        return nil, tostring(err)
+    end
+
+    if path.Status == Enum.PathStatus.NoPath then
+        return nil, "NoPath"
+    end
+
+    local waypoints = path:GetWaypoints()
+    if #waypoints <= 1 then
+        return nil, "NotEnoughWaypoints"
+    end
+
+    return path, nil
+end
+
+local function tryBuildDirectPath(startPos: Vector3, targetPos: Vector3): (Path?, string)
+    local lastError = "UnknownError"
+    local profileCount = #PATH_PROFILES
+
+    if preferredProfileIndex >= 1 and preferredProfileIndex <= profileCount then
+        local preferredProfile = PATH_PROFILES[preferredProfileIndex]
+        local path, err = computePathWithProfile(startPos, targetPos, preferredProfile)
+        if path then
+            return path, "ok"
+        end
+        if err then
+            lastError = err
+        end
+    end
+
+    for index, profile in ipairs(PATH_PROFILES) do
+        if index == preferredProfileIndex then
+            continue
+        end
+
+        local path, err = computePathWithProfile(startPos, targetPos, profile)
+        if path then
+            preferredProfileIndex = index
+            return path, "ok"
+        end
+        if err then
+            lastError = err
+        end
+    end
+
+    return nil, lastError
+end
+
+local function findNearbyReachablePath(startPos: Vector3, targetPos: Vector3): (Path?, Vector3?)
+    local baseDir = flat(startPos - targetPos)
+    local baseAngle = 0
+    if baseDir.Magnitude > 0.001 then
+        baseAngle = math.deg(math.atan2(baseDir.Z, baseDir.X))
+    end
+
+    for radius = SEARCH_STEP, SEARCH_RADIUS, SEARCH_STEP do
+        for _, angleOffset in ipairs(SEARCH_ANGLE_OFFSETS) do
+            local rad = math.rad(baseAngle + angleOffset)
+            local probe = Vector3.new(
+                targetPos.X + math.cos(rad) * radius,
+                targetPos.Y,
+                targetPos.Z + math.sin(rad) * radius
+            )
+
+            local path, _ = tryBuildDirectPath(startPos, probe)
+            if path then
+                return path, probe
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function buildPath(startPos: Vector3, targetPos: Vector3): (Path?, Vector3?, string)
+    local directPath, directError = tryBuildDirectPath(startPos, targetPos)
+    if directPath then
+        return directPath, targetPos, "direct"
+    end
+
+    local nearbyPath, nearbyTarget = findNearbyReachablePath(startPos, targetPos)
+    if nearbyPath and nearbyTarget then
+        return nearbyPath, nearbyTarget, "nearby"
+    end
+
+    return nil, nil, directError
+end
+
+local function followPath(path: Path, useStrictClearance: boolean): (boolean, MoveFailureReason?)
+    local waypoints = path:GetWaypoints()
+    if #waypoints <= 1 then
+        return false, "waypoint_timeout"
+    end
+
+    local _, humanoid, hrp = getCurrentRig()
+    if not humanoid or not hrp then
+        return false, "character_invalid"
+    end
+
+    humanoid.PlatformStand = false
+    local currentSpeed = BASE_WALK_SPEED
+    local nextSpeedUpdateAt = 0.0
+    local moveStart = os.clock()
+    local lastStuckProbeAt = os.clock()
+    local lastStuckProbePos = hrp.Position
+    local stuckStrikeCount = 0
+    local lastStepPos = hrp.Position
+
+    local blockedIndex = math.huge
+    local blockedConn: RBXScriptConnection? = path.Blocked:Connect(function(index: number)
+        blockedIndex = math.min(blockedIndex, index)
+    end)
+
+    local function cleanupBlockedConn()
+        if blockedConn then
+            blockedConn:Disconnect()
+            blockedConn = nil
+        end
+    end
+
+    local function fail(reason: MoveFailureReason): (boolean, MoveFailureReason)
+        cleanupBlockedConn()
+        return false, reason
+    end
+
+    local function updateSpeed(forceBase: boolean)
+        local now = os.clock()
+        if forceBase then
+            currentSpeed = BASE_WALK_SPEED
+            nextSpeedUpdateAt = now + RNG:NextNumber(SPEED_CHANGE_MIN, SPEED_CHANGE_MAX)
+        elseif now >= nextSpeedUpdateAt then
+            currentSpeed = RNG:NextNumber(MIN_DYNAMIC_SPEED, MAX_DYNAMIC_SPEED)
+            nextSpeedUpdateAt = now + RNG:NextNumber(SPEED_CHANGE_MIN, SPEED_CHANGE_MAX)
+        end
+
+        if humanoid and humanoid.WalkSpeed ~= currentSpeed then
+            humanoid.WalkSpeed = currentSpeed
+        end
+    end
+
+    updateSpeed(true)
+
+    for i = 2, #waypoints do
+        if blockedIndex <= i then
+            return fail("path_blocked")
+        end
+
+        if shutdownIfAbortGuiVisible("移动") then
+            return fail("gui_visible")
+        end
+
+        local _, humNow, hrpNow = getCurrentRig()
+        if not humNow or not hrpNow then
+            return fail("character_invalid")
+        end
+        humanoid = humNow
+        hrp = hrpNow
+
+        if humanoid.Health <= 0 then
+            return fail("humanoid_dead")
+        end
+
+        updateSpeed(false)
+
+        local waypoint = waypoints[i]
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            humanoid.Jump = true
+        end
+
+        local moveTarget = Vector3.new(waypoint.Position.X, hrp.Position.Y, waypoint.Position.Z)
+        if useStrictClearance and isWaypointSegmentTooTight(hrp.Position, moveTarget) then
+            return fail("path_blocked")
+        end
+
+        local waypointStart = os.clock()
+        humanoid:MoveTo(moveTarget)
+        local lastMoveRefreshAt = waypointStart
+
+        while true do
+            if shutdownIfAbortGuiVisible("移动循环") then
+                return fail("gui_visible")
+            end
+
+            local _, humLoop, hrpLoop = getCurrentRig()
+            if not humLoop or not hrpLoop then
+                return fail("character_invalid")
+            end
+            humanoid = humLoop
+            hrp = hrpLoop
+
+            if humanoid.Health <= 0 then
+                return fail("humanoid_dead")
+            end
+
+            updateSpeed(false)
+
+            local dist = (flat(hrp.Position) - flat(moveTarget)).Magnitude
+            if dist <= WAYPOINT_REACH_DISTANCE then
+                break
+            end
+
+            local now = os.clock()
+
+            if blockedIndex <= i then
+                return fail("path_blocked")
+            end
+
+            if now - lastMoveRefreshAt >= MOVE_REFRESH_INTERVAL_SECONDS then
+                humanoid:MoveTo(moveTarget)
+                lastMoveRefreshAt = now
+            end
+
+            if now - moveStart >= MOVE_TIMEOUT_SECONDS then
+                return fail("move_timeout")
+            end
+
+            if now - waypointStart >= WAYPOINT_TIMEOUT_SECONDS then
+                return fail("waypoint_timeout")
+            end
+
+            if (hrp.Position - lastStepPos).Magnitude >= POSITION_JUMP_THRESHOLD then
+                return fail("position_jump")
+            end
+            lastStepPos = hrp.Position
+
+            if now - lastStuckProbeAt >= STUCK_CHECK_INTERVAL then
+                if useStrictClearance and isWaypointSegmentTooTight(hrp.Position, moveTarget) then
+                    return fail("path_blocked")
+                end
+
+                local moved = (hrp.Position - lastStuckProbePos).Magnitude
+                if moved <= STUCK_DISTANCE_THRESHOLD then
+                    stuckStrikeCount += 1
+                    if stuckStrikeCount >= STUCK_CONFIRM_COUNT then
+                        return fail("stuck")
+                    end
+                else
+                    stuckStrikeCount = 0
+                end
+
+                lastStuckProbeAt = now
+                lastStuckProbePos = hrp.Position
+            end
+
+            task.wait(0.1)
+        end
+    end
+
+    cleanupBlockedConn()
+    return true, nil
+end
+
+local function navigateTo(targetPos: Vector3): boolean
+    local pathBlockedStreak = 0
+
+    for attempt = 0, MAX_REPATH_ATTEMPTS do
+        if shutdownIfAbortGuiVisible("导航前") then
+            return false
+        end
+
+        local _, humanoid, hrp = waitForRig(10)
+        if not humanoid or not hrp then
+            warn("[导航] 未拿到角色组件，等待后重试")
+            task.wait(REPATH_DELAY_SECONDS)
+            continue
+        end
+
+        humanoid.PlatformStand = false
+        humanoid.WalkSpeed = BASE_WALK_SPEED
+
+        if (flat(hrp.Position) - flat(targetPos)).Magnitude <= WAYPOINT_REACH_DISTANCE then
+            print("[导航] 已在目标附近，跳过寻路")
+            return true
+        end
+
+        local path, resolvedTarget, mode = buildPath(hrp.Position, targetPos)
+        if not path or not resolvedTarget then
+            warn(string.format("[导航] 路径计算失败 (attempt=%d)", attempt + 1))
+            task.wait(REPATH_DELAY_SECONDS)
+            continue
+        end
+
+        print(string.format(
+            "[导航] attempt=%d mode=%s status=%s target=(%.1f, %.1f, %.1f)",
+            attempt + 1,
+            mode,
+            tostring(path.Status),
+            resolvedTarget.X,
+            resolvedTarget.Y,
+            resolvedTarget.Z
+        ))
+
+        local useStrictClearance = attempt <= 1 and pathBlockedStreak < 2
+        local moved, reason = followPath(path, useStrictClearance)
+        if moved then
+            print("[导航] 到达目标")
+            return true
+        end
+
+        warn(string.format("[导航] 移动失败，原因=%s，准备重算", tostring(reason)))
+
+        if reason == "path_blocked" then
+            pathBlockedStreak += 1
+        else
+            pathBlockedStreak = 0
+        end
+
+        if reason == "stuck" then
+            fireReturnToCity()
+            task.wait(1.0)
+        else
+            task.wait(REPATH_DELAY_SECONDS)
+        end
+    end
+
+    warn("[导航] 超过最大重算次数")
+    return false
+end
+
+local function executePathfindingOperation()
+    if shutdownIfAbortGuiVisible("执行前") then
+        return
+    end
+
+    local _, _, hrp = waitForRig(6)
+    if not hrp then
+        warn("[执行] 角色未加载完成，跳过本轮")
+        return
+    end
+
+    local crystal = findAvailableCrystal(hrp.Position)
+    if not crystal then
+        print("[执行] 未找到可用水晶")
+        return
+    end
+
+    local targetPos = resolveTargetPosition(crystal)
+    if not targetPos then
+        warn("[执行] 目标坐标解析失败")
+        cachedCrystal = nil
+        return
+    end
+
+    local ok = navigateTo(targetPos)
+    if ok then
+        return
+    end
+
+    cachedCrystal = nil
+    if not waitWithGuiAbort(1.0, "重试等待") then
+        return
+    end
+
+    local _, _, retryHrp = waitForRig(6)
+    if not retryHrp then
+        return
+    end
+
+    local retryCrystal = findAvailableCrystal(retryHrp.Position)
+    local retryTarget = resolveTargetPosition(retryCrystal)
+    if retryTarget then
+        navigateTo(retryTarget)
+    end
+end
+
+print("[PlaceId检查] 当前游戏 PlaceId:", game.PlaceId)
+if game.PlaceId == BLOCKED_PLACE_ID then
+    warn(string.format("[PlaceId检查] 检测到目标游戏ID (%d)，脚本不运行", BLOCKED_PLACE_ID))
+    return
+end
+
+task.wait(STARTUP_DELAY_SECONDS)
+print("[初始化] 等待GUI完全初始化...")
+task.wait(GUI_INIT_WAIT_SECONDS)
+
+removeRewardUI()
+
+if shutdownIfAbortGuiVisible("初始化") then
+    return
+end
+
+local initialDelay = RNG:NextNumber(INITIAL_DELAY_MIN, INITIAL_DELAY_MAX)
+if initialDelay > 0 then
+    print(string.format("[初始化] 随机初始延迟: %.2f 秒", initialDelay))
+    if not waitWithGuiAbort(initialDelay, "初始化延迟") then
+        return
+    end
+end
+
+local _, startupHumanoid = waitForRig(15)
+if not startupHumanoid then
+    warn("[初始化] 角色加载失败，脚本终止")
+    return
+end
+startupHumanoid.PlatformStand = false
+startupHumanoid.WalkSpeed = BASE_WALK_SPEED
+
+while true do
+    if shutdownIfAbortGuiVisible("主循环") then
+        return
+    end
+
+    if RNG:NextNumber(0, 1) < REWARD_UI_REMOVE_CHANCE then
+        task.spawn(removeRewardUI)
+    end
+
+    if checkCrystalExists() then
+        if not fpsBoostApplied then
+            applyFpsBoost()
+            fpsBoostApplied = true
+        end
+        executePathfindingOperation()
+
+        local cooldown = RNG:NextNumber(MAIN_COOLDOWN_MIN, MAIN_COOLDOWN_MAX)
+        print(string.format("[冷却] %.2f 秒", cooldown))
+        if not waitWithGuiAbort(cooldown, "冷却") then
+            return
+        end
+    else
+        if not waitWithGuiAbort(SHORT_IDLE_SECONDS, "待机") then
+            return
+        end
+    end
+end

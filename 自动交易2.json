@@ -1,0 +1,815 @@
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local Players = game:GetService('Players')
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild('PlayerGui')
+local UserInputService = game:GetService('UserInputService')
+
+-- 等待界面加载完成
+local GUI = PlayerGui:WaitForChild('GUI')
+local BaseUI = GUI:WaitForChild('\229\159\186\231\161\128')
+local TimeIndicator =
+    BaseUI:WaitForChild('\229\128\146\232\174\161\230\151\182\230\161\134')
+
+-- 获取事件对象
+local elixirSyncEvent =
+    ReplicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175\228\184\185\232\141\175']['\228\184\185\232\141\175\230\149\176\230\141\174\229\143\152\229\140\150']
+local treeSyncEvent =ReplicatedStorage["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\228\184\150\231\149\140\230\160\145"]["\229\144\140\230\173\165\228\184\150\231\149\140\230\160\145\230\149\176\230\141\174"]
+local runeSyncEvent =ReplicatedStorage["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175\233\152\181\230\179\149"]["\233\152\181\230\179\149\230\149\176\230\141\174\229\143\152\229\140\150"]
+-- 尝试获取翅膀数据同步事件（如果存在）
+local armorSyncEvent = nil
+local armorSyncSuccess, armorSyncResult = pcall(function()
+    return ReplicatedStorage["\228\186\139\228\187\182"]["\229\174\162\230\136\183\231\171\175"]["\229\174\162\230\136\183\231\171\175\232\163\133\229\164\135"]["\232\163\133\229\164\135\230\149\176\230\141\174\229\143\152\229\140\150"]
+end)
+if armorSyncSuccess then
+    armorSyncEvent = armorSyncResult
+end
+local addTradeItemEvent =
+    ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\228\186\164\230\152\147']['\230\150\176\229\162\158\228\186\164\230\152\147\231\137\169\229\147\129']
+
+local requestTradeEvent =
+    ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\228\186\164\230\152\147']:WaitForChild(
+        '\231\148\179\232\175\183\228\186\164\230\152\147'
+    )
+
+local confirmTradeEvent =
+    ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\228\186\164\230\152\147']:WaitForChild(
+        '\233\148\129\229\174\154\228\186\164\230\152\147'
+    )
+
+local tradePriceEvent =
+    ReplicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\228\186\164\230\152\147']:WaitForChild(
+        '\228\186\164\230\152\147\231\190\189\230\160\184'
+    )
+
+local elixirData = {}
+local armorData = {}
+
+-- 数据同步处理
+elixirSyncEvent.Event:Connect(function(data)
+    elixirData = data
+end)
+treeSyncEvent.OnClientEvent:Connect(function(data)
+    treeData = data
+end)
+runeSyncEvent.Event:Connect(function(data)
+    runeData = data
+end)
+
+-- 获取切换装备组事件（用于触发服务器下发装备数据）
+local switchArmorSetEvent = nil
+local switchArmorSetSuccess, switchArmorSetResult = pcall(function()
+    return ReplicatedStorage["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\232\163\133\229\164\135"]["\229\136\135\230\141\162\232\163\133\229\164\135\231\187\132"]
+end)
+if switchArmorSetSuccess then
+    switchArmorSetEvent = switchArmorSetResult
+end
+
+-- 翅膀数据同步处理（如果存在同步事件）
+if armorSyncEvent then
+    armorSyncEvent.Event:Connect(function(data)
+        armorData = data
+        print('翅膀数据已同步更新')
+    end)
+    print('已连接翅膀数据同步事件')
+    
+    -- 触发切换装备组事件，让服务器下发数据
+    if switchArmorSetEvent then
+        pcall(function()
+            switchArmorSetEvent:FireServer(1)
+            print('已触发切换装备组事件，请求翅膀数据')
+        end)
+    end
+else
+    -- 如果没有同步事件，使用定期刷新机制
+    print('未找到翅膀数据同步事件，使用定期刷新机制')
+    
+    -- 首次触发切换装备组事件
+    if switchArmorSetEvent then
+        pcall(function()
+            switchArmorSetEvent:FireServer(1)
+            print('已触发切换装备组事件，请求翅膀数据')
+        end)
+    end
+    
+    task.spawn(function()
+        while running do
+            task.wait(5) -- 每5秒刷新一次翅膀数据
+            -- 触发切换装备组事件来刷新数据
+            if switchArmorSetEvent then
+                pcall(function()
+                    switchArmorSetEvent:FireServer(1)
+                end)
+            else
+                armorData = findArmorBackpackData()
+            end
+        end
+    end)
+end
+
+-- 翅膀背包数据搜索函数
+local function findArmorBackpackData()
+    local bestMatch = nil
+    local maxWings = 0
+    
+    for i, obj in ipairs(getgc(true)) do
+        if type(obj) == 'table' then
+            -- 检查是否是背包数据（包含"背包"键）
+            local backpack = rawget(obj, '\232\131\140\229\140\133') or rawget(obj, '背包')
+            if type(backpack) == 'table' then
+                local wingCount = 0
+                for _, item in pairs(backpack) do
+                    if type(item) == 'table' and (rawget(item, '翅膀ID') or rawget(item, 'wingId')) then
+                        wingCount = wingCount + 1
+                    end
+                end
+                if wingCount > maxWings then
+                    maxWings = wingCount
+                    bestMatch = backpack
+                end
+            else
+                -- 如果没有"背包"键，检查是否直接包含翅膀数据
+                local wingCount = 0
+                for k, v in pairs(obj) do
+                    if type(v) == 'table' and (rawget(v, '翅膀ID') or rawget(v, 'wingId')) then
+                        wingCount = wingCount + 1
+                    end
+                end
+                if wingCount > maxWings then
+                    maxWings = wingCount
+                    bestMatch = obj
+                end
+            end
+        end
+    end
+    
+    return bestMatch or {}
+end
+
+-- 初始化翅膀数据
+armorData = findArmorBackpackData()
+-- 获取蛋数据的 RemoteEvents
+local remoteFetchServer = ReplicatedStorage
+    :WaitForChild('\228\186\139\228\187\182')
+    :WaitForChild('\229\133\172\231\148\168')
+    :WaitForChild('\229\174\160\231\137\169\232\155\139')
+    :WaitForChild('\230\148\182\232\151\143')
+
+local remoteReceiveData = ReplicatedStorage
+    :WaitForChild('\228\186\139\228\187\182')
+    :WaitForChild('\229\133\172\231\148\168')
+    :WaitForChild('\229\174\160\231\137\169\232\155\139')
+    :WaitForChild('\229\144\140\230\173\165')
+-- 保存蛋数据
+local eggData = { ['背包'] = {}, ['孵化中'] = {} }
+
+-- =========================
+-- 首次从内存读取蛋数据
+-- =========================
+local function getEggDataFromMemory()
+    local latestTable = nil
+    local seenTables = {}
+
+    for i, obj in ipairs(getgc(true)) do
+        if type(obj) == 'table' then
+            local address = tostring(obj)
+            if not seenTables[address] then
+                seenTables[address] = true
+
+                -- 检查是否包含蛋数据
+                local hasBackpack = rawget(obj, '\232\131\140\229\140\133')
+                    or rawget(obj, '背包')
+                local hasIncubating = rawget(
+                    obj,
+                    '\229\173\181\229\140\150\228\184\173'
+                ) or rawget(obj, '孵化中')
+
+                if hasBackpack or hasIncubating then
+                    latestTable = obj
+                    print('找到蛋数据表')
+                    break
+                end
+            end
+        end
+    end
+
+    if latestTable then
+        -- 尝试获取背包数据
+        local backpack = rawget(latestTable, '\232\131\140\229\140\133')
+            or rawget(latestTable, '背包')
+        if type(backpack) == 'table' then
+            eggData['背包'] = backpack
+            print('从内存获取背包蛋数量:', #backpack)
+        end
+
+        -- 尝试获取孵化中数据
+        local incubating = rawget(
+            latestTable,
+            '\229\173\181\229\140\150\228\184\173'
+        ) or rawget(latestTable, '孵化中')
+        if type(incubating) == 'table' then
+            eggData['孵化中'] = incubating
+            print('从内存获取孵化中数据')
+        end
+    else
+        print('未从内存找到蛋数据')
+    end
+end
+
+-- 执行首次内存读取
+getEggDataFromMemory()
+
+-- 接收蛋数据更新（持续监听）
+remoteReceiveData.OnClientEvent:Connect(function(data)
+    if type(data) == 'table' then
+        -- 更新背包数据
+        if type(data['\232\131\140\229\140\133']) == 'table' then
+            eggData['背包'] = data['\232\131\140\229\140\133']
+        elseif type(data['背包']) == 'table' then
+            eggData['背包'] = data['背包']
+        end
+
+        -- 更新孵化中数据
+        if type(data['\229\173\181\229\140\150\228\184\173']) == 'table' then
+            eggData['孵化中'] = data['\229\173\181\229\140\150\228\184\173']
+        elseif type(data['孵化中']) == 'table' then
+            eggData['孵化中'] = data['孵化中']
+        end
+
+        print(
+            'RemoteEvent 更新蛋数据，背包蛋数量:',
+            #eggData['背包']
+        )
+    end
+end)
+
+-- 系统控制变量
+local running = true
+local tradeMode = 'both' -- "elixir", "armor", "egg", "tree", "rune", "both"
+local isProcessingTrade = false  -- 防止重复处理交易
+local lastTradeTime = 0  -- 上次交易时间
+local tradeStats = {  -- 交易统计
+    success = 0,
+    failed = 0,
+    total = 0,
+    itemsTraded = 0
+}
+
+-- 创建监控界面
+local screenGui = Instance.new('ScreenGui')
+screenGui.Name = 'AutoTradeMonitor'
+if syn and syn.protect_gui then
+    syn.protect_gui(screenGui)
+end
+screenGui.Parent = PlayerGui
+
+local mainFrame = Instance.new('Frame')
+mainFrame.Size = UDim2.new(0, 320, 0, 180)
+mainFrame.Position = UDim2.new(0, 10, 1, -190)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)
+mainFrame.BorderSizePixel = 2
+mainFrame.Parent = screenGui
+
+local titleBar = Instance.new('TextLabel')
+titleBar.Size = UDim2.new(1, 0, 0, 20)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.Text = '自动交易系统 V2.0'
+titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local infoLabel = Instance.new('TextLabel')
+infoLabel.Size = UDim2.new(0.9, 0, 0.5, 0)
+infoLabel.Position = UDim2.new(0.05, 0, 0.1, 20)
+infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Font = Enum.Font.SourceSansBold
+infoLabel.TextSize = 16
+infoLabel.TextXAlignment = Enum.TextXAlignment.Center
+infoLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+local textStroke = Instance.new('UIStroke')
+textStroke.Color = Color3.fromRGB(255, 0, 0)
+textStroke.Thickness = 0.1
+textStroke.Parent = infoLabel
+infoLabel.Text = '自动交易启动中...\n模式: 丹药+翅膀+蛋'
+infoLabel.Parent = mainFrame
+
+local buttonContainer = Instance.new('Frame')
+buttonContainer.Size = UDim2.new(0.9, 0, 0.25, 0)
+buttonContainer.Position = UDim2.new(0.05, 0, 0.7, 0)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.Parent = mainFrame
+
+local modeButton = Instance.new('TextButton')
+modeButton.Size = UDim2.new(0.45, 0, 0.8, 0)
+modeButton.Position = UDim2.new(0, 0, 0, 0)
+modeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+modeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+modeButton.BorderColor3 = Color3.fromRGB(0, 255, 0)
+modeButton.Text = '切换模式'
+modeButton.Parent = buttonContainer
+
+local closeButton = Instance.new('TextButton')
+closeButton.Size = UDim2.new(0.45, 0, 0.8, 0)
+closeButton.Position = UDim2.new(0.55, 0, 0, 0)
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+closeButton.BorderColor3 = Color3.fromRGB(255, 0, 0)
+closeButton.Text = '关闭系统'
+closeButton.Parent = buttonContainer
+
+-- 窗口拖拽系统
+-- ==================================
+-- 通用拖拽系统（PC + 安卓触控）
+-- ==================================
+local dragging = false
+local dragStart = Vector2.new()
+local startPos = UDim2.new()
+
+-- 开始拖拽
+local function startDrag(input)
+    dragging = true
+    dragStart = input.Position
+    startPos = mainFrame.Position
+end
+
+-- 停止拖拽
+local function stopDrag()
+    dragging = false
+end
+
+-- 更新拖拽位置
+local function updateDrag(input)
+    if dragging then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end
+
+-- 鼠标或触控开始拖拽
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
+        startDrag(input)
+        -- 监听触控结束
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                stopDrag()
+            end
+        end)
+    end
+end)
+
+-- 鼠标或触控结束拖拽
+titleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
+        stopDrag()
+    end
+end)
+
+-- 拖拽更新
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or
+       input.UserInputType == Enum.UserInputType.Touch then
+        updateDrag(input)
+    end
+end)
+
+
+-- 模式切换功能
+local modeColors = {
+    both = Color3.fromRGB(0, 255, 0),
+    elixir = Color3.fromRGB(0, 0, 255),
+    armor = Color3.fromRGB(255, 255, 0),
+    egg = Color3.fromRGB(255, 0, 255),
+    tree = Color3.fromRGB(0, 255, 255),
+    rune = Color3.fromRGB(255, 128, 0),
+}
+
+local modeNames = {
+    both = '丹药+翅膀+蛋+树+符文',
+    elixir = '仅丹药',
+    armor = '仅翅膀',
+    egg = '仅蛋',
+    tree = '仅树挂饰',
+    rune = '仅符文',
+}
+
+modeButton.MouseButton1Click:Connect(function()
+    local modes = { 'both', 'elixir', 'armor', 'egg', 'tree', 'rune' }
+    local currentIndex = table.find(modes, tradeMode) or 1
+    tradeMode = modes[(currentIndex % #modes) + 1]
+
+    modeButton.BorderColor3 = modeColors[tradeMode]
+    updateInfoLabel()
+end)
+
+-- 更新信息标签
+local function updateInfoLabel()
+    local eggCount = eggData['背包'] and #eggData['背包'] or 0
+    local elixirCount = elixirData['背包'] and (function()
+        local count = 0
+        for _ in pairs(elixirData['背包']) do count = count + 1 end
+        return count
+    end)() or 0
+    
+    infoLabel.Text = string.format(
+        '自动交易运行中...\n模式: %s\n蛋: %d | 丹药: %d\n成功: %d | 失败: %d',
+        modeNames[tradeMode],
+        eggCount,
+        elixirCount,
+        tradeStats.success,
+        tradeStats.failed
+    )
+end
+
+-- 关闭功能
+closeButton.MouseButton1Click:Connect(function()
+    running = false
+    isProcessingTrade = false
+    print('自动交易系统已关闭')
+    print(string.format('最终统计 - 成功: %d, 失败: %d, 总计: %d', 
+        tradeStats.success, tradeStats.failed, tradeStats.total))
+    screenGui:Destroy()
+end)
+
+
+-- 丹药交易函数
+local function tradeElixir(index)
+    if not index then
+        warn('丹药交易失败: 索引为空')
+        return false
+    end
+    
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer('\228\184\185\232\141\175', index, 999999)
+    end)
+
+    if success then
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
+    else
+        warn('丹药交易失败:', index, '错误:', err)
+        return false
+    end
+end
+
+-- 翅膀交易函数
+local function tradeArmor(index)
+    if not index then
+        warn('翅膀交易失败: 索引为空')
+        return false
+    end
+    
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer('\232\163\133\229\164\135', index, 999999)
+    end)
+
+    if success then
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
+    else
+        warn('翅膀交易失败:', index, '错误:', err)
+        return false
+    end
+end
+
+-- 蛋交易函数（使用 unpack 方式）
+local function tradeEgg(index)
+    if not index then
+        warn('蛋交易失败: 索引为空')
+        return false
+    end
+    
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer('\229\174\160\231\137\169\232\155\139', index)
+    end)
+    
+    if success then
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
+    else
+        warn("蛋交易失败，错误:", err)
+        return false
+    end
+end
+-- 树挂饰交易函数
+local function tradetree(index)
+    if not index then
+        warn('树挂饰交易失败: 索引为空')
+        return false
+    end
+    
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer('\233\133\141\233\165\176', index)
+    end)
+    
+    if success then
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
+    else
+        warn("树挂饰交易失败，错误:", err)
+        return false
+    end
+end
+-- 符文挂饰交易函数
+local function traderune(index)
+    if not index then
+        warn('符文交易失败: 索引为空')
+        return false
+    end
+    
+    local success, err = pcall(function()
+        addTradeItemEvent:FireServer('\231\172\166\231\159\179', index)
+    end)
+    
+    if success then
+        tradeStats.itemsTraded = tradeStats.itemsTraded + 1
+        return true
+    else
+        warn("符文交易失败，错误:", err)
+        return false
+    end
+end
+-- 等待交易界面可见
+local function waitForTradeUI(maxWaitTime)
+    maxWaitTime = maxWaitTime or 10
+    local startTime = tick()
+
+    while tick() - startTime < maxWaitTime and running do
+        local success, tradeUI = pcall(function()
+            return PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\228\186\164\230\152\147']['\228\186\164\230\152\147\231\149\140\233\157\162']
+        end)
+
+        if success and tradeUI and tradeUI.Visible then
+            return true
+        end
+        task.wait(0.1)
+    end
+    return false
+end
+
+-- 主交易循环
+coroutine.wrap(function()
+    while running do
+        if TimeIndicator.Visible then
+            -- 防止重复处理
+            if not isProcessingTrade then
+                -- 检查交易冷却时间（避免过快处理）
+                local currentTime = tick()
+                if currentTime - lastTradeTime >= 2 then
+                    -- 获取交易邀请信息
+                    local tradeInviteText = ''
+                    pcall(function()
+                        tradeInviteText =
+                            PlayerGui.GUI['\229\159\186\231\161\128']['\229\128\146\232\174\161\230\151\182\230\161\134']['\232\131\140\230\153\175']['\229\134\133\229\174\185'].Text
+                    end)
+
+                    local invitingPlayer =
+                        tradeInviteText:match('(.+) has invited you to trade')
+
+                    if invitingPlayer then
+                        isProcessingTrade = true
+                        lastTradeTime = currentTime
+                        tradeStats.total = tradeStats.total + 1
+                        print('收到交易邀请来自:', invitingPlayer)
+                        -- 触发交易请求
+                        local requestSuccess = pcall(function()
+                            requestTradeEvent:FireServer()
+                        end)
+                        
+                        if not requestSuccess then
+                            warn('交易请求失败')
+                            isProcessingTrade = false
+                            task.wait(1)
+                        else
+
+                task.wait(1.1)
+
+                -- 设置交易价格
+                local core = 0
+                pcall(function()
+                    core = tonumber(
+                        PlayerGui.GUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\228\186\164\230\152\147']['\228\186\164\230\152\147\231\149\140\233\157\162']['\230\136\145\231\154\132\232\131\140\229\140\133']['\232\180\167\229\184\129']['\231\190\189\230\160\184']['\229\128\188'].Text
+                    ) or 0
+                end)
+
+                pcall(function()
+                    tradePriceEvent:FireServer(core)
+                end)
+
+                -- 根据模式执行交易
+                if tradeMode == 'elixir' or tradeMode == 'both' then
+                    if elixirData and elixirData['背包'] then
+                        local elixirCount = 0
+                        for slot, item in pairs(elixirData['背包']) do
+                            if type(item) == 'table' then
+                                local itemIndex = item['索引']
+                                    or item.Index
+                                    or item.id
+                                if itemIndex then
+                                    if tradeElixir(itemIndex) then
+                                        elixirCount = elixirCount + 1
+                                    end
+                                end
+                            end
+                        end
+                        if elixirCount > 0 then
+                            print('已添加', elixirCount, '个丹药到交易')
+                        end
+                    end
+                end
+
+                if tradeMode == "egg" or tradeMode == "both" then
+                    if eggData and eggData['背包'] and #eggData['背包'] > 0 then
+                        local eggCount = 0
+                        print("开始交易蛋，背包数量:", #eggData['背包'])
+                        for _, egg in ipairs(eggData['背包']) do
+                            if type(egg) == "table" then
+                                local eggIndex = egg['索引']
+                                    or egg.Index
+                                    or egg.id
+                                if eggIndex then
+                                    if tradeEgg(eggIndex) then
+                                        eggCount = eggCount + 1
+                                    end
+                                end
+                            end
+                        end
+                        if eggCount > 0 then
+                            print('已添加', eggCount, '个蛋到交易')
+                        end
+                    else
+                        print("没有蛋数据或背包为空")
+                    end
+                end
+
+                if tradeMode == 'tree' or tradeMode == 'both' then
+                    if treeData and treeData['背包'] then
+                        local treeCount = 0
+                        for slot, tree in pairs(treeData['背包']) do
+                            if type(tree) == 'table' then
+                                local treeIndex = tree['索引']
+                                    or tree.Index
+                                    or tree.id
+                                if treeIndex then
+                                    if tradetree(treeIndex) then
+                                        treeCount = treeCount + 1
+                                    end
+                                end
+                            end
+                        end
+                        if treeCount > 0 then
+                            print('已添加', treeCount, '个树挂饰到交易')
+                        end
+                    end
+                end
+                if tradeMode == 'rune' or tradeMode == 'both' then
+                    if runeData and runeData['背包'] then
+                        local runeCount = 0
+                        for slot, rune in pairs(runeData['背包']) do
+                            if type(rune) == 'table' then
+                                local runeIndex = rune['索引']
+                                    or rune.Index
+                                    or rune.id
+                                if runeIndex then
+                                    if traderune(runeIndex) then
+                                        runeCount = runeCount + 1
+                                    end
+                                end
+                            end
+                        end
+                        if runeCount > 0 then
+                            print('已添加', runeCount, '个符文到交易')
+                        end
+                    end
+                end
+
+                if tradeMode == 'armor' or tradeMode == 'both' then
+                    -- 如果没有同步事件，在交易时触发切换装备组事件刷新数据（确保最新）
+                    if not armorSyncEvent and switchArmorSetEvent then
+                        pcall(function()
+                            switchArmorSetEvent:FireServer(1)
+                        end)
+                        task.wait(0.5) -- 等待服务器下发数据
+                    elseif not armorSyncEvent then
+                        armorData = findArmorBackpackData()
+                    end
+                    
+                    -- 处理翅膀数据（兼容同步事件和内存搜索两种结构）
+                    local wingsToTrade = armorData
+                    if armorData and type(armorData) == 'table' then
+                        -- 如果数据包含"背包"键（同步事件结构），使用背包数据
+                        if armorData['\232\131\140\229\140\133'] or armorData['背包'] then
+                            wingsToTrade = armorData['\232\131\140\229\140\133'] or armorData['背包']
+                        end
+                    end
+                    
+                    if wingsToTrade then
+                        local wingCount = 0
+                        local processedCount = 0
+                        for _, item in pairs(wingsToTrade) do
+                            processedCount = processedCount + 1
+                            if type(item) == 'table' then
+                                -- 检查是否是翅膀（有翅膀ID字段）
+                                local isWing = item['翅膀ID'] 
+                                    or (type(item.wingId) == 'number' and item.wingId > 0)
+                                    or item.wingId
+                                
+                                if isWing then
+                                    local itemIndex = item['索引']
+                                        or item.Index
+                                        or item.id
+                                    if itemIndex then
+                                        print('交易翅膀，索引:', itemIndex)
+                                        tradeArmor(itemIndex)
+                                        wingCount = wingCount + 1
+                                    end
+                                end
+                            end
+                        end
+                        if wingCount > 0 then
+                            print('翅膀交易完成，共交易', wingCount, '个')
+                        else
+                            print('警告: 未找到可交易的翅膀，处理了', processedCount, '个物品')
+                        end
+                    else
+                        print('警告: 没有翅膀数据可交易')
+                    end
+                end
+                
+                -- 确认交易
+                if waitForTradeUI(15) then
+                    task.wait(1)
+                    local confirmSuccess = pcall(function()
+                        confirmTradeEvent:FireServer(true)
+                    end)
+                    
+                    if confirmSuccess then
+                        tradeStats.success = tradeStats.success + 1
+                        print('交易已确认，成功交易', tradeStats.itemsTraded, '个物品')
+                        updateInfoLabel()
+                    else
+                        tradeStats.failed = tradeStats.failed + 1
+                        warn('交易确认失败')
+                    end
+                else
+                    tradeStats.failed = tradeStats.failed + 1
+                    warn('交易界面超时，交易失败')
+                end
+                
+                -- 重置物品计数
+                tradeStats.itemsTraded = 0
+                isProcessingTrade = false
+                task.wait(1)
+                        end
+                    end
+                end
+            else
+                task.wait(0.5)
+            end
+        else
+            task.wait(0.1)
+        end
+    end
+end)()
+
+
+-- 初始化信息显示
+updateInfoLabel()
+
+-- 定期更新信息显示
+task.spawn(function()
+    while running do
+        task.wait(2)
+        if running then
+            updateInfoLabel()
+        end
+    end
+end)
+
+print('自动交易系统已启动 - 蛋数量:', eggData['背包'] and #eggData['背包'] or 0)
+
+-- 触发丹药数据同步
+local elixirEvent = ReplicatedStorage:FindFirstChild("\228\186\139\228\187\182")
+    :FindFirstChild("\229\133\172\231\148\168")
+    :FindFirstChild("\231\130\188\228\184\185")
+    :FindFirstChild("\229\136\182\228\189\156")
+elixirEvent:FireServer()
+
+-- 触发翅膀数据同步（如果存在切换装备组事件）
+if switchArmorSetEvent then
+    task.wait(0.5) -- 等待一下再触发
+    pcall(function()
+        switchArmorSetEvent:FireServer(1)
+        print('已触发切换装备组事件，请求翅膀数据')
+    end)
+end

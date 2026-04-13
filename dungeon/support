@@ -1,0 +1,1244 @@
+--================= 配置 =================--
+local ALLOWED_PLACE_IDS = {
+    113080689665370,
+    120876398824321,
+    72607172956362,
+    116762881034051,
+    124216767173297,
+}
+
+-- 检查当前 PlaceId 是否在列表里
+local function isAllowedPlace(id)
+    for _, allowed in ipairs(ALLOWED_PLACE_IDS) do
+        if id == allowed then
+            return true
+        end
+    end
+    return false
+end
+
+if not isAllowedPlace(game.PlaceId) then
+    warn("⚠️ wrong game, PlaceId = " .. game.PlaceId)
+    return
+end
+
+
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+wait(3)
+--================= 加载UI库 =================--
+local library = loadstring(
+    game:HttpGet(
+        'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
+        true
+    )
+)()
+
+-- 防AFK
+local AntiAFK = game:GetService('VirtualUser')
+game.Players.LocalPlayer.Idled:Connect(function()
+    AntiAFK:CaptureController()
+    AntiAFK:ClickButton2(Vector2.new())
+    wait(2)
+end)
+
+--================= 服务引用 =================--
+local Players = game:GetService('Players')
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local ReplicatedFirst = game:GetService('ReplicatedFirst')
+local Workspace = game:GetService('Workspace')
+local HttpService = game:GetService('HttpService')
+local TeleportService = game:GetService('TeleportService')
+local player = Players.LocalPlayer
+local TNet = require(ReplicatedFirst.Component.TNet)
+local Config = require(ReplicatedStorage.Config)
+local RunService = game:GetService("RunService")
+local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
+local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+--================= 设置保存 =================--
+local SettingsFile = 'DungeonSettings_'..player.Name..'.json'
+local Settings = {
+    AutoDungeonEnabled = false,
+    SelectedDungeon = '1-1',
+    AutoSkillEnabled = false,
+    HealthMonitorEnabled = true,
+    RoundTeleportEnabled = true,
+    RoundTeleportThreshold = 56,
+    AutoAttackEnabled = false,  -- 新增的功能
+}
+
+pcall(function()
+    if isfile and isfile(SettingsFile) then
+        Settings = HttpService:JSONDecode(readfile(SettingsFile))
+    end
+end)
+
+local function SaveSettings()
+    if writefile then
+        writefile(SettingsFile, HttpService:JSONEncode(Settings))
+    end
+end
+
+--================= Dungeon 配置 =================--
+local DungeonOptions = {
+    '1-1','1-2','1-3','2-1','2-2','2-3',
+    '3-1','3-2','3-3','4-1','4-2','4-3',
+    'endless-1','endless-16','endless-31','endless-54','endless-69','',''
+}
+
+local DungeonMap = {
+    ['1-1']={1300001,1},['1-2']={1300001,2},['1-3']={1300001,3},
+    ['2-1']={1300002,1},['2-2']={1300002,2},['2-3']={1300002,3},
+    ['3-1']={1300003,1},['3-2']={1300003,2},['3-3']={1300003,3},
+    ['4-1']={1300004,1},['4-2']={1300004,2},['4-3']={1300004,3},
+    ['endless-1']={3200001,1},['endless-16']={3200001,16},
+    ['endless-31']={3200001,31},['endless-54']={3200001,54},
+    ['endless-69']={3200001,69}
+}
+
+--================= 进入副本逻辑 =================--
+local dungeonLock = false
+
+local function EnterDungeon(dungeonId, difficulty)
+    if dungeonLock then
+        print('[DEBUG] 已经在进入副本锁定状态，跳过')
+        return
+    end
+    dungeonLock = true
+    task.delay(10, function() dungeonLock = false end)
+
+    repeat task.wait() until Workspace:FindFirstChild('Lobby')
+    local lobby = Workspace:FindFirstChild('Lobby')
+
+    local function FindIdleTables()
+        local idleTables = {}
+        local lobbySection = Workspace.Lobby:FindFirstChild('\229\140\185\233\133\141\229\140\186')
+        if not lobbySection then return idleTables end
+        for i = 4, #lobbySection:GetChildren() do
+            local tableObj = lobbySection:GetChildren()[i]
+            local match = tableObj:FindFirstChild('Match')
+            if match and match:FindFirstChild('BillboardGui') then
+                local idle = match.BillboardGui:FindFirstChild('Idle')
+                if idle and idle.Visible then
+                    table.insert(idleTables, match)
+                end
+            end
+        end
+        return idleTables
+    end
+
+    local idleTables = FindIdleTables()
+    if #idleTables == 0 then
+        print('[DEBUG] 没有找到空闲桌子')
+        dungeonLock = false
+        return
+    end
+
+    -- 随机选择一个空闲桌子
+    local tableObj = idleTables[math.random(1, #idleTables)]
+
+    if not player.Character or not player.Character:FindFirstChild('HumanoidRootPart') then
+        print('[DEBUG] 玩家角色或 HumanoidRootPart 未就绪')
+        dungeonLock = false
+        return
+    end
+
+    print('[DEBUG] 移动到桌子:', tableObj.Parent.Name)
+    player.Character.HumanoidRootPart.CFrame = CFrame.new(tableObj.Position)
+    task.wait(1)
+
+    print('[DEBUG] 选择副本 ID:', dungeonId, '难度:', difficulty)
+    pcall(function() TNet.FireServer('Dungeon_Select', dungeonId, difficulty) end)
+    task.wait(0.3)
+
+    print('[DEBUG] 开始副本')
+    pcall(function() TNet.FireServer('Dungeon_StartParty') end)
+
+    task.delay(2, function()
+        dungeonLock = false
+        print('[DEBUG] 解除进入副本锁定')
+    end)
+end
+
+--================= UI 初始化 =================--
+local window = library:AddWindow('DUNGEON LOOTIFY v3.0',{main_color=Color3.fromRGB(41,74,122), min_size=Vector2.new(530,490)})
+local features = window:AddTab('功能')
+local features1 = window:AddTab('杂项')
+-- 自动进入副本开关
+local autoJoinSwitch = features:AddSwitch('自动进入副本', function(bool)
+    Settings.AutoDungeonEnabled = bool
+    SaveSettings()
+end)
+if autoJoinSwitch.Set then autoJoinSwitch:Set(Settings.AutoDungeonEnabled) end
+
+-- 当前选择关卡
+local selectedLabel = features:AddLabel('当前选择: ' .. Settings.SelectedDungeon)
+local dungeonDropdown = features:AddDropdown('选择地下城', function(text)
+    local cleaned = text:match('^%s*(.-)%s*$') or text
+    if cleaned ~= '' then
+        Settings.SelectedDungeon = cleaned
+        SaveSettings()
+        if selectedLabel.Set then 
+            selectedLabel:Set('当前选择: ' .. cleaned)
+        end
+    end
+end)
+for _, name in ipairs(DungeonOptions) do
+    dungeonDropdown:Add(name)
+end
+if dungeonDropdown.Set then
+    dungeonDropdown:Set(Settings.SelectedDungeon)
+end
+-- ================= 副本检测到玩家自动退出开关 =================
+local autoExitSwitch = features:AddSwitch("副本玩家检测自动退出", function(state)
+    _G.AutoExitEnabled = state
+    Settings.PlayerDetectionEnabled = state  -- 保存到 Settings
+    SaveSettings()                            -- 写入本地文件
+    if state then
+        if not _G.AutoExitThread then
+            _G.AutoExitThread = task.spawn(function()
+                while _G.AutoExitEnabled do
+                    task.wait(1)
+                    if Workspace:FindFirstChild('Lobby') then return end
+                    if Workspace:FindFirstChild('TradeScene') then return end
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= player then
+                            print("[AutoExit] 检测到玩家:", p.Name, "正在退出副本")
+                            pcall(function()
+                               TeleportService:Teleport(72607172956362) -- 替换成实际离开副本事件
+                            end)
+                            task.wait(0.5)
+                            break
+                        end
+                    end
+                end
+                _G.AutoExitThread = nil
+            end)
+        end
+    else
+        _G.AutoExitEnabled = false
+        _G.AutoExitThread = nil
+    end
+end)
+
+-- 初始化开关状态
+if autoExitSwitch.Set then
+    autoExitSwitch:Set(Settings.PlayerDetectionEnabled or false)
+end
+
+
+-- ================= 武器选择 =================
+local weaponOptions = {
+    ["SwordShield"] = "SwordShield1",
+    ["DuoSword"]    = "Duosword1",
+    ["Wood"]        = "Wood1"
+}
+
+-- 如果没设置过，就给默认值
+if not Settings.SelectedWeapon then
+    Settings.SelectedWeapon = "SwordShield"
+    SaveSettings()
+end
+
+-- 武器下拉菜单
+local weaponDropdown = features:AddDropdown("选择武器", function(choice)
+    if weaponOptions[choice] then
+        Settings.SelectedWeapon = choice
+        SaveSettings()
+        print("[Killaura] 已切换武器:", choice, "动画:", weaponOptions[choice])
+    end
+end)
+
+-- 初始化下拉框显示上次保存的值
+for weaponName, _ in pairs(weaponOptions) do
+    weaponDropdown:Add(weaponName)
+end
+if weaponDropdown.Set then
+    weaponDropdown:Set(Settings.SelectedWeapon)
+end
+-- ================= killaura 判断逻辑 =================
+-- 全局变量
+_G.KillauraKey = nil       -- 开局为 nil
+_G.KillauraReady = false   -- 是否可以启动 killaura 和 SetupInDungeon
+
+local function sendWeaponOnHit()
+    local args = {
+        Workspace:GetServerTimeNow(), -- timestamp 固定或当前时间
+        1,
+        "SwordShield",
+        {
+            hitNum = 0,
+            onHitAnimName = "SwordShield1",
+            hrtCF = CFrame.fromMatrix(
+                Vector3.new(-332.72, 1003.56, 1.07),
+                Vector3.new(0.52, 0.00, 0.85),
+                Vector3.new(0.00, 1.00, 0.00),
+                Vector3.new(-0.85, 0.00, 0.52)
+            )
+        }
+    }
+    TNet.FireServer("Weapon_OnHit", unpack(args))
+    print("[DEBUG] Weapon_OnHit 发送成功")
+end
+
+-- Hook TNetSent，只捕获客户端发出的特定事件
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if self == TNetSent and method == "FireServer" then
+        if type(args[1]) == "string" and type(args[3]) == "number" then
+            print("[DEBUG] 捕获 TNetSent:", args[1], args[3])
+            _G.KillauraKey = args[1]          -- 更新 Key
+            _G.KillauraReady = true           -- 可以启动逻辑
+
+            -- 捕获后立即还原 hook
+            hookmetamethod(game, "__namecall", oldNamecall)
+
+            print("[DEBUG] Hook 已还原")
+        end
+    end
+
+    return oldNamecall(self, ...)
+end)
+
+-- 循环发送 Weapon_OnHit 直到捕获 Key
+spawn(function()
+    while not _G.KillauraKey do
+        sendWeaponOnHit()
+        task.wait(5) -- 节流，避免崩溃
+    end
+end)
+
+-- 等待 Key 后启动逻辑
+spawn(function()
+    while not _G.KillauraReady do
+        task.wait(0.1)
+    end
+
+    print("[DEBUG] Key 捕获完成，启动逻辑")
+
+end)
+
+
+
+
+-- ================= killaura 开关 =================
+features:AddSwitch("killaura", function(state)
+    Settings.AutoAttackEnabled = state
+    SaveSettings()
+
+    if state then
+        print("[AutoAttack] 自动攻击已开启")
+
+        -- 服务获取
+        local Workspace = game:GetService("Workspace")
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local RunService = game:GetService("RunService")
+
+        local TNetSent = ReplicatedStorage:WaitForChild("TNetSent")
+
+        local cycleIndex, attackId = 1, 0
+        local lastPositions = {}
+
+        -- 等待 _G.KillauraKey 捕获
+        while not _G.KillauraKey do
+            task.wait(0.1)
+        end
+        print("[AutoAttack] 捕获到 KillauraKey =", _G.KillauraKey)
+
+        local function getServerTime()
+            return Workspace:GetServerTimeNow()
+        end
+
+        local function attack(enemy, cf)
+            local weaponName = Settings.SelectedWeapon
+            local animName   = weaponOptions[weaponName] or "SwordShield1"
+
+            local args = {
+                _G.KillauraKey, -- 替换 Bd 为捕获到的 Key
+                attackId,
+                getServerTime(),
+                cycleIndex,
+                weaponName,
+                {
+                    hitNum = math.random(0,5),
+                    onHitAnimName = animName,
+                    hrtCF = cf
+                }
+            }
+            TNetSent:FireServer(unpack(args))
+
+            cycleIndex = cycleIndex + 1
+            if cycleIndex > 1 then cycleIndex = 1 end
+            attackId = attackId + 1
+        end
+
+        local function getPredictedCFrame(enemy, dt)
+            local root = enemy:FindFirstChild("HumanoidRootPart")
+            if not root then return nil end
+            local lastPos = lastPositions[enemy] or root.Position
+            local currentPos = root.Position
+            local velocity = (currentPos - lastPos) / dt
+            local predictionFactor = 0.1
+            local predictedPos = currentPos + velocity * predictionFactor
+            lastPositions[enemy] = currentPos
+            return CFrame.new(predictedPos)
+        end
+
+local IgnoreList = {
+    ["84f0df6486bd4efa"] = true
+}
+
+local function getClosestEnemy(dt)
+    local closest, shortestDist = nil, math.huge
+    local playerPos = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position or Vector3.new(0,0,0)
+
+    for _, room in ipairs(Workspace:GetChildren()) do
+        if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+            for _, obj in ipairs(room:GetChildren()) do
+                if obj:IsA("Model") 
+                   and obj:FindFirstChild("HumanoidRootPart") 
+                   and not IgnoreList[obj.Name] then   -- 🔹跳过忽略目标
+
+                    local root = obj.HumanoidRootPart
+                    local isBoss = false
+                    local typeAttr = obj:GetAttribute("Type")
+                    if typeAttr and string.find(string.lower(typeAttr), "boss") then
+                        isBoss = true
+                    end
+
+                    local healthTextObj = root:FindFirstChild("Health") 
+                        and root.Health:FindFirstChild("Canvas") 
+                        and root.Health.Canvas:FindFirstChild("Health") 
+                        and root.Health.Canvas.Health:FindFirstChild("HealthText")
+                    local healthNum = healthTextObj and tonumber(healthTextObj.Text:match("%d+")) or 0
+
+                    if isBoss or (healthNum and healthNum > 0) then
+                        local dist = (root.Position - playerPos).Magnitude
+                        if dist < shortestDist then
+                            shortestDist, closest = dist, obj
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if closest then
+        return getPredictedCFrame(closest, dt), closest
+    end
+    return nil, nil
+end
+
+        -- 主循环
+        if not _G.AutoAttackConnection then
+            _G.AutoAttackConnection = RunService.Heartbeat:Connect(function(dt)
+                if not Settings.AutoAttackEnabled then return end
+                local cf, enemy = getClosestEnemy(dt)
+                if cf and enemy then
+                    attack(enemy, cf)
+                end
+            end)
+        end
+
+    else
+        print("[AutoAttack] 自动攻击已关闭")
+        if _G.AutoAttackConnection then
+            _G.AutoAttackConnection:Disconnect()
+            _G.AutoAttackConnection = nil
+        end
+    end
+end):Set(Settings.AutoAttackEnabled)
+
+
+
+
+-- ================= 模拟攻击开关 =================
+local function shiftKey(key)
+    if #key == 0 then return key end
+    local result = key:sub(1,1) -- 保留第一个字符不变
+    for i = 2, #key do
+        local c = key:sub(i,i)
+        local byte = c:byte()
+        if byte >= 65 and byte <= 90 then -- 大写 A-Z
+            result = result .. string.char(65 + (byte - 65 + 1) % 26)
+        elseif byte >= 97 and byte <= 122 then -- 小写 a-z
+            result = result .. string.char(97 + (byte - 97 + 1) % 26)
+        else
+            result = result .. c -- 非字母保持不变
+        end
+    end
+    return result
+end
+
+
+local attackSwitch = features:AddSwitch("刷技能无冷却", function(state)
+    Settings.SimulatedAttackEnabled = state
+    SaveSettings()
+    if state then
+        if not _G.SimAttackThread then
+            _G.SimAttackThread = spawn(function()
+                while not _G.KillauraKey do
+                    print("[SimulatedAttack] 等待 _G.KillauraKey 捕获中...")
+                    task.wait(1)
+                end
+                print("[SimulatedAttack] 已捕获到 Key:", _G.KillauraKey)
+                local newKey = shiftKey(_G.KillauraKey) -- 这里把每个字母+1
+                print("[SimulatedAttack] 已捕获到 newKey:", newKey)
+                if Workspace:FindFirstChild('Lobby') then return end
+                if Workspace:FindFirstChild('TradeScene') then return end
+                while Settings.SimulatedAttackEnabled do
+                    task.wait(0.05)
+                    pcall(function()
+                        TNet.FireServer(newKey)
+                    end)
+                end
+            end)
+        end
+    else
+        Settings.SimulatedAttackEnabled = false
+        _G.SimAttackThread = nil
+    end
+end)
+
+
+-- 初始化开关状态
+if attackSwitch.Set then
+    attackSwitch:Set(Settings.SimulatedAttackEnabled or false)
+end
+
+
+features:AddSwitch("自动重试副本", function(state)
+    Settings.AutoDungeonRetry = state
+    SaveSettings()
+
+    if state then
+        print("[AutoRetry] 自动副本重试已开启")
+
+        local Players = game:GetService("Players")
+        local player = Players.LocalPlayer
+        local ReplicatedFirst = game:GetService("ReplicatedFirst")
+        local TNet = require(ReplicatedFirst.Component.TNet)
+
+        -- 循环检测
+        spawn(function()
+            while Settings.AutoDungeonRetry do
+                task.wait(2)
+                local success, gui = pcall(function()
+                    return player.PlayerGui.Main.Func.DungeonObtain
+                end)
+                if success and gui and gui.Visible then
+                    print("[AutoRetry] 检测到 DungeonObtain 可见，发送 Dungeon_RetryCmd")
+                    pcall(function()
+                        TNet.FireServer("Dungeon_RetryCmd")
+                    end)
+                    break -- ✅ 发送一次后直接退出循环
+                end
+            end
+        end)
+
+    else
+        print("[AutoRetry] 自动副本重试已关闭")
+    end
+end):Set(Settings.AutoDungeonRetry or false)
+
+--================= 自动传送与宝箱开关 =================--
+features:AddSwitch("自动传送 & 开宝箱", function(state)
+    Settings.AutoTeleportChests = state
+    SaveSettings()
+
+    if state then
+        --================= 初始化 =================--
+        local Players = game:GetService("Players")
+        local Workspace = game:GetService("Workspace")
+
+        local player = Players.LocalPlayer
+
+        local ignoredModels = {
+            ["84f0df6486bd4efa"] = true,
+        }
+
+        local teleportDelay = 3 -- 秒
+        local openedChests = {} -- 已开启宝箱记录
+
+        --================= 工具函数 =================--
+
+        local function hasBoss()
+            for _, room in ipairs(Workspace:GetChildren()) do
+                if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+                    for _, obj in ipairs(room:GetChildren()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and not ignoredModels[obj.Name] then
+                            local typeAttr = obj:GetAttribute("Type")
+                            local hasBossChild = obj:FindFirstChild("Boss") ~= nil
+                            if (typeAttr and string.find(string.lower(typeAttr), "boss")) or hasBossChild then
+                                return true
+                            end
+                        end
+                    end
+                end
+            end
+            return false
+        end
+
+        local function hasEnemy()
+            for _, room in ipairs(Workspace:GetChildren()) do
+                if room:IsA("Model") and (room:FindFirstChild("EnemySpawnPoint") or room:FindFirstChild("EnemySpawnArea")) then
+                    for _, obj in ipairs(room:GetChildren()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and not ignoredModels[obj.Name] then
+                            return true
+                        end
+                    end
+                end
+            end
+            return false
+        end
+
+        local function getClosestDoor()
+            local closestDoor, shortestDist = nil, math.huge
+            local playerPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
+            if not playerPos then return nil end
+
+            for _, room in ipairs(Workspace:GetChildren()) do
+                local door = room:FindFirstChild("Door")
+                if door then
+                    local doorPos
+                    if door.PrimaryPart then
+                        doorPos = door.PrimaryPart.Position
+                    else
+                        local success, pivot = pcall(function() return door:GetPivot().Position end)
+                        if success then doorPos = pivot else
+                            local part = door:FindFirstChildWhichIsA("BasePart")
+                            if part then doorPos = part.Position end
+                        end
+                    end
+                    if doorPos then
+                        local dist = (doorPos - playerPos).Magnitude
+                        if dist < shortestDist then
+                            shortestDist, closestDoor = dist, door
+                        end
+                    end
+                end
+            end
+            return closestDoor
+        end
+
+        local function getFurthestDoorInRoom(room)
+            if not room then return nil end
+            local furthestDoor, maxDist = nil, -math.huge
+            local playerPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
+            if not playerPos then return nil end
+
+            for _, door in ipairs(room:GetChildren()) do
+                if door:IsA("Model") and string.find(door.Name, "Door") and door:FindFirstChild("Collider") then
+                    local collider = door:FindFirstChild("Collider")
+                    local dist = (collider.Position - playerPos).Magnitude
+                    if dist > maxDist then
+                        maxDist = dist
+                        furthestDoor = door
+                    end
+                end
+            end
+            return furthestDoor
+        end
+
+        local function teleportToDoorCollider(door)
+            if not door or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+            local collider = door:FindFirstChild("Collider")
+            if not collider then
+                print("[TeleportTest] Door 没有 Collider:", door.Name)
+                return
+            end
+            player.Character.HumanoidRootPart.CFrame = CFrame.new(collider.Position + Vector3.new(0,3,0))
+            print("[TeleportTest] 已传送到目录:", door.Parent.Name, "Door:", door.Name, "Collider Pos:", collider.Position)
+        end
+
+        --================= 宝箱相关 =================--
+
+        local function getChestsInRoom(room)
+            local chests = {}
+            for _, obj in ipairs(room:GetChildren()) do
+                if obj:IsA("Model") and string.find(obj.Name, "DungeonChest") then
+                    if not openedChests[obj] then
+                        table.insert(chests, obj)
+                    end
+                end
+            end
+            return chests
+        end
+
+        local function openChest(chest)
+            if not chest or not chest:IsDescendantOf(workspace) then return end
+            local prompt = chest:FindFirstChild("ProximityPrompt", true)
+            if not prompt then return end
+
+            local chestPos = chest.PrimaryPart and chest.PrimaryPart.Position or chest:GetPivot().Position
+            player.Character.HumanoidRootPart.CFrame = CFrame.new(chestPos + Vector3.new(0,3,0))
+            task.wait(1)
+            prompt:InputHoldBegin()
+            task.wait(1)
+            prompt:InputHoldEnd()
+            
+            print("[Chest] 已打开宝箱:", chest.Name)
+            openedChests[chest] = true
+            task.wait(0.5)
+        end
+
+        --================= 主循环 =================--
+
+        task.spawn(function()
+            while Settings.AutoTeleportChests do -- ✅ 检查开关状态
+                task.wait(1)
+                if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then continue end
+
+                if hasBoss() then
+                    print("[AutoTest] 检测到 Boss，停止传送脚本")
+                    break
+                end
+
+                if hasEnemy() then
+                    print("[AutoTest] 场景中存在敌人，暂停传送")
+                    task.wait(1)
+                else
+                    local closestDoor = getClosestDoor()
+                    if closestDoor and closestDoor.Parent then
+                        local room = closestDoor.Parent
+                        -- 先记录最远门 Collider
+                        local furthestDoor = getFurthestDoorInRoom(room)
+                        local furthestColliderPos = furthestDoor and furthestDoor:FindFirstChild("Collider") and furthestDoor.Collider.Position or nil
+
+                        -- 扫描宝箱
+                        local chests = getChestsInRoom(room)
+                        if #chests > 0 then
+                            table.sort(chests, function(a, b)
+                                local pa = a.PrimaryPart and a.PrimaryPart.Position or a:GetPivot().Position
+                                local pb = b.PrimaryPart and b.PrimaryPart.Position or b:GetPivot().Position
+                                local playerPos = player.Character.HumanoidRootPart.Position
+                                return (pa - playerPos).Magnitude < (pb - playerPos).Magnitude
+                            end)
+                            for _, chest in ipairs(chests) do
+                                openChest(chest)
+                            end
+                        end
+
+                        -- 宝箱开完后，传送到最远门 Collider
+                        if furthestColliderPos then
+                            player.Character.HumanoidRootPart.CFrame = CFrame.new(furthestColliderPos + Vector3.new(0,3,0))
+                            print("[TeleportTest] 宝箱处理完毕，传送到最远门 Collider:", furthestDoor.Name, "Pos:", furthestColliderPos)
+                            task.wait(teleportDelay)
+                        end
+                    end
+                end
+            end
+            print("[AutoTeleport] 循环结束")
+        end)
+
+    else
+        print("[AutoTeleport] 自动传送与宝箱已关闭")
+    end
+end):Set(Settings.AutoTeleportChests or false)
+
+
+-- 自动吃血药开关
+local autoPotionSwitch = features:AddSwitch('自动吃血药', function(bool)
+    Settings.HealthMonitorEnabled = bool
+    SaveSettings()
+end)
+if autoPotionSwitch.Set then autoPotionSwitch:Set(Settings.HealthMonitorEnabled) end
+-- 获取玩家
+
+-- 创建开关
+local autodisable = features:AddSwitch('关闭选择和施法动画', function(bool)
+    Settings.DisableSkillAnimations = bool
+    SaveSettings()
+
+    -- 如果开关开启，就禁用相关 LocalScript/Script
+    if bool then
+        -- 禁用 GUI 内的 LocalScript
+        local endlessChooseScript = player.PlayerGui:FindFirstChild("Main") 
+            and player.PlayerGui.Main:FindFirstChild("Func") 
+            and player.PlayerGui.Main.Func:FindFirstChild("EndlessChoose") 
+            and player.PlayerGui.Main.Func.EndlessChoose:FindFirstChild("EndlessChoose")
+        if endlessChooseScript and endlessChooseScript:IsA("LocalScript") then
+            endlessChooseScript.Disabled = true
+        end
+
+        -- 禁用 ReplicatedStorage 的 Script/LocalScript
+        local clientRunTimeScript = game:GetService("ReplicatedStorage"):FindFirstChild("ClientBase")
+            and game:GetService("ReplicatedStorage").ClientBase:FindFirstChild("Skill")
+            and game:GetService("ReplicatedStorage").ClientBase.Skill:FindFirstChild("ClientRunTime")
+        if clientRunTimeScript and (clientRunTimeScript:IsA("Script") or clientRunTimeScript:IsA("LocalScript")) then
+            clientRunTimeScript.Disabled = true
+        end
+    end
+end)
+
+-- 设置开关初始状态
+if autodisable.Set then
+    autodisable:Set(Settings.DisableSkillAnimations)
+end
+-- 技能循环释放开关
+local autoSkillSwitch = features:AddSwitch('技能循环释放', function(bool)
+    Settings.AutoSkillEnabled = bool
+    SaveSettings()
+end)
+if autoSkillSwitch.Set then autoSkillSwitch:Set(Settings.AutoSkillEnabled) end
+-- edndless循环释放开关
+features:AddSwitch('自动选择 Endless', function(state)
+    Settings.AutoEndlessChoose = state
+    SaveSettings()
+
+    -- 确保只注册一次监听
+    if not _G.AutoEndlessListenerRegistered then
+        _G.AutoEndlessListenerRegistered = true
+
+        -- 全局注册监听
+        TNet.SetEvent("Endless_ShowPlayerUpgrade", function(upgradeList)
+            print("⚠️ 收到 Endless_ShowPlayerUpgrade 下发数据:")
+            for i, id in ipairs(upgradeList) do
+                local upgradeInfo = Config.Endless.UpgradeList[id]
+                local name = upgradeInfo and upgradeInfo.name or "未知"
+                local desc = upgradeInfo and upgradeInfo.description or "无描述"
+                print(string.format("Index[%d] -> ID: %d, 名称: %s, 描述: %s", i, id, name, desc))
+            end
+
+            if Settings.AutoEndlessChoose then
+                local chosenIndex = nil
+
+                -- 优先找名字包含 Crystal（忽略大小写）
+                for i, id in ipairs(upgradeList) do
+                    local upgradeInfo = Config.Endless.UpgradeList[id]
+                    if upgradeInfo and string.find(upgradeInfo.name:lower(), "crystal") then
+                        chosenIndex = i
+                        break
+                    end
+                end
+
+                -- 如果没有找到 Crystal，则找 Chest
+                if not chosenIndex then
+                    for i, id in ipairs(upgradeList) do
+                        local upgradeInfo = Config.Endless.UpgradeList[id]
+                        if upgradeInfo and string.find(upgradeInfo.name:lower(), "chest") then
+                            chosenIndex = i
+                            break
+                        end
+                    end
+                end
+
+                -- 如果还是没有找到，则按 ID 最后数字最大
+                if not chosenIndex then
+                    local maxLastDigit = -1
+                    for i, id in ipairs(upgradeList) do
+                        local lastDigit = tonumber(tostring(id):sub(-1)) or 0
+                        if lastDigit > maxLastDigit then
+                            maxLastDigit = lastDigit
+                            chosenIndex = i
+                        end
+                    end
+                end
+
+                -- 发送选择
+                pcall(function()
+                    print("[AutoEndless] 自动选择 Index:", chosenIndex)
+                    TNet.FireServer("Endless_PlayerChoose", chosenIndex)
+                end)
+            end
+        end)
+    end
+end):Set(Settings.AutoEndlessChoose)
+
+
+
+
+-- 回合检测开关
+local roundCheckSwitch = features:AddSwitch('回合检查', function(bool)
+    Settings.RoundTeleportEnabled = bool
+    SaveSettings()
+end)
+if roundCheckSwitch.Set then roundCheckSwitch:Set(Settings.RoundTeleportEnabled) end
+
+--================= 回合阈值与显示 =================--
+if type(Settings.RoundTeleportThreshold) ~= 'number' then
+    Settings.RoundTeleportThreshold = 55
+    SaveSettings()
+end
+local RoundThresholdValue = Settings.RoundTeleportThreshold
+-- 回合显示Label
+local roundLabel = features:AddLabel('回合: 0 / ' .. RoundThresholdValue)
+
+-- 刷新函数
+local function UpdateRoundLabel(currentRound)
+    currentRound = currentRound or 0
+    roundLabel.Text = '回合: ' .. currentRound .. ' / ' .. RoundThresholdValue
+end
+-- 添加阈值显示更新函数
+local function UpdateThresholdDisplay()
+    RoundThresholdValue = Settings.RoundTeleportThreshold
+    -- 更新回合显示的阈值部分
+    local currentRound = tonumber(string.match(roundLabel.Text, '回合: (%d+)') or 0)
+    roundLabel.Text = '回合: ' .. currentRound .. ' / ' .. RoundThresholdValue
+    print('[DEBUG] 阈值更新为:', RoundThresholdValue)
+end
+-- 设置退出回合阈值输入框
+local thresholdInput = features:AddTextBox('设置退出回合阈值', function(text)
+    local num = tonumber(text)
+    if num and num > 0 then
+        Settings.RoundTeleportThreshold = num
+        SaveSettings()
+        UpdateThresholdDisplay()
+        print('[DEBUG] 阈值设置为:', num)
+    else
+        -- 输入无效，直接修改Text属性恢复原值
+        thresholdInput.Text = tostring(Settings.RoundTeleportThreshold)
+        print('[WARN] 无效输入，已恢复为:', Settings.RoundTeleportThreshold)
+    end
+end)
+thresholdInput.Text = tostring(Settings.RoundTeleportThreshold)
+print('[DEBUG] 输入框初始值设置为:', Settings.RoundTeleportThreshold)
+-- 主循环刷新回合 Label
+spawn(function()
+    while true do
+        task.wait(0.5)
+        local currentRound = 0
+        pcall(function()
+            local roundGui = player.PlayerGui:FindFirstChild('Main')
+                and player.PlayerGui.Main:FindFirstChild('HomePage')
+                and player.PlayerGui.Main.HomePage:FindFirstChild('EndlessTop')
+                and player.PlayerGui.Main.HomePage.EndlessTop:FindFirstChild('Top')
+                and player.PlayerGui.Main.HomePage.EndlessTop.Top:FindFirstChild('RoundTitle')
+            if roundGui then
+                currentRound = tonumber(string.match(roundGui.Text, '%d+')) or 0
+            end
+        end)
+        UpdateRoundLabel(currentRound)
+    end
+end)
+
+
+--================= 自动进入副本循环 =================--
+spawn(function()
+    while true do
+        task.wait(5)
+        if not Settings.AutoDungeonEnabled then continue end
+        if Workspace:FindFirstChild('Lobby') then
+            local sel = Settings.SelectedDungeon or '1-1'
+            local dungeonId, difficulty = unpack(DungeonMap[sel] or DungeonMap['1-1'])
+            print('[DEBUG] 尝试进入副本:', sel)
+            pcall(function() EnterDungeon(dungeonId, difficulty) end)
+        end
+    end
+end)
+
+--================= 副本内监控 ===================
+local dungeonConnections = {}
+local skillLoop
+
+function SetupInDungeon()
+    spawn(function()
+        -- 等待 Key
+        while not _G.KillauraKey do
+            print("[SetupInDungeon] 等待 _G.KillauraKey 捕获中...")
+            task.wait(1)
+        end
+        print("[SetupInDungeon] 已捕获到 Key:", _G.KillauraKey)
+
+        -- 如果在大厅，直接返回
+        if Workspace:FindFirstChild("Lobby") then return end
+        if Workspace:FindFirstChild('TradeScene') then return end
+
+        -- GUI 路径
+        local playerGui = player:WaitForChild("PlayerGui")
+        local mainGui = playerGui:WaitForChild("Main", 5)
+        if not mainGui then return end
+
+        local home = mainGui:FindFirstChild("HomePage")
+        if not home then return end
+
+        local healthPath = home:FindFirstChild("Bottom")
+            and home.Bottom:FindFirstChild("Main")
+            and home.Bottom.Main:FindFirstChild("Health")
+            and home.Bottom.Main.Health:FindFirstChild("Num")
+            and home.Bottom.Main.Health.Num:FindFirstChild("Health")
+
+        local roundPath = home:FindFirstChild("EndlessTop")
+            and home.EndlessTop:FindFirstChild("Top")
+            and home.EndlessTop.Top:FindFirstChild("RoundTitle")
+
+        ------------------------------------------------
+        -- 自动吃药（监听）
+        ------------------------------------------------
+        if healthPath and not dungeonConnections["health"] then
+            dungeonConnections["health"] =
+                healthPath:GetPropertyChangedSignal("Text"):Connect(function()
+                    if not Settings.HealthMonitorEnabled then return end
+                    local cur, max = string.match(healthPath.Text, "(%d+)%/(%d+)")
+                    if cur and max then
+                        cur, max = tonumber(cur), tonumber(max)
+                        if max > 0 and cur / max < 0.63 then
+                            pcall(function() TNet.FireServer("Potion_TryHealth") end)
+                        end
+                    end
+                end)
+        end
+
+        ------------------------------------------------
+        -- 回合监听
+        ------------------------------------------------
+        if roundPath and not dungeonConnections["round"] then
+            dungeonConnections["round"] =
+                roundPath:GetPropertyChangedSignal("Text"):Connect(function()
+                    local roundNum = tonumber(string.match(roundPath.Text, "%d+")) or 0
+                    UpdateRoundLabel(roundNum)
+                    if Settings.RoundTeleportEnabled and roundNum >= RoundThresholdValue then
+                        pcall(function()
+                            TNet.FireServer("Dungeon_Leave")
+                            task.wait(1)
+                            TeleportService:Teleport(72607172956362)
+                        end)
+                    end
+                end)
+        end
+
+        ------------------------------------------------
+        -- 技能循环（动态控制）
+        ------------------------------------------------
+        if not skillLoop then
+            skillLoop = task.spawn(function()
+                while true do
+                    if Settings.AutoSkillEnabled
+                        and player.Character
+                        and player.PlayerGui
+                        and not Workspace:FindFirstChild("Lobby")
+                        and not Workspace:FindFirstChild("TradeScene") then
+                        for spell = 1, 5 do
+                            if not Settings.AutoSkillEnabled then break end
+                            pcall(function() TNet.FireServer("Skill_Release", spell) end)
+                            task.wait(0.08)
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+end
+
+------------------------------------------------
+-- 外部调用
+------------------------------------------------
+spawn(function()
+    SetupInDungeon()
+end)
+
+
+
+--================= 退出副本按钮 =================--
+features:AddButton('退出副本', function()
+    pcall(function() TeleportService:Teleport(72607172956362) end)
+end)
+
+features1:AddButton('附魔工具', function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/dungeon/附魔工具"))()
+end)
+features1:AddLabel('装备出售数量为1000')
+-- 按钮功能：批量发送稀有度为1的装备 ref
+features1:AddButton("出售白色装备", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 1 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+            TNet.FireServer("Equipment_Sell", batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度1装备的 ref")
+    else
+        warn("未找到稀有度为1的装备")
+    end
+end)
+
+features1:AddButton("出售绿色装备", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 2 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+            TNet.FireServer("Equipment_Sell", batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度2装备的 ref")
+    else
+        warn("未找到稀有度为2的装备")
+    end
+end)
+
+features1:AddButton("出售蓝色装备", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) == 3 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+                                TNet.FireServer("Equipment_Sell", batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度3装备的 ref")
+    else
+        warn("未找到稀有度为3的装备")
+    end
+end)
+features1:AddButton("出售紫色以下全部", function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    local refsToSend = {}
+
+    for _, item in ipairs(items) do
+        local idStr = item and item.id and tostring(item.id)
+        if idStr and #idStr >= 3 and tonumber(idStr:sub(3,3)) <= 3 then
+            table.insert(refsToSend, item.ref)
+        end
+    end
+
+    if #refsToSend > 0 then
+        local batchRefs = {}
+        for i = 1, math.min(1000, #refsToSend) do
+            table.insert(batchRefs, refsToSend[i])
+        end
+
+        pcall(function()
+                                TNet.FireServer("Equipment_Sell", batchRefs)
+        end)
+
+        print("已批量发送 " .. #batchRefs .. " 个稀有度小于4装备的 ref")
+    else
+        warn("未找到稀有度小于4的装备")
+    end
+end)
+--[[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EquipmentShare = require(ReplicatedStorage.ClientBase.EquipmentShare)
+features1:AddLabel('注意dupe会清空背包里所有物品，要保留的东西记得放在二楼仓库里')
+features1:AddSwitch("dupe", function(state)
+    if state then
+        print("[Loop] 循环开始")
+        if not _G.PacketLoop then
+            _G.PacketLoopRunning = true
+            _G.PacketLoop = task.spawn(function()
+                while _G.PacketLoopRunning do
+
+                    -- 先发 y 100 次
+                    for i = 1, 100 do
+                        if not _G.PacketLoopRunning then break end
+                        pcall(function()
+                            TNetSent:FireServer("y", 100)
+                        end)
+                        task.wait(0.1)
+                    end
+                    if not _G.PacketLoopRunning then break end
+
+                    -- 发一次 Backpack_EquipBest
+                    pcall(function()
+                        TNet.FireServer("Backpack_EquipBest")
+                    end)
+                    task.wait(0.1)
+
+                    -- 获取背包物品
+                    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+                    print("背包物品数量:", #items)
+
+                    -- 如果背包超过700个物品，连续出售直到清空
+                    if #items > 700 then
+                        print("开始批量出售装备")
+                        while #items > 0 and _G.PacketLoopRunning do
+                            for _, item in ipairs(items) do
+                                if not _G.PacketLoopRunning then break end
+                                local refToSend = item.ref or 1052
+                                pcall(function()
+                                    TNet.FireServer("Equipment_Sell", { refToSend })
+                                end)
+                            end
+                            task.wait(2)
+                            items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+                            print("剩余背包物品数量:", #items)
+                        end
+                        print("装备已清空")
+                    end
+
+                end
+                _G.PacketLoop = nil
+                print("[Loop] 已结束")
+            end)
+        end
+    else
+        print("[Loop] 循环已关闭")
+        _G.PacketLoopRunning = false
+        _G.PacketLoop = nil
+    end
+end)
+--]]
+features1:AddButton("出售背包全部装备", function()
+    local items = (EquipmentShare.Data and EquipmentShare.Data.Bag and EquipmentShare.Data.Bag.Items) or {}
+    if #items == 0 then
+        print("背包为空，无物品可出售")
+        return
+    end
+
+    print("开始出售全部装备，共 " .. #items .. " 件")
+    for _, item in ipairs(items) do
+        local refToSend = item.ref or 1052
+        pcall(function()
+            TNet.FireServer("Equipment_Sell", { refToSend })
+        end)
+    end
+
+    print("出售完成")
+end)
+

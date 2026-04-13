@@ -1,0 +1,185 @@
+local ReplicatedFirst = game:GetService('ReplicatedFirst')
+local TNet =
+    require(ReplicatedFirst:WaitForChild('Component'):WaitForChild('TNet'))
+
+-- 深度打印函数
+local function deepToString(value, depth, visited)
+    depth = depth or 0
+    visited = visited or {}
+    local indent = string.rep('  ', depth)
+
+    if depth > 8 then
+        return indent .. '... (深度限制)'
+    end
+
+    local valueType = type(value)
+
+    -- 检查循环引用
+    if visited[value] then
+        return indent .. '[循环引用]'
+    end
+    visited[value] = true
+
+    if valueType == 'table' then
+        local result = '{\n'
+        local count = 0
+
+        -- 先打印数组部分
+        for i = 1, math.min(#value, 50) do
+            if value[i] ~= nil then
+                result = result
+                    .. indent
+                    .. '  ['
+                    .. i
+                    .. '] = '
+                    .. deepToString(value[i], depth + 1, visited)
+                    .. ',\n'
+                count = count + 1
+            end
+        end
+
+        -- 再打印键值对
+        for k, v in pairs(value) do
+            if
+                type(k) ~= 'number'
+                or k > #value
+                or k < 1
+                or math.floor(k) ~= k
+            then
+                local keyStr
+                if
+                    type(k) == 'string'
+                    and string.match(k, '^[a-zA-Z_][a-zA-Z0-9_]*$')
+                then
+                    keyStr = k
+                else
+                    keyStr = '[' .. deepToString(k, 0, {}) .. ']'
+                end
+                result = result
+                    .. indent
+                    .. '  '
+                    .. keyStr
+                    .. ' = '
+                    .. deepToString(v, depth + 1, visited)
+                    .. ',\n'
+                count = count + 1
+            end
+        end
+
+        if count == 0 then
+            return '{}'
+        else
+            return result .. indent .. '}'
+        end
+    elseif valueType == 'function' then
+        -- 尝试获取函数信息
+        local success, info = pcall(function()
+            local debugInfo = debug.getinfo(value)
+            return string.format(
+                'function(%s) [定义于 %s:%d]',
+                debugInfo.name or 'anonymous',
+                debugInfo.short_src or 'unknown',
+                debugInfo.linedefined or 0
+            )
+        end)
+        return success and info or 'function: ' .. tostring(value)
+    elseif valueType == 'userdata' then
+        -- 尝试获取userdata的类型信息
+        local success, metatable = pcall(getmetatable, value)
+        if success and metatable then
+            return 'userdata<'
+                .. tostring(metatable.__type or 'unknown')
+                .. '>: '
+                .. tostring(value)
+        else
+            return 'userdata: ' .. tostring(value)
+        end
+    elseif valueType == 'vector' or valueType == 'Vector3' then
+        return string.format(
+            'Vector3(%.2f, %.2f, %.2f)',
+            value.X,
+            value.Y,
+            value.Z
+        )
+    elseif valueType == 'CFrame' then
+        local x, y, z = value:components()
+        return string.format('CFrame(%.2f, %.2f, %.2f, ...)', x, y, z)
+    elseif valueType == 'Instance' then
+        return 'Instance: ' .. value.ClassName .. ' "' .. value.Name .. '"'
+    elseif valueType == 'string' then
+        if #value > 100 then
+            return string.format('%q...', value:sub(1, 100))
+                .. ' (长度: '
+                .. #value
+                .. ')'
+        else
+            return string.format('%q', value)
+        end
+    else
+        return tostring(value)
+    end
+end
+
+-- 格式化参数用于打印
+local function formatArgs(...)
+    local args = { ... }
+    local formatted = {}
+
+    for i, arg in ipairs(args) do
+        table.insert(formatted, deepToString(arg, 0, {}))
+    end
+
+    return table.concat(formatted, ',\n')
+end
+
+-- hook InvokeServer
+local oldInvoke
+oldInvoke = hookfunction(TNet.InvokeServer, function(name, ...)
+    print('=== TNet.InvokeServer CALL ===')
+    print('Method:', name)
+    print('Arguments:')
+    print(formatArgs(...))
+    print('==============================')
+
+    return oldInvoke(name, ...)
+end)
+
+-- hook FireServer
+local oldFire
+oldFire = hookfunction(TNet.FireServer, function(name, ...)
+    print('=== TNet.FireServer CALL ===')
+    print('Method:', name)
+    print('Arguments:')
+    print(formatArgs(...))
+    print('=============================')
+
+    return oldFire(name, ...)
+end)
+
+-- 如果需要更简洁的单行输出版本，可以使用这个：
+local function formatArgsSimple(...)
+    local args = { ... }
+    local formatted = {}
+
+    for i, arg in ipairs(args) do
+        local t = type(arg)
+        if t == 'table' then
+            table.insert(formatted, 'table{' .. tostring(#arg) .. ' elements}')
+        elseif t == 'function' then
+            table.insert(formatted, 'function')
+        elseif t == 'userdata' then
+            table.insert(formatted, 'userdata')
+        else
+            table.insert(formatted, tostring(arg))
+        end
+    end
+
+    return table.concat(formatted, ', ')
+end
+
+-- 可选：添加一个切换详细模式的函数
+local detailedMode = true
+function ToggleDetailedMode()
+    detailedMode = not detailedMode
+    print('详细模式: ' .. (detailedMode and '开启' or '关闭'))
+end

@@ -1,0 +1,176 @@
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local Players = game:GetService('Players')
+local Config = require(ReplicatedStorage:WaitForChild('Config'))
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild('PlayerGui')
+
+-- 创建 ScreenGui
+local screenGui = Instance.new('ScreenGui')
+screenGui.Name = 'AffixSearchUI'
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- 主框架
+local mainFrame = Instance.new('Frame')
+mainFrame.Size = UDim2.new(0, 600, 0, 450)
+mainFrame.Position = UDim2.new(0.5, -300, 0.3, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+-- 标题栏
+local titleBar = Instance.new('Frame')
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+titleBar.Parent = mainFrame
+
+local titleLabel = Instance.new('TextLabel')
+titleLabel.Text = '附魔词条搜索工具（重做版）'
+titleLabel.Size = UDim2.new(1, -30, 1, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+-- 关闭按钮
+local closeButton = Instance.new('TextButton')
+closeButton.Text = 'X'
+closeButton.Size = UDim2.new(0, 30, 1, 0)
+closeButton.Position = UDim2.new(1, -30, 0, 0)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Parent = titleBar
+closeButton.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- 搜索框
+local searchBox = Instance.new('TextBox')
+searchBox.PlaceholderText = '输入搜索关键词'
+searchBox.Size = UDim2.new(0, 300, 0, 40)
+searchBox.Position = UDim2.new(0, 10, 0, 50)
+searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchBox.Parent = mainFrame
+
+-- 滚动框显示搜索结果
+local scrollingFrame = Instance.new('ScrollingFrame')
+scrollingFrame.Size = UDim2.new(1, -20, 1, -100)
+scrollingFrame.Position = UDim2.new(0, 10, 0, 100)
+scrollingFrame.BackgroundTransparency = 1
+scrollingFrame.ScrollBarThickness = 8
+scrollingFrame.Parent = mainFrame
+
+-- 用于宽松搜索
+local function normalize(str)
+    return string.lower(str:gsub('%s+', ''):gsub('[%p%c]', ''))
+end
+
+-- 搜索函数
+local function searchAffixByDescription(searchText)
+    searchText = normalize(searchText)
+    local results = {}
+    if Config and Config.Affix and Config.Affix.Attribute then
+        for affixId, affixData in pairs(Config.Affix.Attribute) do
+            -- 检查 affixData 是否为表且包含 description 字段
+            if type(affixData) == 'table' and affixData.description then
+                local description = normalize(tostring(affixData.description))
+                print(
+                    '[DEBUG] ID:',
+                    affixId,
+                    'description:',
+                    affixData.description
+                )
+                if string.find(description, searchText) then
+                    print('[DEBUG] 匹配成功! ID:', affixId)
+                    table.insert(
+                        results,
+                        { id = affixId, description = affixData.description }
+                    )
+                end
+            -- 如果 affixData 不是表，可能是数字或其他类型，跳过
+            else
+                print('[DEBUG] 跳过 ID:', affixId, '类型:', type(affixData))
+            end
+        end
+    end
+    table.sort(results, function(a, b)
+        return a.id < b.id
+    end)
+    return results
+end
+
+-- 更新 UI 显示结果
+-- 更新 UI 显示结果（带点击复制ID功能）
+local function updateResults(results)
+    -- 清空旧内容
+    for _, child in ipairs(scrollingFrame:GetChildren()) do
+        if child:IsA('Frame') then
+            child:Destroy()
+        end
+    end
+
+    local yOffset = 0
+    for _, result in ipairs(results) do
+        -- 每条结果单独 Frame
+        local itemFrame = Instance.new('Frame')
+        itemFrame.Size = UDim2.new(1, -10, 0, 30)
+        itemFrame.Position = UDim2.new(0, 5, 0, yOffset)
+        itemFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        itemFrame.Parent = scrollingFrame
+
+        -- Frame 内 TextLabel 显示内容
+        local label = Instance.new('TextLabel')
+        label.Size = UDim2.new(1, -10, 1, 0)
+        label.Position = UDim2.new(0, 5, 0, 0)
+        label.Text =
+            string.format('ID: %d | 描述: %s', result.id, result.description)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextYAlignment = Enum.TextYAlignment.Top
+        label.Parent = itemFrame
+
+        -- 点击复制ID
+        local button = Instance.new('TextButton')
+        button.Size = UDim2.new(1, 0, 1, 0)
+        button.BackgroundTransparency = 1
+        button.Text = ''
+        button.Parent = itemFrame
+
+        button.MouseButton1Click:Connect(function()
+            if
+                pcall(function()
+                    setclipboard(tostring(result.id))
+                end)
+            then
+                print('已复制 ID:', result.id)
+            else
+                warn('复制失败，可能不支持 setclipboard')
+            end
+        end)
+
+        yOffset = yOffset + 35 -- 每条结果间距
+    end
+
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset)
+end
+
+-- 即时搜索
+searchBox:GetPropertyChangedSignal('Text'):Connect(function()
+    local input = searchBox.Text
+    if input and input ~= '' then
+        local success, results = pcall(searchAffixByDescription, input)
+        if success then
+            updateResults(results)
+        else
+            print('搜索出错:', results)
+            updateResults({})
+        end
+    else
+        updateResults({})
+    end
+end)
