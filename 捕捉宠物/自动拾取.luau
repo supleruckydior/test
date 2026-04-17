@@ -1,3 +1,6 @@
+-- 切服总开关：true = 10秒无拾取自动切服；false = 只自动拾取，不切服
+local ENABLE_SERVER_SWITCH = false
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -22,11 +25,66 @@ local RETRY_COOLDOWN = 1.0
 
 local CFG = {
     LAN_SERVER_URL = "http://192.168.31.247:8765",
-    ENABLE_SERVER_SWITCH = true,
-    NO_PICK_SWITCH_DELAY = 5,
+    ENABLE_SERVER_SWITCH = ENABLE_SERVER_SWITCH,
+    NO_PICK_SWITCH_DELAY = 10,
     CLAIM_RETRY_DELAY = 2,
     JOB_CHANGE_TIMEOUT = 5,
 }
+
+local SWITCH_MEMORY_FILE = string.format("auto_pick_switch_%s.json", tostring(localPlayer and localPlayer.UserId or "unknown"))
+
+local function hasFileApi()
+    return type(readfile) == "function" and type(writefile) == "function"
+end
+
+local function safeIsFile(path)
+    if type(isfile) ~= "function" then
+        return false
+    end
+
+    local ok, result = pcall(function()
+        return isfile(path)
+    end)
+    return ok and result == true
+end
+
+local function loadServerSwitchEnabled()
+    if not hasFileApi() then
+        return CFG.ENABLE_SERVER_SWITCH
+    end
+
+    local ok, content = pcall(function()
+        if safeIsFile(SWITCH_MEMORY_FILE) or type(isfile) ~= "function" then
+            return readfile(SWITCH_MEMORY_FILE)
+        end
+        return nil
+    end)
+    if not ok or type(content) ~= "string" or content == "" then
+        return CFG.ENABLE_SERVER_SWITCH
+    end
+
+    local decodeOk, decoded = pcall(function()
+        return HttpService:JSONDecode(content)
+    end)
+    if decodeOk and type(decoded) == "table" and type(decoded.serverSwitchEnabled) == "boolean" then
+        return decoded.serverSwitchEnabled
+    end
+
+    return CFG.ENABLE_SERVER_SWITCH
+end
+
+local function saveServerSwitchEnabled(enabled)
+    if not hasFileApi() then
+        return
+    end
+
+    pcall(function()
+        writefile(SWITCH_MEMORY_FILE, HttpService:JSONEncode({
+            serverSwitchEnabled = enabled == true,
+            updatedAt = os.time(),
+        }))
+    end)
+end
 
 local areaPickCooldown = {}
 local pickItemCooldown = {}
@@ -53,6 +111,7 @@ end
 
 function Control.SetServerSwitch(enabled)
     Control.serverSwitchEnabled = enabled == true
+    saveServerSwitchEnabled(Control.serverSwitchEnabled)
     print(string.format("%s 切服开关: %s", TAG, Control.serverSwitchEnabled and "开启" or "关闭"))
 end
 
@@ -61,6 +120,15 @@ function Control.ToggleServerSwitch()
 end
 
 _G.AutoPickAllControl = Control
+_G.AutoPickSetServerSwitch = function(enabled)
+    return Control.SetServerSwitch(enabled)
+end
+_G.AutoPickToggleServerSwitch = function()
+    return Control.ToggleServerSwitch()
+end
+_G.AutoPickStop = function()
+    return Control.Stop()
+end
 
 local function nowTick()
     return tick()
@@ -357,7 +425,14 @@ local function WaitForPathTool(maxWait)
     requirePathModule("PickItemSystem")
     requirePathModule("BoostSystem")
 
-
+    print(string.format(
+        "%s [WaitForPathTool] PathTool=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
+        TAG,
+        PathTool and "OK" or "FAIL",
+        MgrPetClient and "OK" or "FAIL",
+        LogicNumber and "OK" or "FAIL",
+        GamePlayer and "OK" or "FAIL"
+    ))
 end
 
 local function getGamePlayer()
@@ -614,7 +689,8 @@ end
 
 WaitForPathTool(30)
 
-
+print(string.format("%s 启动成功，玩家=%s", TAG, tostring(localPlayer and localPlayer.Name or "Unknown")))
+print(string.format("%s 开始自动拾取：AreaPickUp / PickItem / Boost", TAG))
 print(string.format(
     "%s 无拾取 %ds 切服: %s | LAN=%s",
     TAG,
@@ -663,7 +739,5 @@ task.spawn(function()
         task.wait(totalPicked > 0 and LOOP_WAIT_BUSY or LOOP_WAIT_IDLE)
     end
 
-    if _G.AutoPickAllControl == Control then
-        _G.AutoPickAllControl = nil
-    end
+    print(string.format("%s 控制对象已保留，如需重新启动请重新执行脚本", TAG))
 end)
