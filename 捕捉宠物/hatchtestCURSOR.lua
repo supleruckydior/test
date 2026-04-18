@@ -452,6 +452,7 @@ mainCorner.Parent = mainFrame
 local titleBar = Instance.new("Frame")
 titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
 titleBar.BorderSizePixel = 0
+titleBar.Active = true
 titleBar.Parent = mainFrame
 
 local titleBarCorner = Instance.new("UICorner")
@@ -465,6 +466,7 @@ titleBarFill.Parent = titleBar
 
 local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
+title.Active = true
 title.Text = "宠物锁定管理"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
@@ -688,7 +690,7 @@ local dragInput
 local dragStart
 local startPos
 
-titleBar.InputBegan:Connect(function(input)
+local function BeginDrag(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
@@ -700,17 +702,23 @@ titleBar.InputBegan:Connect(function(input)
             end
         end)
     end
-end)
+end
 
-titleBar.InputChanged:Connect(function(input)
+local function TrackDragInput(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
-end)
+end
+
+titleBar.InputBegan:Connect(BeginDrag)
+titleBar.InputChanged:Connect(TrackDragInput)
+title.InputBegan:Connect(BeginDrag)
+title.InputChanged:Connect(TrackDragInput)
 
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
-        local delta = input.Position - dragStart
+        local delta3 = input.Position - dragStart
+        local delta = Vector2.new(delta3.X, delta3.Y)
         local targetSize = Vector2.new(mainFrame.AbsoluteSize.X, mainFrame.AbsoluteSize.Y)
         local targetPosition = ClampFramePosition(startPos + delta, targetSize)
         mainFrame.Position = UDim2.fromOffset(targetPosition.X, targetPosition.Y)
