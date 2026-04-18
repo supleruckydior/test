@@ -10,7 +10,7 @@ local TAG = "[自动卖目标宠]"
 local TARGET_PLACE_ID = 98664161516921
 local TARGET_TMPL_IDS = {
     [20119] = "DustWing",
-    [20106] = "Voltgator",
+    [90005] = "Voltgator",
 }
 local AUTO_REPEAT = true
 local LOOP_INTERVAL_SECONDS = 15
