@@ -1,1012 +1,894 @@
--- hatchtestCURSOR.lua
--- 孵化界面：可选蛋、自动孵化、自动领取、自动跳过
-
+-- 一键锁定/解锁背包全部宠物 (带模板筛选功能)
+-- API: PetSystem.ClientLockPet(petItemId, isLocked)
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-local TAG = "[HatchUI]"
-task.wait(6)
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
-
-local localPlayer = Players.LocalPlayer
-
-local PathTool = _G.PathTool
-local GamePlayer = nil
-local LogicNumber = nil
-local MgrPetClient = nil
-
-local function WaitForPathTool(maxWait)
-    maxWait = maxWait or 30
-    local waited = 0
-
-    if not PathTool then
-        local success, result = pcall(function()
-            return require(
-                ReplicatedStorage:WaitForChild("CommonLibrary")
-                    :WaitForChild("Tool")
-                    :WaitForChild("PathTool")
-            )
-        end)
-        if success and result then
-            PathTool = result
-            _G.PathTool = PathTool
-        end
-    end
-
-    if not PathTool and _G.PathTool then
-        PathTool = _G.PathTool
-    end
-
-    while not PathTool do
-        task.wait(0.1)
-        waited = waited + 0.1
-        if waited >= maxWait then
-            error(string.format("%s PathTool 系统未找到，请确保游戏已加载", TAG))
-        end
-
-        local success, result = pcall(function()
-            return require(
-                ReplicatedStorage:WaitForChild("CommonLibrary")
-                    :WaitForChild("Tool")
-                    :WaitForChild("PathTool")
-            )
-        end)
-        if success and result then
-            PathTool = result
-            _G.PathTool = PathTool
-        elseif _G.PathTool then
-            PathTool = _G.PathTool
-        end
-    end
-
-    if not MgrPetClient then
-        pcall(function()
-            if PathTool.Require then
-                MgrPetClient = PathTool.Require("MgrPetClient")
-            end
-        end)
-        if not MgrPetClient then
-            pcall(function()
-                MgrPetClient = require(
-                    ReplicatedStorage:WaitForChild("ClientLogic")
-                        :WaitForChild("Pet")
-                        :WaitForChild("MgrPetClient")
-                )
-            end)
-        end
-    end
-
-    if not LogicNumber then
-        pcall(function()
-            if PathTool.Require then
-                LogicNumber = PathTool.Require("LogicNumber")
-            end
-        end)
-    end
-
-    waited = 0
-    while not MgrPetClient do
-        task.wait(0.1)
-        waited = waited + 0.1
-        if waited >= maxWait then
-            warn(string.format("%s MgrPetClient 模块未找到，部分功能可能受影响", TAG))
-            break
-        end
-        pcall(function()
-            if PathTool.Require then
-                MgrPetClient = PathTool.Require("MgrPetClient")
-            end
-        end)
-        if not MgrPetClient then
-            pcall(function()
-                MgrPetClient = require(
-                    ReplicatedStorage:WaitForChild("ClientLogic")
-                        :WaitForChild("Pet")
-                        :WaitForChild("MgrPetClient")
-                )
-            end)
-        end
-    end
-
-    waited = 0
-    while not GamePlayer do
-        local success, result = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
-        end)
-        if success and result then
-            GamePlayer = result
-            break
-        end
-        task.wait(0.5)
-        waited = waited + 0.5
-        if waited >= maxWait then
-            warn(string.format("%s GamePlayer 未就绪，可能影响部分功能", TAG))
-            break
-        end
-    end
-
-    print(string.format("%s [WaitForPathTool] PathTool=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
-        TAG,
-        PathTool and "OK" or "FAIL",
-        MgrPetClient and "OK" or "FAIL",
-        LogicNumber and "OK" or "FAIL",
-        GamePlayer and "OK" or "FAIL"
-    ))
-    return true
-end
-
-WaitForPathTool(30)
-
-if not localPlayer or localPlayer.Name ~= "Savanndavid" then
-    warn(string.format("%s 当前用户不允许使用该脚本: %s", TAG, tostring(localPlayer and localPlayer.Name or "Unknown")))
+local targetGameId = 98664161516921
+if game.PlaceId ~= targetGameId then
+    warn(string.format("[一键锁宠] 游戏ID不匹配: %d (需要 %d)", game.PlaceId, targetGameId))
     return
 end
 
-local HatchTest = {}
-local State = {
-    destroyed = false,
-    selectedEggTmplId = nil,
-    autoHatch = false,
-    autoSkip = false,
-    lastUiRefresh = 0,
-    lastLoopAt = 0,
-    windowPosition = nil,
-    collapsed = false,
-}
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local player = Players.LocalPlayer
 
-local Ui = {
-    screenGui = nil,
-    frame = nil,
-    titleBar = nil,
-    collapseBtn = nil,
-    eggsScroll = nil,
-    slotsScroll = nil,
-    statusLabel = nil,
-    autoHatchBtn = nil,
-    autoSkipBtn = nil,
-    collapsibleItems = {},
-}
-
-local Conns = {}
-
-local MEMORY_FILE = string.format("hatchtest_memory_%s.json", tostring(localPlayer and localPlayer.UserId or "unknown"))
-
-local function hasFileApi()
-    return type(readfile) == "function" and type(writefile) == "function"
-end
-
-local function safeIsFile(path)
-    if type(isfile) ~= "function" then
-        return false
-    end
-
-    local ok, result = pcall(function()
-        return isfile(path)
+-- 加载 PathTool
+local PathTool = _G.PathTool
+if not PathTool then
+    local ok = pcall(function()
+        PathTool = require(ReplicatedStorage:WaitForChild("CommonLibrary"):WaitForChild("Tool"):WaitForChild("PathTool"))
+        _G.PathTool = PathTool
     end)
-    return ok and result == true
-end
-
-local function loadMemory()
-    if not hasFileApi() then
+    if not ok or not PathTool then
+        warn("[一键锁宠] PathTool 加载失败")
         return
     end
-
-    local readOk, content = pcall(function()
-        if safeIsFile(MEMORY_FILE) or type(isfile) ~= "function" then
-            return readfile(MEMORY_FILE)
-        end
-        return nil
-    end)
-    if not readOk or type(content) ~= "string" or content == "" then
-        return
-    end
-
-    local ok, decoded = pcall(function()
-        return HttpService:JSONDecode(content)
-    end)
-    if not ok or type(decoded) ~= "table" then
-        warn(string.format("%s 记忆读取失败，将使用默认设置", TAG))
-        return
-    end
-
-    if type(decoded.selectedEggTmplId) == "number" then
-        State.selectedEggTmplId = decoded.selectedEggTmplId
-    end
-    if type(decoded.autoHatch) == "boolean" then
-        State.autoHatch = decoded.autoHatch
-    end
-    if type(decoded.autoSkip) == "boolean" then
-        State.autoSkip = decoded.autoSkip
-    end
-    if type(decoded.windowPosition) == "table" then
-        State.windowPosition = decoded.windowPosition
-    end
-    if type(decoded.collapsed) == "boolean" then
-        State.collapsed = decoded.collapsed
-    end
 end
 
-local function getMemoryPayload()
-    local payload = {
-        selectedEggTmplId = State.selectedEggTmplId,
-        autoHatch = State.autoHatch,
-        autoSkip = State.autoSkip,
-        windowPosition = State.windowPosition,
-        collapsed = State.collapsed,
-        updatedAt = os.time(),
-    }
-
-    if Ui.frame then
-        local pos = Ui.frame.Position
-        payload.windowPosition = {
-            xScale = pos.X.Scale,
-            xOffset = pos.X.Offset,
-            yScale = pos.Y.Scale,
-            yOffset = pos.Y.Offset,
-        }
-        State.windowPosition = payload.windowPosition
-    end
-
-    return payload
+-- 获取 PetSystem
+local PetSystem = PathTool.PetSystem or (PathTool.Require and PathTool.Require("PetSystem"))
+if not PetSystem then
+    warn("[一键锁宠] PetSystem 加载失败")
+    return
 end
 
-local function saveMemory()
-    if not hasFileApi() then
-        return
-    end
-
-    local ok, err = pcall(function()
-        writefile(MEMORY_FILE, HttpService:JSONEncode(getMemoryPayload()))
-    end)
-    if not ok then
-        warn(string.format("%s 记忆保存失败: %s", TAG, tostring(err)))
-    end
-end
-
-loadMemory()
-
-local COLOR_BG = Color3.fromRGB(18, 20, 28)
-local COLOR_PANEL = Color3.fromRGB(28, 32, 44)
-local COLOR_PANEL_2 = Color3.fromRGB(34, 39, 54)
-local COLOR_TEXT = Color3.fromRGB(240, 240, 245)
-local COLOR_DIM = Color3.fromRGB(170, 175, 190)
-local COLOR_OK = Color3.fromRGB(87, 201, 120)
-local COLOR_WARN = Color3.fromRGB(240, 194, 92)
-local COLOR_ERR = Color3.fromRGB(228, 96, 96)
-local COLOR_BTN = Color3.fromRGB(73, 108, 180)
-local COLOR_BTN_ON = Color3.fromRGB(94, 137, 84)
-local COLOR_BTN_OFF = Color3.fromRGB(94, 94, 108)
-local COLOR_BTN_SKIP = Color3.fromRGB(176, 112, 64)
-local COLOR_SELECTED = Color3.fromRGB(59, 86, 132)
-
-local FRAME_WIDTH = 210
-local FRAME_EXPANDED_HEIGHT = 430
-local FRAME_COLLAPSED_HEIGHT = 36
-
-local function connect(signal, fn)
-    local conn = signal:Connect(fn)
-    table.insert(Conns, conn)
-    return conn
-end
-
-local function disconnectAll()
-    for _, conn in ipairs(Conns) do
-        pcall(function()
-            conn:Disconnect()
-        end)
-    end
-    table.clear(Conns)
-end
-
-local function getGamePlayer()
+local GamePlayer
+local function GetGamePlayer()
     if GamePlayer then
         return GamePlayer
     end
-    if PathTool.ClientPlayerManager and PathTool.ClientPlayerManager.GetGamePlayer then
-        local ok, gp = pcall(function()
+
+    local ok, gp = pcall(function()
+        return PathTool.ClientPlayerManager:GetGamePlayer()
+    end)
+    if not ok or not gp then
+        ok, gp = pcall(function()
             return PathTool.ClientPlayerManager.GetGamePlayer()
         end)
-        if ok and gp then
-            GamePlayer = gp
-            return gp
-        end
-    end
-    return nil
-end
-
-local function doRequest(remote, ...)
-    local args = { ... }
-    return pcall(function()
-        if PathTool.ViewUtil and PathTool.ViewUtil.DoRequest then
-            return PathTool.ViewUtil.DoRequest(remote, table.unpack(args))
-        end
-        return remote(table.unpack(args))
-    end)
-end
-
-local function setStatus(text, color)
-    if Ui.statusLabel then
-        Ui.statusLabel.Text = tostring(text or "")
-        Ui.statusLabel.TextColor3 = color or COLOR_DIM
-    end
-end
-
-local function formatTimeLeft(seconds)
-    seconds = math.max(0, math.floor(tonumber(seconds) or 0))
-    local h = math.floor(seconds / 3600)
-    local m = math.floor((seconds % 3600) / 60)
-    local s = seconds % 60
-    if h > 0 then
-        return string.format("%02d:%02d:%02d", h, m, s)
-    end
-    return string.format("%02d:%02d", m, s)
-end
-
-local function clearScrollingChildren(parent)
-    if not parent then
-        return
-    end
-    for _, child in ipairs(parent:GetChildren()) do
-        if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
-            child:Destroy()
-        end
-    end
-end
-
-local function makeButton(parent, text, color, sizeX, onClick)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, sizeX or 78, 0, 26)
-    btn.BackgroundColor3 = color
-    btn.BorderSizePixel = 0
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Text = text
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 11
-    btn.Parent = parent
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-    if onClick then
-        connect(btn.MouseButton1Click, onClick)
-    end
-    return btn
-end
-
-local function addCollapsible(inst)
-    table.insert(Ui.collapsibleItems, inst)
-    return inst
-end
-
-local function applyCollapseVisual()
-    if Ui.frame then
-        Ui.frame.Size = UDim2.new(0, FRAME_WIDTH, 0, State.collapsed and FRAME_COLLAPSED_HEIGHT or FRAME_EXPANDED_HEIGHT)
     end
 
-    for _, inst in ipairs(Ui.collapsibleItems) do
-        if inst and inst.Parent then
-            inst.Visible = not State.collapsed
+    if ok and gp then
+        GamePlayer = gp
+    end
+
+    return GamePlayer
+end
+
+local GradeEnumNameMap = {
+    Grade_1 = "E",
+    Grade_2 = "D",
+    Grade_3 = "C",
+    Grade_4 = "B",
+    Grade_5 = "A",
+    Grade_6 = "S",
+    Grade_7 = "SS",
+}
+
+local ZeroBasedGradeNameMap = {
+    [0] = "E",
+    [1] = "D",
+    [2] = "C",
+    [3] = "B",
+    [4] = "A",
+    [5] = "S",
+    [6] = "SS",
+}
+
+local OneBasedGradeNameMap = {
+    [1] = "E",
+    [2] = "D",
+    [3] = "C",
+    [4] = "B",
+    [5] = "A",
+    [6] = "S",
+    [7] = "SS",
+}
+
+local GradeOrderMap = {
+    E = 1,
+    D = 2,
+    C = 3,
+    B = 4,
+    A = 5,
+    S = 6,
+    SS = 7,
+}
+
+-- SpecialProp: 0=普通, 1=巨大, 2=闪光, 4=血月 (可组合)
+local SpecialPropDef = { Tp_Giant = 1, Tp_Shiny = 2, Tp_Bloodlit = 4 }
+local SpecialPropName = { [1] = "巨大", [2] = "闪光", [4] = "血月" }
+
+local cachedGradeAliasMap
+
+local function BuildGradeAliasMap()
+    local aliases = {}
+    local petGrade = PathTool.Constants and PathTool.Constants.PetGrade
+
+    if type(petGrade) == "table" then
+        for enumName, gradeName in pairs(GradeEnumNameMap) do
+            local enumValue = petGrade[enumName]
+            if enumValue ~= nil then
+                aliases[tostring(enumValue)] = gradeName
+            end
         end
     end
 
-    if Ui.collapseBtn then
-        Ui.collapseBtn.Text = State.collapsed and "展开" or "收起"
-        Ui.collapseBtn.BackgroundColor3 = State.collapsed and COLOR_BTN_ON or COLOR_BTN_OFF
-    end
+    return aliases
 end
 
-local function setCollapsed(collapsed)
-    State.collapsed = collapsed == true
-    applyCollapseVisual()
-    saveMemory()
+local function GetGradeAliasMap()
+    if not cachedGradeAliasMap then
+        cachedGradeAliasMap = BuildGradeAliasMap()
+    end
+    return cachedGradeAliasMap
 end
 
-local function updateToggleVisual()
-    if Ui.autoHatchBtn then
-        Ui.autoHatchBtn.Text = State.autoHatch and "孵化:开" or "孵化:关"
-        Ui.autoHatchBtn.BackgroundColor3 = State.autoHatch and COLOR_BTN_ON or COLOR_BTN_OFF
+local function NormalizeGradeName(value)
+    if value == nil then
+        return nil
     end
-    if Ui.autoSkipBtn then
-        Ui.autoSkipBtn.Text = State.autoSkip and "跳过:开" or "跳过:关"
-        Ui.autoSkipBtn.BackgroundColor3 = State.autoSkip and COLOR_BTN_SKIP or COLOR_BTN_OFF
+
+    local valueType = type(value)
+    if valueType == "string" then
+        local trimmed = value:match("^%s*(.-)%s*$")
+        if trimmed == "" then
+            return nil
+        end
+
+        local upper = string.upper(trimmed)
+        if GradeOrderMap[upper] then
+            return upper
+        end
+
+        local enumIndex = upper:match("^GRADE_(%d+)$")
+        if enumIndex then
+            local numericIndex = tonumber(enumIndex)
+            return OneBasedGradeNameMap[numericIndex] or ZeroBasedGradeNameMap[numericIndex] or upper
+        end
+
+        local alias = GetGradeAliasMap()[trimmed]
+        if alias then
+            return alias
+        end
+
+        local numericValue = tonumber(trimmed)
+        if numericValue ~= nil then
+            return NormalizeGradeName(numericValue)
+        end
+
+        return trimmed
     end
+
+    if valueType == "number" then
+        local constantsName = PathTool.Constants
+            and PathTool.Constants.PetGradeName
+            and PathTool.Constants.PetGradeName[value]
+        if constantsName ~= nil then
+            local normalizedConstantsName = NormalizeGradeName(constantsName)
+            if normalizedConstantsName then
+                return normalizedConstantsName
+            end
+        end
+
+        local alias = GetGradeAliasMap()[tostring(value)]
+        if alias then
+            return alias
+        end
+
+        return OneBasedGradeNameMap[value] or ZeroBasedGradeNameMap[value] or tostring(value)
+    end
+
+    return tostring(value)
 end
 
-local function getEggList()
-    local gp = getGamePlayer()
-    local list = {}
-    if not (gp and gp.egg and gp.egg.IterEgg and PathTool.CfgEgg and PathTool.CfgEgg.Tmpls) then
-        return list
+local function GetGradeDisplayName(grade)
+    return NormalizeGradeName(grade) or "?"
+end
+
+local function GetGradeSortOrder(gradeName)
+    return GradeOrderMap[gradeName] or 999
+end
+
+local function GetSpecialPropDisplayName(specialProp)
+    if specialProp == nil or specialProp == 0 then
+        return "普通"
     end
+
+    if PathTool.PetSpecialPropUtil and PathTool.PetSpecialPropUtil.SpecialPropertyDesc then
+        local desc = PathTool.PetSpecialPropUtil.SpecialPropertyDesc[specialProp]
+        if desc and desc.Name then
+            return desc.Name
+        end
+    end
+
+    local parts = {}
+    local function hasBit(n, b)
+        if bit32 then
+            return bit32.band(n, b) > 0
+        end
+        return math.floor(n / b) % 2 == 1
+    end
+
+    for _, val in pairs(SpecialPropDef) do
+        if hasBit(specialProp, val) and SpecialPropName[val] then
+            table.insert(parts, SpecialPropName[val])
+        end
+    end
+
+    if #parts > 0 then
+        return table.concat(parts, "+")
+    end
+
+    return tostring(specialProp)
+end
+
+-- 收集所有宠物 (按模板+品阶+特殊属性细分)
+local function GetAllPetTemplates()
+    local gp = GetGamePlayer()
+    if not gp or not gp.pet then
+        return {}
+    end
+
+    local group = {}
 
     pcall(function()
-        gp.egg:IterEgg(function(tmplId, amount)
-            local cfg = PathTool.CfgEgg.Tmpls[tmplId]
-            if cfg and amount and amount > 0 then
-                table.insert(list, {
-                    tmplId = tmplId,
-                    name = tostring(cfg.Name or ("Egg#" .. tostring(tmplId))),
-                    amount = amount,
-                    hatchTime = tonumber(cfg.HatchTime) or 0,
-                })
+        gp.pet:IterItem(function(petItem)
+            if not petItem then
+                return true
             end
+
+            local tmplId = petItem:GetTmplId()
+            local rawGrade = petItem:GetGrade()
+            local gradeKey = NormalizeGradeName(rawGrade)
+            local specialProp = petItem:GetSpecialProp()
+            if specialProp == nil then
+                specialProp = 0
+            end
+            if not tmplId then
+                return true
+            end
+
+            local key = string.format("%s_%s_%s", tostring(tmplId), tostring(gradeKey or "?"), tostring(specialProp))
+            if not group[key] then
+                local tmpl = petItem:GetTmpl()
+                local name = tmpl and tmpl.Name or ("ID:" .. tostring(tmplId))
+                local gradeName = GetGradeDisplayName(rawGrade)
+                local spName = GetSpecialPropDisplayName(specialProp)
+                group[key] = {
+                    tmplId = tmplId,
+                    gradeKey = gradeKey,
+                    gradeName = gradeName,
+                    specialProp = specialProp,
+                    specialPropName = spName,
+                    name = name,
+                    count = 0,
+                }
+            end
+            group[key].count = group[key].count + 1
             return true
         end)
     end)
 
-    table.sort(list, function(a, b)
+    local templates = {}
+    for _, templateData in pairs(group) do
+        table.insert(templates, templateData)
+    end
+
+    table.sort(templates, function(a, b)
         if a.name ~= b.name then
             return a.name < b.name
         end
-        return a.tmplId < b.tmplId
-    end)
-    return list
-end
-
-local function getSlotList()
-    local gp = getGamePlayer()
-    local list = {}
-    if not (gp and gp.egg and PathTool.CfgEgg and PathTool.CfgEgg.Hatchs) then
-        return list
-    end
-
-    local now = PathTool.Utils.GetServerTime()
-    for slotIndex, cfg in pairs(PathTool.CfgEgg.Hatchs) do
-        local unlocked = false
-        local eggTmplId = nil
-        local startTick = nil
-        local eggName = nil
-        local leftTime = nil
-        local completed = false
-
-        pcall(function()
-            unlocked = gp.egg:IsHatchUnlocked(slotIndex)
-            eggTmplId = gp.egg:GetHatchEggTmplId(slotIndex)
-            startTick = gp.egg:GetHatchEggStartTick(slotIndex)
-        end)
-
-        if eggTmplId and PathTool.CfgEgg.Tmpls[eggTmplId] then
-            local eggCfg = PathTool.CfgEgg.Tmpls[eggTmplId]
-            eggName = tostring(eggCfg.Name or eggTmplId)
-            local finishAt = (tonumber(startTick) or 0) + (tonumber(eggCfg.HatchTime) or 0)
-            leftTime = math.max(0, finishAt - now)
-            completed = leftTime <= 0
+        if (a.gradeName or "?") ~= (b.gradeName or "?") then
+            return GetGradeSortOrder(a.gradeName) < GetGradeSortOrder(b.gradeName)
         end
-
-        table.insert(list, {
-            slotIndex = slotIndex,
-            unlocked = unlocked,
-            eggTmplId = eggTmplId,
-            eggName = eggName,
-            leftTime = leftTime,
-            completed = completed,
-            unlockProductKey = cfg and cfg.UnlockProductKey,
-            unlockCost = cfg and cfg.UnlockCost,
-        })
-    end
-
-    table.sort(list, function(a, b)
-        return a.slotIndex < b.slotIndex
+        return (a.specialPropName or "?") < (b.specialPropName or "?")
     end)
-    return list
+
+    return templates
 end
 
-local refreshUi
-
-local function startHatch(slotIndex, eggTmplId)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchStart, slotIndex, eggTmplId)
-    if ok and result then
-        local eggName = (PathTool.CfgEgg and PathTool.CfgEgg.Tmpls and PathTool.CfgEgg.Tmpls[eggTmplId] and PathTool.CfgEgg.Tmpls[eggTmplId].Name) or eggTmplId
-        setStatus(string.format("槽位 %d 开始孵化 %s", slotIndex, tostring(eggName)), COLOR_OK)
-        return true
+-- 锁定/解锁指定模板（可选品阶、特殊属性）的宠物
+local function SetPetLockByTemplate(tmplId, gradeKey, specialProp, lock)
+    local gp = GetGamePlayer()
+    if not gp or not gp.pet then
+        return 0, 0
     end
-    return false
-end
 
-local function takeHatched(slotIndex)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchTaken, slotIndex)
-    if ok and result then
-        setStatus(string.format("槽位 %d 领取成功", slotIndex), COLOR_OK)
-        return true
-    end
-    return false
-end
+    local done = 0
+    local failed = 0
 
-local function skipHatch(slotIndex)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchSkip, slotIndex, true)
-    if ok and result then
-        setStatus(string.format("槽位 %d 已跳过", slotIndex), COLOR_WARN)
-        return true
-    end
-    return false
-end
-
-local function unlockSlot(slotIndex)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchUnlock, slotIndex)
-    if ok and result then
-        setStatus(string.format("槽位 %d 解锁成功", slotIndex), COLOR_OK)
-        return true
-    end
-    if PathTool.ExchangeSystem and PathTool.CfgEgg and PathTool.CfgEgg.Hatchs and PathTool.CfgEgg.Hatchs[slotIndex] then
-        local cfg = PathTool.CfgEgg.Hatchs[slotIndex]
-        if cfg.UnlockProductKey then
-            local okBuy, buyResult = pcall(function()
-                return PathTool.ExchangeSystem.BuyGoods(cfg.UnlockProductKey)
-            end)
-            if okBuy and buyResult then
-                setStatus(string.format("槽位 %d 购买解锁成功", slotIndex), COLOR_OK)
+    pcall(function()
+        gp.pet:IterItem(function(petItem)
+            if not petItem then
                 return true
             end
-        end
-    end
-    return false
-end
 
-local function renderEggs()
-    clearScrollingChildren(Ui.eggsScroll)
-    local eggs = getEggList()
-
-    for i, egg in ipairs(eggs) do
-        local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -8, 0, 42)
-        row.BackgroundColor3 = (State.selectedEggTmplId == egg.tmplId) and COLOR_SELECTED or COLOR_PANEL_2
-        row.BorderSizePixel = 0
-        row.AutoButtonColor = false
-        row.Text = ""
-        row.LayoutOrder = i
-        row.Parent = Ui.eggsScroll
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-
-        local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, -12, 0, 18)
-        title.Position = UDim2.new(0, 8, 0, 4)
-        title.BackgroundTransparency = 1
-        title.TextXAlignment = Enum.TextXAlignment.Left
-        title.TextColor3 = COLOR_TEXT
-        title.Font = Enum.Font.GothamBold
-        title.TextSize = 12
-        title.Text = string.format("%s x%s", egg.name, tostring(egg.amount))
-        title.Parent = row
-
-        local desc = Instance.new("TextLabel")
-        desc.Size = UDim2.new(1, -12, 0, 16)
-        desc.Position = UDim2.new(0, 8, 0, 22)
-        desc.BackgroundTransparency = 1
-        desc.TextXAlignment = Enum.TextXAlignment.Left
-        desc.TextColor3 = COLOR_DIM
-        desc.Font = Enum.Font.Gotham
-        desc.TextSize = 10
-        desc.Text = string.format("ID=%s | 孵化=%s", tostring(egg.tmplId), formatTimeLeft(egg.hatchTime))
-        desc.Parent = row
-
-        connect(row.MouseButton1Click, function()
-            State.selectedEggTmplId = egg.tmplId
-            saveMemory()
-            setStatus(string.format("已选中鸡蛋: %s", tostring(egg.name)), COLOR_OK)
-            refreshUi()
-        end)
-    end
-
-    local layout = Ui.eggsScroll:FindFirstChildOfClass("UIListLayout")
-    Ui.eggsScroll.CanvasSize = UDim2.new(0, 0, 0, (layout and layout.AbsoluteContentSize.Y or 0) + 8)
-end
-
-local function renderSlots()
-    clearScrollingChildren(Ui.slotsScroll)
-    local slots = getSlotList()
-
-    for i, slot in ipairs(slots) do
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, -8, 0, 64)
-        row.BackgroundColor3 = COLOR_PANEL_2
-        row.BorderSizePixel = 0
-        row.LayoutOrder = i
-        row.Parent = Ui.slotsScroll
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-
-        local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, -12, 0, 16)
-        title.Position = UDim2.new(0, 8, 0, 4)
-        title.BackgroundTransparency = 1
-        title.TextXAlignment = Enum.TextXAlignment.Left
-        title.TextColor3 = COLOR_TEXT
-        title.Font = Enum.Font.GothamBold
-        title.TextSize = 12
-        title.Text = string.format("槽位 %d", slot.slotIndex)
-        title.Parent = row
-
-        local info = Instance.new("TextLabel")
-        info.Size = UDim2.new(1, -100, 0, 34)
-        info.Position = UDim2.new(0, 8, 0, 22)
-        info.BackgroundTransparency = 1
-        info.TextWrapped = true
-        info.TextXAlignment = Enum.TextXAlignment.Left
-        info.TextYAlignment = Enum.TextYAlignment.Top
-        info.TextColor3 = COLOR_DIM
-        info.Font = Enum.Font.Gotham
-        info.TextSize = 10
-        info.Parent = row
-
-        if not slot.unlocked then
-            info.Text = "状态: 未解锁"
-            makeButton(row, "解锁", COLOR_BTN_SKIP, 60, function()
-                if unlockSlot(slot.slotIndex) then
-                    task.delay(0.2, refreshUi)
-                else
-                    setStatus(string.format("槽位 %d 解锁失败", slot.slotIndex), COLOR_ERR)
-                end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
-        elseif not slot.eggTmplId then
-            info.Text = "状态: 空闲"
-            makeButton(row, "开始", COLOR_BTN, 60, function()
-                if not State.selectedEggTmplId then
-                    setStatus("请先在上方选中鸡蛋", COLOR_WARN)
-                    return
-                end
-                if startHatch(slot.slotIndex, State.selectedEggTmplId) then
-                    task.delay(0.2, refreshUi)
-                else
-                    setStatus(string.format("槽位 %d 开始失败", slot.slotIndex), COLOR_ERR)
-                end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
-        elseif slot.completed then
-            info.Text = string.format("状态: 已完成\n鸡蛋: %s", tostring(slot.eggName or slot.eggTmplId))
-            makeButton(row, "领取", COLOR_BTN_ON, 60, function()
-                if takeHatched(slot.slotIndex) then
-                    task.delay(0.2, refreshUi)
-                else
-                    setStatus(string.format("槽位 %d 领取失败", slot.slotIndex), COLOR_ERR)
-                end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
-        else
-            info.Text = string.format("状态: 孵化中\n%s | 剩余 %s", tostring(slot.eggName or slot.eggTmplId), formatTimeLeft(slot.leftTime))
-            makeButton(row, "跳过", COLOR_BTN_SKIP, 60, function()
-                if skipHatch(slot.slotIndex) then
-                    task.delay(0.2, refreshUi)
-                else
-                    setStatus(string.format("槽位 %d 跳过失败", slot.slotIndex), COLOR_ERR)
-                end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
-        end
-    end
-
-    local layout = Ui.slotsScroll:FindFirstChildOfClass("UIListLayout")
-    Ui.slotsScroll.CanvasSize = UDim2.new(0, 0, 0, (layout and layout.AbsoluteContentSize.Y or 0) + 8)
-end
-
-refreshUi = function()
-    if State.destroyed then
-        return
-    end
-    renderEggs()
-    renderSlots()
-    updateToggleVisual()
-    State.lastUiRefresh = tick()
-end
-
-local function runAutomationLoop()
-    if State.destroyed then
-        return
-    end
-    if tick() - State.lastLoopAt < 0.6 then
-        return
-    end
-    State.lastLoopAt = tick()
-
-    local slots = getSlotList()
-
-    for _, slot in ipairs(slots) do
-        if slot.completed then
-            if takeHatched(slot.slotIndex) then
-                task.delay(0.15, refreshUi)
-                return
+            if tmplId ~= nil and petItem:GetTmplId() ~= tmplId then
+                return true
             end
-        end
-    end
 
-    if State.autoSkip then
-        for _, slot in ipairs(slots) do
-            if slot.unlocked and slot.eggTmplId and (not slot.completed) then
-                if skipHatch(slot.slotIndex) then
-                    task.delay(0.15, refreshUi)
-                    return
+            if gradeKey ~= nil and NormalizeGradeName(petItem:GetGrade()) ~= gradeKey then
+                return true
+            end
+
+            if specialProp ~= nil then
+                local itemSpecialProp = petItem:GetSpecialProp()
+                if (itemSpecialProp or 0) ~= specialProp then
+                    return true
                 end
             end
-        end
-    end
 
-    if State.autoHatch and State.selectedEggTmplId then
-        local gp = getGamePlayer()
-        local eggAmount = 0
-        pcall(function()
-            eggAmount = gp.egg:GetEggAmount(State.selectedEggTmplId)
-        end)
-        if eggAmount <= 0 then
-            local eggName = (PathTool.CfgEgg and PathTool.CfgEgg.Tmpls and PathTool.CfgEgg.Tmpls[State.selectedEggTmplId] and PathTool.CfgEgg.Tmpls[State.selectedEggTmplId].Name) or State.selectedEggTmplId
-            setStatus(string.format("选中鸡蛋不足: %s", tostring(eggName)), COLOR_WARN)
-            return
-        end
-
-        for _, slot in ipairs(slots) do
-            if slot.unlocked and not slot.eggTmplId then
-                if startHatch(slot.slotIndex, State.selectedEggTmplId) then
-                    task.delay(0.15, refreshUi)
-                    return
-                end
+            local petItemId = petItem:GetId()
+            if not petItemId then
+                return true
             end
-        end
-    end
-end
 
-local function makeDraggable(handle, target)
-    local dragging = false
-    local dragStart
-    local startPos
+            if petItem:IsLock() == lock then
+                return true
+            end
 
-    local function update(input)
-        local delta = input.Position - dragStart
-        target.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-    end
-
-    connect(handle.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = target.Position
-            connect(input.Changed, function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    saveMemory()
-                end
+            local ok, result = pcall(function()
+                return PetSystem.ClientLockPet(petItemId, lock)
             end)
-        end
+
+            if ok and result then
+                done = done + 1
+                task.wait(0.2)
+            else
+                failed = failed + 1
+            end
+
+            return true
+        end)
     end)
 
-    connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            update(input)
-        end
-    end)
+    return done, failed
 end
 
-local function buildUI()
-    local playerGui = localPlayer:WaitForChild("PlayerGui")
-    local old = playerGui:FindFirstChild("HatchTestCursorGui")
-    if old then
-        old:Destroy()
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "HatchTestCursorGui"
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = playerGui
-    Ui.screenGui = screenGui
-
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, FRAME_WIDTH, 0, State.collapsed and FRAME_COLLAPSED_HEIGHT or FRAME_EXPANDED_HEIGHT)
-    if type(State.windowPosition) == "table" then
-        frame.Position = UDim2.new(
-            tonumber(State.windowPosition.xScale) or 0.5,
-            tonumber(State.windowPosition.xOffset) or -105,
-            tonumber(State.windowPosition.yScale) or 0.5,
-            tonumber(State.windowPosition.yOffset) or -215
-        )
-    else
-        frame.Position = UDim2.new(0.5, -105, 0.5, -215)
-    end
-    frame.BackgroundColor3 = COLOR_BG
-    frame.BorderSizePixel = 0
-    frame.ClipsDescendants = true
-    frame.Parent = screenGui
-    Ui.frame = frame
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
-
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 36)
-    titleBar.BackgroundColor3 = COLOR_BG
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = frame
-    Ui.titleBar = titleBar
-    makeDraggable(titleBar, frame)
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -150, 1, 0)
-    title.Position = UDim2.new(0, 10, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "孵化界面"
-    title.TextColor3 = COLOR_TEXT
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 16
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = titleBar
-
-    Ui.collapseBtn = makeButton(titleBar, State.collapsed and "展开" or "收起", COLOR_BTN_OFF, 42, function()
-        setCollapsed(not State.collapsed)
-    end)
-    Ui.collapseBtn.Position = UDim2.new(1, -142, 0.5, -13)
-
-    makeButton(titleBar, "刷新", COLOR_BTN, 42, function()
-        setStatus("已刷新", COLOR_OK)
-        refreshUi()
-    end).Position = UDim2.new(1, -96, 0.5, -13)
-
-    makeButton(titleBar, "关闭", COLOR_ERR, 42, function()
-        HatchTest.Destroy()
-    end).Position = UDim2.new(1, -50, 0.5, -13)
-
-    Ui.autoHatchBtn = addCollapsible(makeButton(frame, "自动孵化", COLOR_BTN_OFF, 90, function()
-        State.autoHatch = not State.autoHatch
-        updateToggleVisual()
-        saveMemory()
-        setStatus(State.autoHatch and "自动孵化已开启" or "自动孵化已关闭", COLOR_OK)
-    end))
-    Ui.autoHatchBtn.Position = UDim2.new(0, 10, 0, 42)
-
-    Ui.autoSkipBtn = addCollapsible(makeButton(frame, "自动跳过", COLOR_BTN_OFF, 90, function()
-        State.autoSkip = not State.autoSkip
-        updateToggleVisual()
-        saveMemory()
-        setStatus(State.autoSkip and "自动跳过已开启" or "自动跳过已关闭", COLOR_WARN)
-    end))
-    Ui.autoSkipBtn.Position = UDim2.new(0, 108, 0, 42)
-
-    local eggsTitle = Instance.new("TextLabel")
-    eggsTitle.Size = UDim2.new(1, -20, 0, 16)
-    eggsTitle.Position = UDim2.new(0, 10, 0, 76)
-    eggsTitle.BackgroundTransparency = 1
-    eggsTitle.Text = "鸡蛋背包"
-    eggsTitle.TextColor3 = COLOR_TEXT
-    eggsTitle.Font = Enum.Font.GothamBold
-    eggsTitle.TextSize = 13
-    eggsTitle.TextXAlignment = Enum.TextXAlignment.Left
-    eggsTitle.Parent = frame
-    addCollapsible(eggsTitle)
-
-    local eggsScroll = Instance.new("ScrollingFrame")
-    eggsScroll.Size = UDim2.new(1, -20, 0, 128)
-    eggsScroll.Position = UDim2.new(0, 10, 0, 96)
-    eggsScroll.BackgroundColor3 = COLOR_PANEL
-    eggsScroll.BorderSizePixel = 0
-    eggsScroll.ScrollBarThickness = 5
-    eggsScroll.Parent = frame
-    Ui.eggsScroll = eggsScroll
-    addCollapsible(eggsScroll)
-    Instance.new("UICorner", eggsScroll).CornerRadius = UDim.new(0, 8)
-
-    local eggsLayout = Instance.new("UIListLayout")
-    eggsLayout.Padding = UDim.new(0, 6)
-    eggsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    eggsLayout.Parent = eggsScroll
-
-    local eggsPadding = Instance.new("UIPadding")
-    eggsPadding.PaddingTop = UDim.new(0, 6)
-    eggsPadding.PaddingBottom = UDim.new(0, 6)
-    eggsPadding.PaddingLeft = UDim.new(0, 6)
-    eggsPadding.PaddingRight = UDim.new(0, 6)
-    eggsPadding.Parent = eggsScroll
-
-    local slotsTitle = Instance.new("TextLabel")
-    slotsTitle.Size = UDim2.new(1, -20, 0, 16)
-    slotsTitle.Position = UDim2.new(0, 10, 0, 232)
-    slotsTitle.BackgroundTransparency = 1
-    slotsTitle.Text = "孵化槽位"
-    slotsTitle.TextColor3 = COLOR_TEXT
-    slotsTitle.Font = Enum.Font.GothamBold
-    slotsTitle.TextSize = 13
-    slotsTitle.TextXAlignment = Enum.TextXAlignment.Left
-    slotsTitle.Parent = frame
-    addCollapsible(slotsTitle)
-
-    local slotsScroll = Instance.new("ScrollingFrame")
-    slotsScroll.Size = UDim2.new(1, -20, 0, 146)
-    slotsScroll.Position = UDim2.new(0, 10, 0, 252)
-    slotsScroll.BackgroundColor3 = COLOR_PANEL
-    slotsScroll.BorderSizePixel = 0
-    slotsScroll.ScrollBarThickness = 5
-    slotsScroll.Parent = frame
-    Ui.slotsScroll = slotsScroll
-    addCollapsible(slotsScroll)
-    Instance.new("UICorner", slotsScroll).CornerRadius = UDim.new(0, 8)
-
-    local slotsLayout = Instance.new("UIListLayout")
-    slotsLayout.Padding = UDim.new(0, 6)
-    slotsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    slotsLayout.Parent = slotsScroll
-
-    local slotsPadding = Instance.new("UIPadding")
-    slotsPadding.PaddingTop = UDim.new(0, 6)
-    slotsPadding.PaddingBottom = UDim.new(0, 6)
-    slotsPadding.PaddingLeft = UDim.new(0, 6)
-    slotsPadding.PaddingRight = UDim.new(0, 6)
-    slotsPadding.Parent = slotsScroll
-
-    local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(1, -20, 0, 20)
-    status.Position = UDim2.new(0, 10, 1, -24)
-    status.BackgroundTransparency = 1
-    status.Text = "就绪"
-    status.TextColor3 = COLOR_OK
-    status.Font = Enum.Font.Gotham
-    status.TextSize = 11
-    status.TextXAlignment = Enum.TextXAlignment.Left
-    status.Parent = frame
-    Ui.statusLabel = status
-    addCollapsible(status)
-
-    applyCollapseVisual()
+local function LockAllPets(lock)
+    return SetPetLockByTemplate(nil, nil, nil, lock)
 end
 
-function HatchTest.SaveMemory()
-    saveMemory()
+-- ===== UI =====
+local existingCoreGui = CoreGui:FindFirstChild("PetLockUnlockUI")
+if existingCoreGui then
+    existingCoreGui:Destroy()
 end
 
-function HatchTest.GetMemoryFile()
-    return MEMORY_FILE
-end
-
-function HatchTest.SetCollapsed(collapsed)
-    setCollapsed(collapsed == true)
-end
-
-function HatchTest.ToggleCollapsed()
-    setCollapsed(not State.collapsed)
-end
-
-function HatchTest.Destroy()
-    if State.destroyed then
-        return
-    end
-    saveMemory()
-    State.destroyed = true
-    disconnectAll()
-    if Ui.screenGui then
-        Ui.screenGui:Destroy()
-    end
-    Ui.screenGui = nil
-    if rawget(_G, "HatchTest") == HatchTest then
-        _G.HatchTest = nil
+local playerGui = player:FindFirstChild("PlayerGui")
+if playerGui then
+    local existingPlayerGui = playerGui:FindFirstChild("PetLockUnlockUI")
+    if existingPlayerGui then
+        existingPlayerGui:Destroy()
     end
 end
 
-buildUI()
-refreshUi()
-setStatus("孵化界面已加载", COLOR_OK)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "PetLockUnlockUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.DisplayOrder = 999999
+screenGui.IgnoreGuiInset = false
 
-connect(RunService.Heartbeat, function()
-    if State.destroyed then
-        return
-    end
-
-    if tick() - State.lastUiRefresh >= 1.0 then
-        refreshUi()
-    end
-
-    runAutomationLoop()
+local parentedToCoreGui = pcall(function()
+    screenGui.Parent = CoreGui
 end)
 
-if PathTool.EventSystem then
-    PathTool.EventSystem.RegisterListener("EggBagChange", refreshUi)
-    PathTool.EventSystem.RegisterListener("EggHatchChange", refreshUi)
-    table.insert(Conns, {
-        Disconnect = function()
-            pcall(function()
-                PathTool.EventSystem.UnRegister("EggBagChange", refreshUi)
-            end)
-            pcall(function()
-                PathTool.EventSystem.UnRegister("EggHatchChange", refreshUi)
-            end)
-        end
-    })
+if not parentedToCoreGui or screenGui.Parent ~= CoreGui then
+    screenGui.Parent = player:WaitForChild("PlayerGui")
 end
 
-_G.HatchTest = HatchTest
-return HatchTest
+local isTouchDevice = UserInputService.TouchEnabled
+local TITLE_BAR_HEIGHT = isTouchDevice and 44 or 34
+local TITLE_BUTTON_SIZE = isTouchDevice and 28 or 22
+local BUTTON_HEIGHT = isTouchDevice and 40 or 34
+local ROW_HEIGHT = isTouchDevice and 44 or 34
+local PANEL_PADDING = isTouchDevice and 10 or 8
+local CONTENT_GAP = isTouchDevice and 8 or 6
+
+local function GetViewportSize()
+    local camera = workspace.CurrentCamera
+    if camera and camera.ViewportSize.X > 0 and camera.ViewportSize.Y > 0 then
+        return camera.ViewportSize
+    end
+    return Vector2.new(1280, 720)
+end
+
+local function GetExpandedSize()
+    local viewportSize = GetViewportSize()
+    if isTouchDevice then
+        local width = math.clamp(math.floor(viewportSize.X * 0.92), 290, 460)
+        local height = math.clamp(math.floor(viewportSize.Y * 0.72), 280, 620)
+        return Vector2.new(width, height)
+    end
+
+    return Vector2.new(320, 420)
+end
+
+local function GetDefaultPosition(size)
+    local viewportSize = GetViewportSize()
+    if isTouchDevice then
+        return Vector2.new(
+            math.floor((viewportSize.X - size.X) / 2),
+            math.floor((viewportSize.Y - size.Y) / 2)
+        )
+    end
+
+    return Vector2.new(
+        math.max(8, viewportSize.X - size.X - 20),
+        20
+    )
+end
+
+local function ClampFramePosition(position, size)
+    local viewportSize = GetViewportSize()
+    local margin = 8
+    local minX = margin
+    local minY = margin
+    local maxX = math.max(minX, viewportSize.X - size.X - margin)
+    local maxY = math.max(minY, viewportSize.Y - size.Y - margin)
+
+    return Vector2.new(
+        math.clamp(math.floor(position.X + 0.5), minX, maxX),
+        math.clamp(math.floor(position.Y + 0.5), minY, maxY)
+    )
+end
+
+local mainFrame = Instance.new("Frame")
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.Parent = mainFrame
+
+local titleBar = Instance.new("Frame")
+titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleBarCorner = Instance.new("UICorner")
+titleBarCorner.CornerRadius = UDim.new(0, 10)
+titleBarCorner.Parent = titleBar
+
+local titleBarFill = Instance.new("Frame")
+titleBarFill.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+titleBarFill.BorderSizePixel = 0
+titleBarFill.Parent = titleBar
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Text = "宠物锁定管理"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = isTouchDevice and 15 or 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+
+local collapseBtn = Instance.new("TextButton")
+collapseBtn.BackgroundColor3 = Color3.fromRGB(80, 110, 180)
+collapseBtn.Text = "收"
+collapseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+collapseBtn.Font = Enum.Font.GothamBold
+collapseBtn.TextSize = isTouchDevice and 14 or 12
+collapseBtn.Parent = titleBar
+Instance.new("UICorner", collapseBtn).CornerRadius = UDim.new(0, 5)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = isTouchDevice and 14 or 12
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
+
+local contentFrame = Instance.new("Frame")
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+
+local allBtnFrame = Instance.new("Frame")
+allBtnFrame.BackgroundTransparency = 1
+allBtnFrame.Parent = contentFrame
+
+local lockAllBtn = Instance.new("TextButton")
+lockAllBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+lockAllBtn.Text = "全部上锁"
+lockAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+lockAllBtn.Font = Enum.Font.Gotham
+lockAllBtn.TextSize = isTouchDevice and 15 or 14
+lockAllBtn.Parent = allBtnFrame
+Instance.new("UICorner", lockAllBtn).CornerRadius = UDim.new(0, 6)
+
+local unlockAllBtn = Instance.new("TextButton")
+unlockAllBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+unlockAllBtn.Text = "全部解锁"
+unlockAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+unlockAllBtn.Font = Enum.Font.Gotham
+unlockAllBtn.TextSize = isTouchDevice and 15 or 14
+unlockAllBtn.Parent = allBtnFrame
+Instance.new("UICorner", unlockAllBtn).CornerRadius = UDim.new(0, 6)
+
+local separator = Instance.new("Frame")
+separator.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+separator.BorderSizePixel = 0
+separator.Parent = contentFrame
+
+local filterHeader = Instance.new("Frame")
+filterHeader.BackgroundTransparency = 1
+filterHeader.Parent = contentFrame
+
+local filterTitle = Instance.new("TextLabel")
+filterTitle.BackgroundTransparency = 1
+filterTitle.Text = "按类型×品阶×特殊操作"
+filterTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+filterTitle.Font = Enum.Font.Gotham
+filterTitle.TextSize = isTouchDevice and 13 or 12
+filterTitle.TextXAlignment = Enum.TextXAlignment.Left
+filterTitle.Parent = filterHeader
+
+local refreshBtn = Instance.new("TextButton")
+refreshBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+refreshBtn.Text = "刷新"
+refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+refreshBtn.Font = Enum.Font.Gotham
+refreshBtn.TextSize = isTouchDevice and 13 or 11
+refreshBtn.Parent = filterHeader
+Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 4)
+
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = isTouchDevice and 8 or 6
+scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+scrollFrame.Parent = contentFrame
+Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 6)
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0, 4)
+listLayout.Parent = scrollFrame
+
+local listPadding = Instance.new("UIPadding")
+listPadding.PaddingTop = UDim.new(0, 4)
+listPadding.PaddingLeft = UDim.new(0, 4)
+listPadding.PaddingRight = UDim.new(0, 4)
+listPadding.Parent = scrollFrame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "就绪"
+statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = isTouchDevice and 12 or 11
+statusLabel.TextWrapped = true
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.TextYAlignment = Enum.TextYAlignment.Center
+statusLabel.Parent = contentFrame
+
+local expandedSize = GetExpandedSize()
+local isCollapsed = false
+local layoutInitialized = false
+
+local function UpdateScrollCanvas()
+    scrollFrame.CanvasSize = UDim2.fromOffset(0, listLayout.AbsoluteContentSize.Y + 8)
+end
+
+listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(UpdateScrollCanvas)
+
+local function ApplyContentLayout()
+    titleBar.Size = UDim2.new(1, 0, 0, TITLE_BAR_HEIGHT)
+    titleBarFill.Size = UDim2.new(1, 0, 0, 10)
+    titleBarFill.Position = UDim2.new(0, 0, 1, -10)
+
+    closeBtn.Size = UDim2.fromOffset(TITLE_BUTTON_SIZE, TITLE_BUTTON_SIZE)
+    closeBtn.Position = UDim2.new(1, -PANEL_PADDING - TITLE_BUTTON_SIZE, 0.5, -math.floor(TITLE_BUTTON_SIZE / 2))
+
+    collapseBtn.Size = UDim2.fromOffset(TITLE_BUTTON_SIZE, TITLE_BUTTON_SIZE)
+    collapseBtn.Position = UDim2.new(1, -PANEL_PADDING * 2 - TITLE_BUTTON_SIZE * 2, 0.5, -math.floor(TITLE_BUTTON_SIZE / 2))
+
+    title.Size = UDim2.new(1, -(TITLE_BUTTON_SIZE * 2 + PANEL_PADDING * 4 + 12), 1, 0)
+    title.Position = UDim2.fromOffset(PANEL_PADDING, 0)
+
+    contentFrame.Position = UDim2.fromOffset(0, TITLE_BAR_HEIGHT)
+    contentFrame.Size = UDim2.new(1, 0, 1, -TITLE_BAR_HEIGHT)
+    contentFrame.Visible = not isCollapsed
+    if isCollapsed then
+        return
+    end
+
+    local contentWidth = mainFrame.AbsoluteSize.X
+    local contentHeight = mainFrame.AbsoluteSize.Y - TITLE_BAR_HEIGHT
+    local innerWidth = math.max(0, contentWidth - PANEL_PADDING * 2)
+    local y = PANEL_PADDING
+
+    allBtnFrame.Position = UDim2.fromOffset(PANEL_PADDING, y)
+    allBtnFrame.Size = UDim2.new(1, -PANEL_PADDING * 2, 0, BUTTON_HEIGHT)
+
+    local buttonGap = CONTENT_GAP
+    local buttonWidth = math.floor((innerWidth - buttonGap) / 2)
+    lockAllBtn.Size = UDim2.fromOffset(buttonWidth, BUTTON_HEIGHT)
+    lockAllBtn.Position = UDim2.fromOffset(0, 0)
+    unlockAllBtn.Size = UDim2.fromOffset(buttonWidth, BUTTON_HEIGHT)
+    unlockAllBtn.Position = UDim2.fromOffset(buttonWidth + buttonGap, 0)
+
+    y = y + BUTTON_HEIGHT + CONTENT_GAP
+
+    separator.Position = UDim2.fromOffset(PANEL_PADDING, y)
+    separator.Size = UDim2.new(1, -PANEL_PADDING * 2, 0, 1)
+
+    y = y + CONTENT_GAP
+
+    local headerHeight = BUTTON_HEIGHT - 8
+    filterHeader.Position = UDim2.fromOffset(PANEL_PADDING, y)
+    filterHeader.Size = UDim2.new(1, -PANEL_PADDING * 2, 0, headerHeight)
+
+    local refreshWidth = isTouchDevice and 64 or 54
+    refreshBtn.Size = UDim2.fromOffset(refreshWidth, BUTTON_HEIGHT - 12)
+    refreshBtn.Position = UDim2.new(1, -refreshWidth, 0.5, -math.floor((BUTTON_HEIGHT - 12) / 2))
+
+    filterTitle.Position = UDim2.fromOffset(0, 0)
+    filterTitle.Size = UDim2.new(1, -refreshWidth - CONTENT_GAP, 1, 0)
+
+    y = y + headerHeight + CONTENT_GAP
+
+    local statusHeight = isTouchDevice and 34 or 24
+    local scrollHeight = math.max(80, contentHeight - y - statusHeight - PANEL_PADDING - CONTENT_GAP)
+
+    scrollFrame.Position = UDim2.fromOffset(PANEL_PADDING, y)
+    scrollFrame.Size = UDim2.new(1, -PANEL_PADDING * 2, 0, scrollHeight)
+
+    y = y + scrollHeight + CONTENT_GAP
+
+    statusLabel.Position = UDim2.fromOffset(PANEL_PADDING, y)
+    statusLabel.Size = UDim2.new(1, -PANEL_PADDING * 2, 0, statusHeight)
+
+    UpdateScrollCanvas()
+end
+
+local function UpdateMainFrameLayout(preservePosition)
+    expandedSize = GetExpandedSize()
+    local targetSize = Vector2.new(expandedSize.X, isCollapsed and TITLE_BAR_HEIGHT or expandedSize.Y)
+
+    local position
+    if layoutInitialized and preservePosition then
+        position = Vector2.new(mainFrame.Position.X.Offset, mainFrame.Position.Y.Offset)
+    else
+        position = GetDefaultPosition(targetSize)
+    end
+
+    position = ClampFramePosition(position, targetSize)
+
+    mainFrame.Size = UDim2.fromOffset(targetSize.X, targetSize.Y)
+    mainFrame.Position = UDim2.fromOffset(position.X, position.Y)
+    layoutInitialized = true
+
+    ApplyContentLayout()
+end
+
+local function SetCollapsed(collapsed)
+    if isCollapsed == collapsed then
+        return
+    end
+
+    isCollapsed = collapsed
+    collapseBtn.Text = collapsed and "展" or "收"
+    UpdateMainFrameLayout(true)
+end
+
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Vector2.new(mainFrame.Position.X.Offset, mainFrame.Position.Y.Offset)
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        local targetSize = Vector2.new(mainFrame.AbsoluteSize.X, mainFrame.AbsoluteSize.Y)
+        local targetPosition = ClampFramePosition(startPos + delta, targetSize)
+        mainFrame.Position = UDim2.fromOffset(targetPosition.X, targetPosition.Y)
+    end
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+collapseBtn.MouseButton1Click:Connect(function()
+    SetCollapsed(not isCollapsed)
+end)
+
+local function CreateTemplateRow(tmplData, index)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -8, 0, ROW_HEIGHT)
+    row.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    row.BorderSizePixel = 0
+    row.LayoutOrder = index
+    row.Parent = scrollFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
+
+    local gradeName = tmplData.gradeName or "?"
+    local specialPropName = tmplData.specialPropName or "?"
+    local displayText = string.format("%s [%s|%s] (%d)", tmplData.name, gradeName, specialPropName, tmplData.count)
+
+    local actionButtonWidth = isTouchDevice and 48 or 40
+    local actionButtonHeight = ROW_HEIGHT - 12
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, -(actionButtonWidth * 2 + 24), 1, 0)
+    nameLabel.Position = UDim2.fromOffset(8, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = displayText
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.Font = Enum.Font.Gotham
+    nameLabel.TextSize = isTouchDevice and 13 or 11
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.Parent = row
+
+    local unlockBtn = Instance.new("TextButton")
+    unlockBtn.AnchorPoint = Vector2.new(1, 0.5)
+    unlockBtn.Size = UDim2.fromOffset(actionButtonWidth, actionButtonHeight)
+    unlockBtn.Position = UDim2.new(1, -8, 0.5, 0)
+    unlockBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 60)
+    unlockBtn.Text = "解"
+    unlockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    unlockBtn.Font = Enum.Font.Gotham
+    unlockBtn.TextSize = isTouchDevice and 13 or 11
+    unlockBtn.Parent = row
+    Instance.new("UICorner", unlockBtn).CornerRadius = UDim.new(0, 4)
+
+    local lockBtn = Instance.new("TextButton")
+    lockBtn.AnchorPoint = Vector2.new(1, 0.5)
+    lockBtn.Size = UDim2.fromOffset(actionButtonWidth, actionButtonHeight)
+    lockBtn.Position = UDim2.new(1, -(actionButtonWidth + 14), 0.5, 0)
+    lockBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+    lockBtn.Text = "锁"
+    lockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    lockBtn.Font = Enum.Font.Gotham
+    lockBtn.TextSize = isTouchDevice and 13 or 11
+    lockBtn.Parent = row
+    Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0, 4)
+
+    lockBtn.MouseButton1Click:Connect(function()
+        task.spawn(function()
+            lockBtn.Text = "..."
+            statusLabel.Text = string.format("正在锁定 %s [%s|%s]...", tmplData.name, gradeName, specialPropName)
+            local done, failed = SetPetLockByTemplate(tmplData.tmplId, tmplData.gradeKey, tmplData.specialProp, true)
+            lockBtn.Text = "锁"
+            statusLabel.Text = string.format("锁定 %s [%s|%s]: 成功%d 失败%d", tmplData.name, gradeName, specialPropName, done, failed)
+            print(string.format("[一键锁宠] 锁定 %s [%s|%s]: 成功 %d, 失败 %d", tmplData.name, gradeName, specialPropName, done, failed))
+        end)
+    end)
+
+    unlockBtn.MouseButton1Click:Connect(function()
+        task.spawn(function()
+            unlockBtn.Text = "..."
+            statusLabel.Text = string.format("正在解锁 %s [%s|%s]...", tmplData.name, gradeName, specialPropName)
+            local done, failed = SetPetLockByTemplate(tmplData.tmplId, tmplData.gradeKey, tmplData.specialProp, false)
+            unlockBtn.Text = "解"
+            statusLabel.Text = string.format("解锁 %s [%s|%s]: 成功%d 失败%d", tmplData.name, gradeName, specialPropName, done, failed)
+            print(string.format("[一键锁宠] 解锁 %s [%s|%s]: 成功 %d, 失败 %d", tmplData.name, gradeName, specialPropName, done, failed))
+        end)
+    end)
+
+    return row
+end
+
+local function RefreshTemplateList()
+    for _, child in ipairs(scrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+
+    statusLabel.Text = "加载中..."
+    task.wait(0.1)
+
+    local templates = GetAllPetTemplates()
+
+    if #templates == 0 then
+        statusLabel.Text = "背包中没有宠物"
+        UpdateScrollCanvas()
+        return
+    end
+
+    for index, tmplData in ipairs(templates) do
+        CreateTemplateRow(tmplData, index)
+    end
+
+    UpdateScrollCanvas()
+    statusLabel.Text = string.format("已加载 %d 种 (类型×品阶×特殊)", #templates)
+end
+
+lockAllBtn.MouseButton1Click:Connect(function()
+    task.spawn(function()
+        lockAllBtn.Text = "执行中..."
+        statusLabel.Text = "正在锁定全部宠物..."
+        local done, failed = LockAllPets(true)
+        lockAllBtn.Text = "全部上锁"
+        statusLabel.Text = string.format("全部上锁: 成功%d 失败%d", done, failed)
+        print(string.format("[一键锁宠] 全部上锁: 成功 %d, 失败 %d", done, failed))
+    end)
+end)
+
+unlockAllBtn.MouseButton1Click:Connect(function()
+    task.spawn(function()
+        unlockAllBtn.Text = "执行中..."
+        statusLabel.Text = "正在解锁全部宠物..."
+        local done, failed = LockAllPets(false)
+        unlockAllBtn.Text = "全部解锁"
+        statusLabel.Text = string.format("全部解锁: 成功%d 失败%d", done, failed)
+        print(string.format("[一键锁宠] 全部解锁: 成功 %d, 失败 %d", done, failed))
+    end)
+end)
+
+refreshBtn.MouseButton1Click:Connect(function()
+    task.spawn(RefreshTemplateList)
+end)
+
+local viewportConnection
+local function BindViewportWatcher()
+    if viewportConnection then
+        viewportConnection:Disconnect()
+        viewportConnection = nil
+    end
+
+    local camera = workspace.CurrentCamera
+    if camera then
+        viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            UpdateMainFrameLayout(true)
+        end)
+    end
+end
+
+BindViewportWatcher()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    BindViewportWatcher()
+    task.defer(function()
+        UpdateMainFrameLayout(true)
+    end)
+end)
+
+UpdateMainFrameLayout(false)
+
+task.spawn(function()
+    for _ = 1, 60 do
+        if GetGamePlayer() then
+            print("[一键锁宠] 已加载")
+            RefreshTemplateList()
+            return
+        end
+        task.wait(0.5)
+    end
+    statusLabel.Text = "加载超时，请点击刷新"
+end)
+
+print("[一键锁宠] 界面已显示")
