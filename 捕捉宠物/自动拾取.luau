@@ -1,6 +1,17 @@
 -- 切服总开关：true = 10秒无拾取自动切服；false = 只自动拾取，不切服
 local ENABLE_SERVER_SWITCH = false
 
+-- SimplySpy 抓到的 SpaceReward 领取项：{地图/活动ID, 奖励序号}
+local SPACE_REWARD_TARGETS = {
+    { "4", 7 },
+}
+
+-- true = 自动扫描 CfgUpdateEventObby 里所有没领过的 SpaceReward
+local CLAIM_ALL_SPACE_REWARDS = true
+
+-- Robbery 只拾取 CfgRobberyReward.CountRewards[2] 的高档刷新物；改成 nil = 全部拾取
+local ROBBERY_ONLY_COUNT_REWARD_INDEX = 2
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -28,7 +39,7 @@ local CFG = {
     ENABLE_SERVER_SWITCH = ENABLE_SERVER_SWITCH,
     NO_PICK_SWITCH_DELAY = 10,
     CLAIM_RETRY_DELAY = 2,
-    JOB_CHANGE_TIMEOUT = 5,
+    JOB_CHANGE_TIMEOUT = 30,
 }
 
 local SWITCH_MEMORY_FILE = string.format("auto_pick_switch_%s.json", tostring(localPlayer and localPlayer.UserId or "unknown"))
@@ -89,6 +100,11 @@ end
 local areaPickCooldown = {}
 local pickItemCooldown = {}
 local boostPickCooldown = {}
+local dropPickCooldown = {}
+local dropPickPending = {}
+local spaceRewardCooldown = {}
+local spaceRewardClaimedLocal = {}
+local robberyRewardCooldown = {}
 
 if _G.AutoPickAllControl and _G.AutoPickAllControl.Stop then
     pcall(function()
@@ -100,6 +116,7 @@ local Control = {
     running = true,
     serverSwitchEnabled = CFG.ENABLE_SERVER_SWITCH,
     switchingServer = false,
+    lastDropPickSuccessAt = 0,
 }
 
 function Control.Stop()
@@ -161,6 +178,92 @@ local function requirePathModule(moduleName)
             end)
             return result
         end
+    end
+
+    return nil
+end
+
+local dataPullFunc = nil
+local function getDataPullFunc()
+    if dataPullFunc then
+        return dataPullFunc
+    end
+
+    local ok, result = pcall(function()
+        return ReplicatedStorage
+            :WaitForChild("CommonLibrary")
+            :WaitForChild("Tool")
+            :WaitForChild("RemoteManager")
+            :WaitForChild("Funcs")
+            :WaitForChild("DataPullFunc")
+    end)
+    if ok and result then
+        dataPullFunc = result
+        return dataPullFunc
+    end
+
+    return nil
+end
+
+local cfgUpdateEventObby = nil
+local function getCfgUpdateEventObby()
+    if cfgUpdateEventObby then
+        return cfgUpdateEventObby
+    end
+
+    if PathTool and PathTool.CfgUpdateEventObby then
+        cfgUpdateEventObby = PathTool.CfgUpdateEventObby
+        return cfgUpdateEventObby
+    end
+
+    local ok, result = pcall(function()
+        return require(
+            ReplicatedStorage
+                :WaitForChild("CommonConfig")
+                :WaitForChild("UpdateEvent")
+                :WaitForChild("CfgUpdateEventObby")
+        )
+    end)
+    if ok and result then
+        cfgUpdateEventObby = result
+        pcall(function()
+            if PathTool then
+                PathTool.CfgUpdateEventObby = result
+            end
+        end)
+        return cfgUpdateEventObby
+    end
+
+    return nil
+end
+
+local cfgRobberyReward = nil
+local function getCfgRobberyReward()
+    if cfgRobberyReward then
+        return cfgRobberyReward
+    end
+
+    if PathTool and PathTool.CfgRobberyReward then
+        cfgRobberyReward = PathTool.CfgRobberyReward
+        return cfgRobberyReward
+    end
+
+    local ok, result = pcall(function()
+        return require(
+            ReplicatedStorage
+                :WaitForChild("CommonConfig")
+                :WaitForChild("UpdateEvent")
+                :WaitForChild("CfgRobberyReward")
+        )
+    end)
+    if ok and result then
+        cfgRobberyReward = result
+        pcall(function()
+            if PathTool then
+                PathTool.CfgRobberyReward = result
+            end
+        end)
+        return cfgRobberyReward
     end
 
     return nil
@@ -424,6 +527,12 @@ local function WaitForPathTool(maxWait)
     requirePathModule("AreaPickUpSystem")
     requirePathModule("PickItemSystem")
     requirePathModule("BoostSystem")
+    requirePathModule("DropPickUpRewardUtil")
+    requirePathModule("MessageSystem")
+    requirePathModule("SpaceRewardSystem")
+    getDataPullFunc()
+    getCfgUpdateEventObby()
+    getCfgRobberyReward()
 
     print(string.format(
         "%s [WaitForPathTool] PathTool=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
@@ -687,10 +796,399 @@ local function scanBoostPickUps()
     return pickedCount
 end
 
+local function getDropPickId(node)
+    if not node then
+        return nil
+    end
+
+    local split = string.split(tostring(node.Name), "_")
+    if #split == 2 and split[1] == "PickUp" then
+        return tonumber(split[2])
+    end
+    return tonumber(node.Name)
+end
+
+local function isDropPickOwnedOrPublic(node)
+    if not node then
+        return false
+    end
+
+    local takenPlayerId = node:GetAttribute("TakenPlayerId")
+    if takenPlayerId and takenPlayerId ~= 0 then
+        return false
+    end
+
+    local ownerAttr = "Owner_" .. tostring(localPlayer and localPlayer.UserId or "")
+    if node:GetAttribute(ownerAttr) == true then
+        return true
+    end
+
+    local ownTick = tonumber(node:GetAttribute("OwnTick")) or 0
+    if ownTick <= 0 then
+        return true
+    end
+
+    local serverNow = 0
+    pcall(function()
+        serverNow = workspace:GetServerTimeNow()
+    end)
+    return serverNow >= ownTick
+end
+
+local function getDropRewardPreviewFromUtil(dropId)
+    local dropUtil = requirePathModule("DropPickUpRewardUtil")
+    if not (dropUtil and dropUtil.IterPickUpRewardInfo) then
+        return nil
+    end
+
+    local preview = nil
+    pcall(function()
+        dropUtil.IterPickUpRewardInfo(function(info)
+            if info and info.Id == dropId then
+                preview = info.Reward
+                return false
+            end
+            return true
+        end)
+    end)
+
+    return preview
+end
+
+local dropResultListenerRegistered = false
+local function ensureDropPickResultListener()
+    if dropResultListenerRegistered then
+        return
+    end
+
+    local messageSystem = requirePathModule("MessageSystem")
+    if not (messageSystem and messageSystem.Register) then
+        return
+    end
+
+    dropResultListenerRegistered = true
+    pcall(function()
+        messageSystem.Register("DropPickUpRewardTakenResult", function(_, dropId, rewardResult, reason)
+            local pendingText = dropPickPending[tostring(dropId)]
+            dropPickPending[tostring(dropId)] = nil
+
+            if rewardResult then
+                Control.lastDropPickSuccessAt = tick()
+                local rewardText = describeRewardList(rewardResult)
+                if rewardText == "(空奖励)" and pendingText then
+                    rewardText = pendingText
+                end
+                print(string.format("%s [DropPickUp] Id=%s -> %s", TAG, tostring(dropId), rewardText))
+            elseif reason then
+                print(string.format("%s [DropPickUp] Id=%s 领取失败: %s", TAG, tostring(dropId), tostring(reason)))
+            end
+        end)
+    end)
+end
+
+local function scanDropPickUpRewards()
+    local pickUpRewards = workspace:FindFirstChild("PickUpRewards")
+    local messageSystem = requirePathModule("MessageSystem")
+    if not (pickUpRewards and messageSystem and messageSystem.Send) then
+        return 0
+    end
+
+    ensureDropPickResultListener()
+
+    local sentCount = 0
+    for _, node in ipairs(pickUpRewards:GetChildren()) do
+        local dropId = getDropPickId(node)
+        if dropId and not isCooling(dropPickCooldown, dropId, 1.5) and isDropPickOwnedOrPublic(node) then
+            local rewardPreview = getDropRewardPreviewFromUtil(dropId)
+            local previewText = rewardPreview and describeRewardList(rewardPreview) or "DropPickUpReward"
+
+            markCooldown(dropPickCooldown, dropId)
+            dropPickPending[tostring(dropId)] = previewText
+
+            local ok = pcall(function()
+                messageSystem.Send("DropPickUpRewardTaken", dropId)
+            end)
+            if ok then
+                sentCount = sentCount + 1
+            else
+                dropPickPending[tostring(dropId)] = nil
+            end
+        end
+    end
+
+    return sentCount
+end
+
+local function getSpaceRewardKey(mapId, rewardIndex)
+    return tostring(mapId) .. ":" .. tostring(rewardIndex)
+end
+
+local function getSpaceRewardClaimMapKey(mapId, rewardIndex)
+    local cfg = getCfgUpdateEventObby()
+    local obby = cfg and cfg.EventObbys and cfg.EventObbys[tonumber(mapId)]
+    if not obby or not obby.EventKey then
+        return nil
+    end
+    return tostring(obby.EventKey) .. tostring(rewardIndex)
+end
+
+local function getSpaceRewardConfig(mapId, rewardIndex)
+    local cfg = getCfgUpdateEventObby()
+    local obby = cfg and cfg.EventObbys and cfg.EventObbys[tonumber(mapId)]
+    local rewardCfg = obby and obby.Rewards and obby.Rewards[tonumber(rewardIndex)]
+    return obby, rewardCfg
+end
+
+local function isSpaceRewardClaimed(gp, mapId, rewardIndex)
+    local localKey = getSpaceRewardKey(mapId, rewardIndex)
+    if spaceRewardClaimedLocal[localKey] then
+        return true
+    end
+
+    local claimKey = getSpaceRewardClaimMapKey(mapId, rewardIndex)
+    if not (gp and gp.spaceReward and gp.spaceReward.GetRewardClaimed and claimKey) then
+        return false
+    end
+
+    local ok, claimed = pcall(function()
+        return gp.spaceReward:GetRewardClaimed(claimKey)
+    end)
+    return ok and claimed == true
+end
+
+local function claimSpaceReward(mapId, rewardIndex)
+    local gp = getGamePlayer()
+    local localKey = getSpaceRewardKey(mapId, rewardIndex)
+    if isCooling(spaceRewardCooldown, localKey, 3) or isSpaceRewardClaimed(gp, mapId, rewardIndex) then
+        return false
+    end
+
+    local _, rewardCfg = getSpaceRewardConfig(mapId, rewardIndex)
+    if not (rewardCfg and rewardCfg.Reward) then
+        return false
+    end
+
+    local previewText = describeRewardList(rewardCfg.Reward)
+    markCooldown(spaceRewardCooldown, localKey)
+
+    local ok, result = false, nil
+    local spaceRewardSystem = requirePathModule("SpaceRewardSystem")
+    if spaceRewardSystem and spaceRewardSystem.ClientClaimFinnalReward then
+        ok, result = doRequest(spaceRewardSystem.ClientClaimFinnalReward, tostring(mapId), tonumber(rewardIndex))
+    end
+
+    if not ok or result == false then
+        local remote = getDataPullFunc()
+        if remote then
+            ok, result = pcall(function()
+                return remote:InvokeServer(
+                    "SpaceRewardClaimFinnalRewardChannel",
+                    tostring(mapId),
+                    tonumber(rewardIndex)
+                )
+            end)
+        end
+    end
+
+    if ok and result then
+        spaceRewardClaimedLocal[localKey] = true
+        print(string.format(
+            "%s [SpaceReward] MapId=%s RewardIndex=%s -> %s",
+            TAG,
+            tostring(mapId),
+            tostring(rewardIndex),
+            previewText
+        ))
+        return true
+    end
+
+    return false
+end
+
+local function buildSpaceRewardTargets()
+    local targets = {}
+    local seen = {}
+
+    local function addTarget(mapId, rewardIndex)
+        local key = getSpaceRewardKey(mapId, rewardIndex)
+        if not seen[key] then
+            seen[key] = true
+            table.insert(targets, { mapId = mapId, rewardIndex = rewardIndex })
+        end
+    end
+
+    for _, target in ipairs(SPACE_REWARD_TARGETS) do
+        addTarget(target[1], target[2])
+    end
+
+    if CLAIM_ALL_SPACE_REWARDS then
+        local cfg = getCfgUpdateEventObby()
+        if cfg and cfg.EventObbys then
+            for mapId, obby in pairs(cfg.EventObbys) do
+                if obby and obby.Rewards then
+                    for rewardIndex, rewardCfg in pairs(obby.Rewards) do
+                        if rewardCfg and rewardCfg.Reward then
+                            addTarget(mapId, rewardIndex)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return targets
+end
+
+local function scanSpaceRewards()
+    local claimedCount = 0
+    for _, target in ipairs(buildSpaceRewardTargets()) do
+        if claimSpaceReward(target.mapId, target.rewardIndex) then
+            claimedCount = claimedCount + 1
+            task.wait(0.15)
+        end
+    end
+    return claimedCount
+end
+
+local function getRobberyRewardPreview(eventKey, propTmplId)
+    local cfg = getCfgRobberyReward()
+    local eventCfg = cfg and cfg[tostring(eventKey)]
+    if not eventCfg then
+        return nil
+    end
+
+    local propIndex = tonumber(propTmplId)
+    local rewardCfg = propIndex and eventCfg.CountRewards and eventCfg.CountRewards[propIndex]
+    if rewardCfg and rewardCfg.Reward then
+        return rewardCfg.Reward
+    end
+
+    return nil
+end
+
+local function isRobberyLimitReached(gp, eventKey)
+    if eventKey == nil then
+        return false
+    end
+
+    local cfg = getCfgRobberyReward()
+    local eventCfg = cfg and cfg[tostring(eventKey)]
+    local limitCount = eventCfg and tonumber(eventCfg.LimitCount)
+    if not limitCount then
+        return false
+    end
+
+    if not (gp and gp.spaceReward and gp.spaceReward.GetRobberyReward) then
+        return false
+    end
+
+    local ok, count = pcall(function()
+        return gp.spaceReward:GetRobberyReward(tostring(eventKey))
+    end)
+    if not ok then
+        return false
+    end
+
+    return (tonumber(count) or 0) >= limitCount
+end
+
+local function getRobberyRewardKey(index, eventKey)
+    return tostring(eventKey or "unknown") .. ":" .. tostring(index)
+end
+
+local function claimRobberyReward(node)
+    if not node or not node.GetAttribute then
+        return false
+    end
+
+    local index = node:GetAttribute("Index")
+    local eventKey = node:GetAttribute("EventKey")
+    local propTmplId = node:GetAttribute("PropTmplId")
+    if index == nil then
+        return false
+    end
+    if ROBBERY_ONLY_COUNT_REWARD_INDEX and tonumber(propTmplId) ~= ROBBERY_ONLY_COUNT_REWARD_INDEX then
+        return false
+    end
+
+    local gp = getGamePlayer()
+    if isRobberyLimitReached(gp, eventKey) then
+        return false
+    end
+
+    local localKey = getRobberyRewardKey(index, eventKey)
+    if isCooling(robberyRewardCooldown, localKey, 1.5) then
+        return false
+    end
+
+    local rewardPreview = getRobberyRewardPreview(eventKey, propTmplId)
+    local previewText = rewardPreview and describeRewardList(rewardPreview) or "RobberyReward"
+    local payload = {
+        Index = index,
+        EventKey = eventKey,
+        PropTmplId = propTmplId,
+    }
+
+    markCooldown(robberyRewardCooldown, localKey)
+
+    local ok, result = false, nil
+    local spaceRewardSystem = requirePathModule("SpaceRewardSystem")
+    if spaceRewardSystem and spaceRewardSystem.ClientRobberyClaimReward then
+        ok, result = doRequest(spaceRewardSystem.ClientRobberyClaimReward, payload)
+    end
+
+    if not ok or result == false then
+        local remote = getDataPullFunc()
+        if remote then
+            ok, result = pcall(function()
+                return remote:InvokeServer("RobberyClaimRewardChannel", payload)
+            end)
+        end
+    end
+
+    if ok and result then
+        local rewardText = previewText
+        if type(result) == "table" and result.Reward then
+            rewardText = describeRewardList(result.Reward)
+        end
+
+        print(string.format(
+            "%s [RobberyReward] Index=%s EventKey=%s PropTmplId=%s -> %s",
+            TAG,
+            tostring(index),
+            tostring(eventKey),
+            tostring(propTmplId),
+            rewardText
+        ))
+        return true
+    end
+
+    return false
+end
+
+local function scanRobberyRewards()
+    local obbyEventFolder = workspace:FindFirstChild("ObbyEventFolder")
+    local robberyFolder = obbyEventFolder and obbyEventFolder:FindFirstChild("Robbery")
+    if not robberyFolder then
+        return 0
+    end
+
+    local claimedCount = 0
+    for _, node in ipairs(robberyFolder:GetChildren()) do
+        if node:IsA("BasePart") and claimRobberyReward(node) then
+            claimedCount = claimedCount + 1
+            task.wait(0.05)
+        end
+    end
+
+    return claimedCount
+end
+
 WaitForPathTool(30)
 
 print(string.format("%s 启动成功，玩家=%s", TAG, tostring(localPlayer and localPlayer.Name or "Unknown")))
-print(string.format("%s 开始自动拾取：AreaPickUp / PickItem / Boost", TAG))
+print(string.format("%s 开始自动拾取：AreaPickUp / PickItem / Boost / DropPickUp / SpaceReward / RobberyReward", TAG))
+print(string.format("%s Robbery过滤: 只拾取 CountRewards[%s]", TAG, tostring(ROBBERY_ONLY_COUNT_REWARD_INDEX or "全部")))
 print(string.format(
     "%s 无拾取 %ds 切服: %s | LAN=%s",
     TAG,
@@ -711,6 +1209,9 @@ task.spawn(function()
                 totalPicked = totalPicked + scanAreaPickUps()
                 totalPicked = totalPicked + scanPickItems()
                 totalPicked = totalPicked + scanBoostPickUps()
+                totalPicked = totalPicked + scanDropPickUpRewards()
+                totalPicked = totalPicked + scanSpaceRewards()
+                totalPicked = totalPicked + scanRobberyRewards()
             end)
 
             if not ok then
@@ -718,7 +1219,7 @@ task.spawn(function()
             end
         end
 
-        if totalPicked > 0 then
+        if totalPicked > 0 or (Control.lastDropPickSuccessAt > lastPickAt) then
             lastPickAt = tick()
         elseif Control.serverSwitchEnabled and not Control.switchingServer then
             local idleSeconds = tick() - lastPickAt
