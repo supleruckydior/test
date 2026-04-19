@@ -11,12 +11,15 @@ local CLAIM_ALL_SPACE_REWARDS = true
 
 -- Robbery 只拾取 CfgRobberyReward.CountRewards[2] 的高档刷新物；改成 nil = 全部拾取
 local ROBBERY_ONLY_COUNT_REWARD_INDEX = 2
+local ROBBERY_FILTER_DEBUG = true
+local ROBBERY_FILTER_DEBUG_INTERVAL = 5
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
 local TAG = "[自动拾取]"
+task.wait(6)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -105,6 +108,7 @@ local dropPickPending = {}
 local spaceRewardCooldown = {}
 local spaceRewardClaimedLocal = {}
 local robberyRewardCooldown = {}
+local robberyFilterDebugAt = 0
 
 if _G.AutoPickAllControl and _G.AutoPickAllControl.Stop then
     pcall(function()
@@ -1050,19 +1054,63 @@ local function scanSpaceRewards()
     return claimedCount
 end
 
-local function getRobberyRewardPreview(eventKey, propTmplId)
+local function getRobberyEventConfig(eventKey)
     local cfg = getCfgRobberyReward()
-    local eventCfg = cfg and cfg[tostring(eventKey)]
-    if not eventCfg then
+    if not cfg or eventKey == nil then
         return nil
     end
+    return cfg[tostring(eventKey)]
+end
 
+local function getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
+    local eventCfg = getRobberyEventConfig(eventKey)
     local propIndex = tonumber(propTmplId)
-    local rewardCfg = propIndex and eventCfg.CountRewards and eventCfg.CountRewards[propIndex]
+
+    if eventCfg and eventCfg.CountRewards then
+        if propIndex and eventCfg.CountRewards[propIndex] then
+            return propIndex, eventCfg.CountRewards[propIndex], "PropTmplId"
+        end
+
+        if vfxId ~= nil then
+            for rewardIndex, rewardCfg in pairs(eventCfg.CountRewards) do
+                if rewardCfg and rewardCfg.VFXId ~= nil and tostring(rewardCfg.VFXId) == tostring(vfxId) then
+                    return tonumber(rewardIndex) or rewardIndex, rewardCfg, "VFXId"
+                end
+            end
+        end
+    end
+
+    local cfg = getCfgRobberyReward()
+    if vfxId ~= nil and cfg then
+        for _, robberyCfg in pairs(cfg) do
+            if robberyCfg and robberyCfg.CountRewards then
+                for rewardIndex, rewardCfg in pairs(robberyCfg.CountRewards) do
+                    if rewardCfg and rewardCfg.VFXId ~= nil and tostring(rewardCfg.VFXId) == tostring(vfxId) then
+                        return tonumber(rewardIndex) or rewardIndex, rewardCfg, "VFXIdAnyEvent"
+                    end
+                end
+            end
+        end
+    end
+
+    return nil, nil, "Unknown"
+end
+
+local function isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+    if not ROBBERY_ONLY_COUNT_REWARD_INDEX then
+        local countRewardIndex, rewardCfg, matchSource = getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
+        return true, countRewardIndex, rewardCfg, matchSource
+    end
+
+    local countRewardIndex, rewardCfg, matchSource = getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
+    return tonumber(countRewardIndex) == ROBBERY_ONLY_COUNT_REWARD_INDEX, countRewardIndex, rewardCfg, matchSource
+end
+
+local function getRobberyRewardPreview(eventKey, propTmplId, vfxId)
+    local _, rewardCfg = getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
     if rewardCfg and rewardCfg.Reward then
         return rewardCfg.Reward
     end
-
     return nil
 end
 
@@ -1104,11 +1152,14 @@ local function claimRobberyReward(node)
     local index = node:GetAttribute("Index")
     local eventKey = node:GetAttribute("EventKey")
     local propTmplId = node:GetAttribute("PropTmplId")
+    local vfxId = node:GetAttribute("VFXId")
     if index == nil then
         return false
     end
-    if ROBBERY_ONLY_COUNT_REWARD_INDEX and tonumber(propTmplId) ~= ROBBERY_ONLY_COUNT_REWARD_INDEX then
-        return false
+
+    local wanted, countRewardIndex, countRewardCfg, matchSource = isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+    if not wanted then
+        return false, "filtered"
     end
 
     local gp = getGamePlayer()
@@ -1121,7 +1172,7 @@ local function claimRobberyReward(node)
         return false
     end
 
-    local rewardPreview = getRobberyRewardPreview(eventKey, propTmplId)
+    local rewardPreview = countRewardCfg and countRewardCfg.Reward or getRobberyRewardPreview(eventKey, propTmplId, vfxId)
     local previewText = rewardPreview and describeRewardList(rewardPreview) or "RobberyReward"
     local payload = {
         Index = index,
@@ -1153,17 +1204,66 @@ local function claimRobberyReward(node)
         end
 
         print(string.format(
-            "%s [RobberyReward] Index=%s EventKey=%s PropTmplId=%s -> %s",
+            "%s [RobberyReward] Index=%s EventKey=%s PropTmplId=%s VFXId=%s CountRewards[%s] via %s -> %s",
             TAG,
             tostring(index),
             tostring(eventKey),
             tostring(propTmplId),
+            tostring(vfxId),
+            tostring(countRewardIndex),
+            tostring(matchSource),
             rewardText
         ))
         return true
     end
 
     return false
+end
+
+local function printRobberyFilterDebug(robberyFolder, seenCount, wantedCount, filteredCount)
+    if not ROBBERY_FILTER_DEBUG then
+        return
+    end
+
+    if tick() - robberyFilterDebugAt < ROBBERY_FILTER_DEBUG_INTERVAL then
+        return
+    end
+    robberyFilterDebugAt = tick()
+
+    print(string.format(
+        "%s [RobberyFilter] seen=%d wanted=%d filtered=%d only=CountRewards[%s]",
+        TAG,
+        seenCount,
+        wantedCount,
+        filteredCount,
+        tostring(ROBBERY_ONLY_COUNT_REWARD_INDEX or "全部")
+    ))
+
+    local printed = 0
+    for _, node in ipairs(robberyFolder:GetChildren()) do
+        if node:IsA("BasePart") and printed < 12 then
+            local index = node:GetAttribute("Index")
+            local eventKey = node:GetAttribute("EventKey")
+            local propTmplId = node:GetAttribute("PropTmplId")
+            local vfxId = node:GetAttribute("VFXId")
+            local wanted, countRewardIndex, rewardCfg, matchSource = isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+            printed = printed + 1
+
+            print(string.format(
+                "%s [RobberyFilter:%02d] Index=%s EventKey=%s PropTmplId=%s VFXId=%s resolved=CountRewards[%s] via %s wanted=%s reward=%s",
+                TAG,
+                printed,
+                tostring(index),
+                tostring(eventKey),
+                tostring(propTmplId),
+                tostring(vfxId),
+                tostring(countRewardIndex),
+                tostring(matchSource),
+                tostring(wanted),
+                rewardCfg and rewardCfg.Reward and describeRewardList(rewardCfg.Reward) or "nil"
+            ))
+        end
+    end
 end
 
 local function scanRobberyRewards()
@@ -1174,11 +1274,35 @@ local function scanRobberyRewards()
     end
 
     local claimedCount = 0
+    local seenCount = 0
+    local wantedCount = 0
+    local filteredCount = 0
+
     for _, node in ipairs(robberyFolder:GetChildren()) do
-        if node:IsA("BasePart") and claimRobberyReward(node) then
-            claimedCount = claimedCount + 1
-            task.wait(0.05)
+        if node:IsA("BasePart") then
+            seenCount = seenCount + 1
+
+            local ok, reason = claimRobberyReward(node)
+            if ok then
+                wantedCount = wantedCount + 1
+                claimedCount = claimedCount + 1
+                task.wait(0.05)
+            elseif reason == "filtered" then
+                filteredCount = filteredCount + 1
+            else
+                local eventKey = node:GetAttribute("EventKey")
+                local propTmplId = node:GetAttribute("PropTmplId")
+                local vfxId = node:GetAttribute("VFXId")
+                local wanted = isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+                if wanted then
+                    wantedCount = wantedCount + 1
+                end
+            end
         end
+    end
+
+    if seenCount > 0 and (wantedCount == 0 or filteredCount > 0) then
+        printRobberyFilterDebug(robberyFolder, seenCount, wantedCount, filteredCount)
     end
 
     return claimedCount
