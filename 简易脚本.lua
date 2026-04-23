@@ -382,6 +382,46 @@ if RespawPointnum then
     end
 end
 
+local function getCharacterRoot()
+    local character = player.Character or player.CharacterAdded:Wait()
+    return character and character:WaitForChild('HumanoidRootPart', 5)
+end
+
+local function findElixirFurnace()
+    if not RespawPointnum then
+        return nil
+    end
+
+    local scene = Workspace:FindFirstChild('主場景' .. RespawPointnum)
+    local buildings = scene and scene:FindFirstChild('\229\187\186\233\128\160\231\137\169')
+    if not buildings then
+        return nil
+    end
+
+    return buildings:FindFirstChild('065\231\130\188\228\184\185\231\130\137')
+end
+
+local function teleportToElixirFurnace()
+    local root = getCharacterRoot()
+    local furnace = findElixirFurnace()
+    if not root or not furnace then
+        warn('[炼丹] 未找到炼丹炉，停止本次炼药')
+        return false
+    end
+
+    local ok, pivot = pcall(function()
+        return furnace:GetPivot()
+    end)
+    if not ok or not pivot then
+        warn('[炼丹] 无法读取炼丹炉位置，停止本次炼药')
+        return false
+    end
+
+    root.CFrame = pivot + Vector3.new(0, 20, 0)
+    task.wait(0.3)
+    return true
+end
+
 local values
 local privileges
 local success, result = pcall(function()
@@ -1445,11 +1485,63 @@ end
 -- 炼丹标签页设置
 -- ============================================
 -- 炼丹控制器
+local elixirLevel = 0
+local AutoelixirSwitch
 local elixirController = {
     enabled = false
 }
 
+local function refreshElixirLevel()
+    local level = 0
+    pcall(function()
+        local eventsRoot = ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182', true)
+        local clientRoot = eventsRoot and eventsRoot:FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
+        local clientUI = clientRoot and clientRoot:FindFirstChild('\229\174\162\230\136\183\231\171\175UI', true)
+        local openElixir = clientUI and clientUI:FindFirstChild('\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137')
+
+        if openElixir then
+            openElixir:Fire()
+            task.wait(0.5)
+        end
+
+        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
+        local label = deepWait(currentGUI, {
+            '\228\186\140\231\186\167\231\149\140\233\157\162',
+            '\231\130\188\228\184\185\231\130\137',
+            '\232\131\140\230\153\175',
+            '\229\177\158\230\128\167\229\140\186\229\159\159',
+            '\229\177\158\230\128\167\229\136\151\232\161\168',
+            '\229\136\151\232\161\168',
+            '\231\173\137\231\186\167',
+            '\229\128\188',
+        }, 3)
+
+        level = tonumber(label and label.Text and label.Text:match('%d+')) or 0
+        currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible = false
+    end)
+
+    elixirLevel = level
+    return elixirLevel
+end
+
+local function canCraftElixir()
+    if elixirLevel >= 80 or refreshElixirLevel() >= 80 then
+        return true
+    end
+
+    warn('[炼丹] 炼丹炉等级不足80，停止自动炼药')
+    return false
+end
+
 local function elixirLoop()
+    if not canCraftElixir() or not teleportToElixirFurnace() then
+        elixirController.enabled = false
+        if AutoelixirSwitch then
+            AutoelixirSwitch:Set(false)
+        end
+        return
+    end
+
     while elixirController.enabled do
         local currentHerbs = getHerbValue()
         if currentHerbs < 5000 then
@@ -1458,7 +1550,9 @@ local function elixirLoop()
             end
             print('[系统] 草药数量低于5000，停止自动炼丹')
             elixirController.enabled = false
-            AutoelixirSwitch:Set(false)
+            if AutoelixirSwitch then
+                AutoelixirSwitch:Set(false)
+            end
             break
         end
         
@@ -1475,7 +1569,7 @@ local function elixirLoop()
     end
 end
 
-local AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
+AutoelixirSwitch = features4:AddSwitch('自動煉丹藥', function(bool)
     elixirController.enabled = bool
     if elixirController.enabled then
         task.spawn(elixirLoop)
@@ -1490,22 +1584,9 @@ task.defer(function()
     end
 end)
 
--- 传送炼器
-features4:AddButton('传送炼器', function()
-    local RespawPointnum = RespawPoint:match('%d+')
-    local character = player.Character
-
-    if not character then
-        player.CharacterAdded:Wait()
-        character = player.Character
-    end
-
-    local humanoidRootPart = character:WaitForChild('HumanoidRootPart')
-    local forgePath = Workspace['\228\184\187\229\160\180\230\153\175' .. RespawPointnum]['\229\187\186\233\128\160\231\137\169']['035\231\130\188\229\153\168\229\143\176']
-
-    if forgePath then
-        humanoidRootPart.CFrame = forgePath:GetPivot()
-    end
+-- 传送炼丹炉
+features4:AddButton('传送炼丹炉', function()
+    teleportToElixirFurnace()
 end)
 
 -- 公会相关
@@ -1774,6 +1855,11 @@ local Autoelixir = false
 local hasExecutedTrade = false
 
 local function startElixirLoop()
+    if not canCraftElixir() or not teleportToElixirFurnace() then
+        Autoelixir = false
+        return
+    end
+
     Autoelixir = true
     while Autoelixir do
         pcall(function()
@@ -1828,7 +1914,6 @@ end
 
 -- 初始化检查
 local farm5Level = 0
-local elixirLevel = 0
 
 pcall(function()
     local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
@@ -1838,18 +1923,7 @@ pcall(function()
     currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\229\134\156\231\148\176'].Visible = false
 end)
 
-pcall(function()
-    local elixirUI = ReplicatedStorage:FindFirstChild('\228\186\139\228\187\182', true):FindFirstChild('\229\174\162\230\136\183\231\171\175', true)
-    if elixirUI then
-        elixirUI['\229\174\162\230\136\183\231\171\175UI']['\230\137\147\229\188\128\231\130\188\228\184\185\231\130\137']:Fire()
-        task.wait(0.5)
-        local currentGUI = game:GetService("Players").LocalPlayer.PlayerGui.GUI
-        elixirLevel = tonumber(
-            currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188'].Text:match('%d+')
-        ) or 0
-        currentGUI['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible = false
-    end
-end)
+refreshElixirLevel()
 
 if farm5Level >= 80 and elixirLevel >= 80 then
     print('===== 系统启动 =====')
