@@ -417,7 +417,7 @@ local function teleportToElixirFurnace()
         return false
     end
 
-    root.CFrame = pivot + Vector3.new(0, 20, 0)
+    root.CFrame = pivot + Vector3.new(5, 20, 0)
     task.wait(0.3)
     return true
 end
