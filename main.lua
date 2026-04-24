@@ -1700,16 +1700,27 @@ function MiscController:deleteLanguageConfig()
 end
 
 function MiscController:closeSettingsOnce()
-    local settingPanel = Utils.deepWait(PathRegistry.GUI.Secondary, {
+    local musicSwitchForeground = Utils.deepWait(PathRegistry.GUI.Secondary, {
         Constants.Paths.Settings,
         '背景',
         '设置区域',
         '音乐设置项',
-        '开启',
+        '开关',
         '前景',
     }, 2)
 
-    if not settingPanel or not settingPanel.Visible or not PathRegistry.Remotes.SettingsUpdate then
+    if not musicSwitchForeground or not musicSwitchForeground.Visible then
+        return false
+    end
+
+    local settingsRemote = PathRegistry.Remotes.SettingsUpdate or Utils.deepWait(Services.ReplicatedStorage, {
+        Constants.Paths.EventsRoot,
+        Constants.Paths.Common,
+        Constants.Paths.Settings,
+        Constants.Paths.ModifyPlayerSettings,
+    }, 2)
+
+    if not settingsRemote then
         return false
     end
 
@@ -1717,15 +1728,14 @@ function MiscController:closeSettingsOnce()
         '音乐',
         '粒子特效',
         '伤害显示',
-        '掉落动画',
-        '音效',
         '抽奖动画',
+        '音效',
+        '掉落动画',
         '法宝动画',
-        '出售二次确认',
     }) do
         ActionThrottle:fireServer(
             'settings_close_' .. tostring(args),
-            PathRegistry.Remotes.SettingsUpdate,
+            settingsRemote,
             0.05,
             args
         )
