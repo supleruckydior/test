@@ -353,6 +353,13 @@ local function LockAllPets(lock)
     return SetPetLockByTemplate(nil, nil, nil, lock)
 end
 
+local function GetPetNameWithTmplId(tmplData)
+    if not tmplData then
+        return "未知宠物(?)"
+    end
+    return string.format("%s(%s)", tostring(tmplData.name or "未知宠物"), tostring(tmplData.tmplId or "?"))
+end
+
 -- ===== UI =====
 local existingCoreGui = CoreGui:FindFirstChild("PetLockUnlockUI")
 if existingCoreGui then
@@ -744,7 +751,8 @@ local function CreateTemplateRow(tmplData, index)
 
     local gradeName = tmplData.gradeName or "?"
     local specialPropName = tmplData.specialPropName or "?"
-    local displayText = string.format("%s [%s|%s] (%d)", tmplData.name, gradeName, specialPropName, tmplData.count)
+    local petDisplayName = GetPetNameWithTmplId(tmplData)
+    local displayText = string.format("%s [%s|%s] (%d)", petDisplayName, gradeName, specialPropName, tmplData.count)
 
     local actionButtonWidth = isTouchDevice and 48 or 40
     local actionButtonHeight = ROW_HEIGHT - 12
@@ -788,22 +796,22 @@ local function CreateTemplateRow(tmplData, index)
     lockBtn.MouseButton1Click:Connect(function()
         task.spawn(function()
             lockBtn.Text = "..."
-            statusLabel.Text = string.format("正在锁定 %s [%s|%s]...", tmplData.name, gradeName, specialPropName)
+            statusLabel.Text = string.format("正在锁定 %s [%s|%s]...", petDisplayName, gradeName, specialPropName)
             local done, failed = SetPetLockByTemplate(tmplData.tmplId, tmplData.gradeKey, tmplData.specialProp, true)
             lockBtn.Text = "锁"
-            statusLabel.Text = string.format("锁定 %s [%s|%s]: 成功%d 失败%d", tmplData.name, gradeName, specialPropName, done, failed)
-            print(string.format("[一键锁宠] 锁定 %s [%s|%s]: 成功 %d, 失败 %d", tmplData.name, gradeName, specialPropName, done, failed))
+            statusLabel.Text = string.format("锁定 %s [%s|%s]: 成功%d 失败%d", petDisplayName, gradeName, specialPropName, done, failed)
+            print(string.format("[一键锁宠] 锁定 %s [%s|%s]: 成功 %d, 失败 %d", petDisplayName, gradeName, specialPropName, done, failed))
         end)
     end)
 
     unlockBtn.MouseButton1Click:Connect(function()
         task.spawn(function()
             unlockBtn.Text = "..."
-            statusLabel.Text = string.format("正在解锁 %s [%s|%s]...", tmplData.name, gradeName, specialPropName)
+            statusLabel.Text = string.format("正在解锁 %s [%s|%s]...", petDisplayName, gradeName, specialPropName)
             local done, failed = SetPetLockByTemplate(tmplData.tmplId, tmplData.gradeKey, tmplData.specialProp, false)
             unlockBtn.Text = "解"
-            statusLabel.Text = string.format("解锁 %s [%s|%s]: 成功%d 失败%d", tmplData.name, gradeName, specialPropName, done, failed)
-            print(string.format("[一键锁宠] 解锁 %s [%s|%s]: 成功 %d, 失败 %d", tmplData.name, gradeName, specialPropName, done, failed))
+            statusLabel.Text = string.format("解锁 %s [%s|%s]: 成功%d 失败%d", petDisplayName, gradeName, specialPropName, done, failed)
+            print(string.format("[一键锁宠] 解锁 %s [%s|%s]: 成功 %d, 失败 %d", petDisplayName, gradeName, specialPropName, done, failed))
         end)
     end)
 
