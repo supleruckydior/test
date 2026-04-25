@@ -1,5 +1,5 @@
--- 自动解锁并出售背包里的普通 D/C/B DustWing / Voltgator
--- 目标: TmplId=1000019(DustWing)、20106(Voltgator), SpecialProp=0/nil(普通), Grade=D/C/B
+-- 自动解锁并出售背包里的普通 D/C/B DustWing / Voltgator / 10101 / 10102 / 10103
+-- 目标: TmplId=20119(DustWing)、90005(Voltgator)、10101、10102、10103, SpecialProp=0/nil(普通), Grade=D/C/B
 -- 出售前会跳过装备中、预设队伍中、坐骑、仓库、虚拟选中的宠物，并避免把背包卖空。
 
 if not game:IsLoaded() then
@@ -11,6 +11,9 @@ local TARGET_PLACE_ID = 98664161516921
 local TARGET_TMPL_IDS = {
     [20119] = "DustWing",
     [90005] = "Voltgator",
+    [10101] = "Tmpl10101",
+    [10102] = "Tmpl10102",
+    [10103] = "Tmpl10103",
 }
 local AUTO_REPEAT = true
 local LOOP_INTERVAL_SECONDS = 15
