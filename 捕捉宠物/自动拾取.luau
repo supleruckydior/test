@@ -1,3 +1,9 @@
+local TARGET_GAME_ID = 98664161516921
+if game.PlaceId ~= TARGET_GAME_ID then
+    warn(string.format("[FindMonster] 游戏ID不匹配: %d (需要 %d)，脚本已禁用", game.PlaceId, TARGET_GAME_ID))
+    _G.__FINDMONSTER_DISABLED = true
+    return
+end
 -- 切服总开关：true = 10秒无拾取自动切服；false = 只自动拾取，不切服
 local ENABLE_SERVER_SWITCH = false
 
@@ -13,6 +19,8 @@ local CLAIM_ALL_SPACE_REWARDS = true
 local ROBBERY_ONLY_COUNT_REWARD_INDEX = 2
 local ROBBERY_FILTER_DEBUG = true
 local ROBBERY_FILTER_DEBUG_INTERVAL = 5
+local ROBBERY_FILTER_DEBUG_MAX_LINES = 20
+local ROBBERY_PICK_UNKNOWN_COUNT_REWARD = false
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -1062,21 +1070,72 @@ local function getRobberyEventConfig(eventKey)
     return cfg[tostring(eventKey)]
 end
 
+local function getRuntimeRobberyPoint(index)
+    local mgr = nil
+    if type(PathTool) == "table" then
+        mgr = rawget(PathTool, "UpdateEventObbyMgr")
+    end
+    if not mgr and type(_G) == "table" then
+        mgr = rawget(_G, "UpdateEventObbyMgr")
+    end
+
+    if not (mgr and mgr.gamesScripts) then
+        return nil
+    end
+
+    local gameScript = mgr.gamesScripts.UpdateEventRobberyGame
+    local info = gameScript and gameScript.RobberyRewardInfo
+    local points = info and info.RobberyPoints
+    if not points then
+        return nil
+    end
+
+    return points[index] or points[tonumber(index)] or points[tostring(index)]
+end
+
+local function getCountRewardIndexFromRuntimePoint(point)
+    if type(point) ~= "table" then
+        return nil
+    end
+
+    local candidates = {
+        point.CountRewardIndex,
+        point.CountRewardId,
+        point.CountRewardID,
+        point.RewardIndex,
+        point.RewardTmplId,
+        point.PropTmplId,
+        point.PropIndex,
+        point.IndexInCountRewards,
+        point.RoundIndex,
+        point.Quality,
+    }
+
+    for _, value in ipairs(candidates) do
+        local n = tonumber(value)
+        if n then
+            return n
+        end
+    end
+
+    return nil
+end
+
 local function getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
     local eventCfg = getRobberyEventConfig(eventKey)
     local propIndex = tonumber(propTmplId)
 
     if eventCfg and eventCfg.CountRewards then
-        if propIndex and eventCfg.CountRewards[propIndex] then
-            return propIndex, eventCfg.CountRewards[propIndex], "PropTmplId"
-        end
-
         if vfxId ~= nil then
             for rewardIndex, rewardCfg in pairs(eventCfg.CountRewards) do
                 if rewardCfg and rewardCfg.VFXId ~= nil and tostring(rewardCfg.VFXId) == tostring(vfxId) then
                     return tonumber(rewardIndex) or rewardIndex, rewardCfg, "VFXId"
                 end
             end
+        end
+
+        if propIndex and eventCfg.CountRewards[propIndex] then
+            return propIndex, eventCfg.CountRewards[propIndex], "PropTmplIdFallback"
         end
     end
 
@@ -1096,14 +1155,42 @@ local function getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
     return nil, nil, "Unknown"
 end
 
-local function isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+local function isWantedRobberyCountReward(index, eventKey, propTmplId, vfxId)
+    local runtimePoint = getRuntimeRobberyPoint(index)
+    local runtimeIndex = getCountRewardIndexFromRuntimePoint(runtimePoint)
+
+    if runtimeIndex then
+        local cfg = getRobberyEventConfig(eventKey)
+        local rewardCfg = cfg and cfg.CountRewards and cfg.CountRewards[runtimeIndex]
+        if not rewardCfg and type(runtimePoint) == "table" and runtimePoint.Reward then
+            rewardCfg = {
+                Reward = runtimePoint.Reward,
+                VFXId = runtimePoint.VFXId,
+            }
+        end
+
+        if not ROBBERY_ONLY_COUNT_REWARD_INDEX then
+            return true, runtimeIndex, rewardCfg, "RuntimePoint"
+        end
+
+        return runtimeIndex == ROBBERY_ONLY_COUNT_REWARD_INDEX, runtimeIndex, rewardCfg, "RuntimePoint"
+    end
+
     if not ROBBERY_ONLY_COUNT_REWARD_INDEX then
         local countRewardIndex, rewardCfg, matchSource = getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
         return true, countRewardIndex, rewardCfg, matchSource
     end
 
     local countRewardIndex, rewardCfg, matchSource = getRobberyCountRewardInfo(eventKey, propTmplId, vfxId)
-    return tonumber(countRewardIndex) == ROBBERY_ONLY_COUNT_REWARD_INDEX, countRewardIndex, rewardCfg, matchSource
+    if tonumber(countRewardIndex) == ROBBERY_ONLY_COUNT_REWARD_INDEX then
+        return true, countRewardIndex, rewardCfg, matchSource
+    end
+
+    if countRewardIndex == nil and ROBBERY_PICK_UNKNOWN_COUNT_REWARD then
+        return true, nil, rewardCfg, "UnknownAllowed"
+    end
+
+    return false, countRewardIndex, rewardCfg, matchSource
 end
 
 local function getRobberyRewardPreview(eventKey, propTmplId, vfxId)
@@ -1146,7 +1233,7 @@ end
 
 local function claimRobberyReward(node)
     if not node or not node.GetAttribute then
-        return false
+        return false, "bad_node"
     end
 
     local index = node:GetAttribute("Index")
@@ -1154,22 +1241,22 @@ local function claimRobberyReward(node)
     local propTmplId = node:GetAttribute("PropTmplId")
     local vfxId = node:GetAttribute("VFXId")
     if index == nil then
-        return false
+        return false, "no_index"
     end
 
-    local wanted, countRewardIndex, countRewardCfg, matchSource = isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+    local wanted, countRewardIndex, countRewardCfg, matchSource = isWantedRobberyCountReward(index, eventKey, propTmplId, vfxId)
     if not wanted then
-        return false, "filtered"
+        return false, "filtered", countRewardIndex, countRewardCfg, matchSource
     end
 
     local gp = getGamePlayer()
     if isRobberyLimitReached(gp, eventKey) then
-        return false
+        return false, "limit_reached", countRewardIndex, countRewardCfg, matchSource
     end
 
     local localKey = getRobberyRewardKey(index, eventKey)
     if isCooling(robberyRewardCooldown, localKey, 1.5) then
-        return false
+        return false, "cooling", countRewardIndex, countRewardCfg, matchSource
     end
 
     local rewardPreview = countRewardCfg and countRewardCfg.Reward or getRobberyRewardPreview(eventKey, propTmplId, vfxId)
@@ -1183,17 +1270,17 @@ local function claimRobberyReward(node)
     markCooldown(robberyRewardCooldown, localKey)
 
     local ok, result = false, nil
-    local spaceRewardSystem = requirePathModule("SpaceRewardSystem")
-    if spaceRewardSystem and spaceRewardSystem.ClientRobberyClaimReward then
-        ok, result = doRequest(spaceRewardSystem.ClientRobberyClaimReward, payload)
+    local remote = getDataPullFunc()
+    if remote then
+        ok, result = pcall(function()
+            return remote:InvokeServer("RobberyClaimRewardChannel", payload)
+        end)
     end
 
-    if not ok or result == false then
-        local remote = getDataPullFunc()
-        if remote then
-            ok, result = pcall(function()
-                return remote:InvokeServer("RobberyClaimRewardChannel", payload)
-            end)
+    if (not ok or result == false) and matchSource ~= "Unknown" and matchSource ~= "UnknownAllowed" then
+        local spaceRewardSystem = requirePathModule("SpaceRewardSystem")
+        if spaceRewardSystem and spaceRewardSystem.ClientRobberyClaimReward then
+            ok, result = doRequest(spaceRewardSystem.ClientRobberyClaimReward, payload)
         end
     end
 
@@ -1217,10 +1304,40 @@ local function claimRobberyReward(node)
         return true
     end
 
-    return false
+    return false, "request_failed:" .. tostring(result), countRewardIndex, countRewardCfg, matchSource
 end
 
-local function printRobberyFilterDebug(robberyFolder, seenCount, wantedCount, filteredCount)
+local function getRobberyDebugLine(node, order, status)
+    local index = node:GetAttribute("Index")
+    local eventKey = node:GetAttribute("EventKey")
+    local propTmplId = node:GetAttribute("PropTmplId")
+    local vfxId = node:GetAttribute("VFXId")
+    local wanted, countRewardIndex, rewardCfg, matchSource = isWantedRobberyCountReward(index, eventKey, propTmplId, vfxId)
+    local runtimePoint = getRuntimeRobberyPoint(index)
+    local runtimeEventKey = type(runtimePoint) == "table" and runtimePoint.EventKey or nil
+    local runtimeVfxId = type(runtimePoint) == "table" and runtimePoint.VFXId or nil
+    local runtimeRewardText = type(runtimePoint) == "table" and runtimePoint.Reward and describeRewardList(runtimePoint.Reward) or "nil"
+
+    return string.format(
+        "%s [RobberyDebug:%02d] status=%s Index=%s EventKey=%s PropTmplId=%s VFXId=%s resolved=CountRewards[%s] via %s wanted=%s reward=%s runtimeEventKey=%s runtimeVFXId=%s runtimeReward=%s",
+        TAG,
+        order,
+        tostring(status or "scan"),
+        tostring(index),
+        tostring(eventKey),
+        tostring(propTmplId),
+        tostring(vfxId),
+        tostring(countRewardIndex),
+        tostring(matchSource),
+        tostring(wanted),
+        rewardCfg and rewardCfg.Reward and describeRewardList(rewardCfg.Reward) or "nil",
+        tostring(runtimeEventKey),
+        tostring(runtimeVfxId),
+        runtimeRewardText
+    )
+end
+
+local function printRobberyFilterDebug(robberyFolder, stats, statusByNode)
     if not ROBBERY_FILTER_DEBUG then
         return
     end
@@ -1231,38 +1348,46 @@ local function printRobberyFilterDebug(robberyFolder, seenCount, wantedCount, fi
     robberyFilterDebugAt = tick()
 
     print(string.format(
-        "%s [RobberyFilter] seen=%d wanted=%d filtered=%d only=CountRewards[%s]",
+        "%s [RobberyFilter] seen=%d picked=%d wanted=%d filtered=%d cooling=%d limit=%d failed=%d noIndex=%d only=CountRewards[%s]",
         TAG,
-        seenCount,
-        wantedCount,
-        filteredCount,
+        stats.seen or 0,
+        stats.picked or 0,
+        stats.wanted or 0,
+        stats.filtered or 0,
+        stats.cooling or 0,
+        stats.limit or 0,
+        stats.failed or 0,
+        stats.noIndex or 0,
         tostring(ROBBERY_ONLY_COUNT_REWARD_INDEX or "全部")
     ))
 
     local printed = 0
     for _, node in ipairs(robberyFolder:GetChildren()) do
-        if node:IsA("BasePart") and printed < 12 then
-            local index = node:GetAttribute("Index")
-            local eventKey = node:GetAttribute("EventKey")
-            local propTmplId = node:GetAttribute("PropTmplId")
-            local vfxId = node:GetAttribute("VFXId")
-            local wanted, countRewardIndex, rewardCfg, matchSource = isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+        if node:IsA("BasePart") and printed < ROBBERY_FILTER_DEBUG_MAX_LINES then
             printed = printed + 1
+            print(getRobberyDebugLine(node, printed, statusByNode and statusByNode[node] or "scan"))
 
-            print(string.format(
-                "%s [RobberyFilter:%02d] Index=%s EventKey=%s PropTmplId=%s VFXId=%s resolved=CountRewards[%s] via %s wanted=%s reward=%s",
-                TAG,
-                printed,
-                tostring(index),
-                tostring(eventKey),
-                tostring(propTmplId),
-                tostring(vfxId),
-                tostring(countRewardIndex),
-                tostring(matchSource),
-                tostring(wanted),
-                rewardCfg and rewardCfg.Reward and describeRewardList(rewardCfg.Reward) or "nil"
-            ))
+            local ok, attrs = pcall(function()
+                return node:GetAttributes()
+            end)
+            if ok and type(attrs) == "table" then
+                local attrParts = {}
+                for attrName, attrValue in pairs(attrs) do
+                    table.insert(attrParts, tostring(attrName) .. "=" .. tostring(attrValue))
+                end
+                table.sort(attrParts)
+                print(string.format("%s [RobberyAttrs:%02d] %s", TAG, printed, table.concat(attrParts, ", ")))
+            end
         end
+    end
+
+    if (stats.seen or 0) > ROBBERY_FILTER_DEBUG_MAX_LINES then
+        print(string.format(
+            "%s [RobberyFilter] 只打印前 %d 个刷新物，剩余 %d 个省略",
+            TAG,
+            ROBBERY_FILTER_DEBUG_MAX_LINES,
+            (stats.seen or 0) - ROBBERY_FILTER_DEBUG_MAX_LINES
+        ))
     end
 end
 
@@ -1274,35 +1399,62 @@ local function scanRobberyRewards()
     end
 
     local claimedCount = 0
-    local seenCount = 0
-    local wantedCount = 0
-    local filteredCount = 0
+    local stats = {
+        seen = 0,
+        picked = 0,
+        wanted = 0,
+        filtered = 0,
+        cooling = 0,
+        limit = 0,
+        failed = 0,
+        noIndex = 0,
+    }
+    local statusByNode = {}
 
     for _, node in ipairs(robberyFolder:GetChildren()) do
         if node:IsA("BasePart") then
-            seenCount = seenCount + 1
+            stats.seen = stats.seen + 1
 
             local ok, reason = claimRobberyReward(node)
             if ok then
-                wantedCount = wantedCount + 1
+                stats.wanted = stats.wanted + 1
+                stats.picked = stats.picked + 1
+                statusByNode[node] = "picked"
                 claimedCount = claimedCount + 1
                 task.wait(0.05)
             elseif reason == "filtered" then
-                filteredCount = filteredCount + 1
+                stats.filtered = stats.filtered + 1
+                statusByNode[node] = reason
+            elseif reason == "cooling" then
+                stats.cooling = stats.cooling + 1
+                stats.wanted = stats.wanted + 1
+                statusByNode[node] = reason
+            elseif reason == "limit_reached" then
+                stats.limit = stats.limit + 1
+                stats.wanted = stats.wanted + 1
+                statusByNode[node] = reason
+            elseif reason == "no_index" then
+                stats.noIndex = stats.noIndex + 1
+                statusByNode[node] = reason
+            elseif type(reason) == "string" and string.find(reason, "request_failed", 1, true) then
+                stats.failed = stats.failed + 1
+                stats.wanted = stats.wanted + 1
+                statusByNode[node] = reason
             else
                 local eventKey = node:GetAttribute("EventKey")
                 local propTmplId = node:GetAttribute("PropTmplId")
                 local vfxId = node:GetAttribute("VFXId")
-                local wanted = isWantedRobberyCountReward(eventKey, propTmplId, vfxId)
+                local wanted = isWantedRobberyCountReward(node:GetAttribute("Index"), eventKey, propTmplId, vfxId)
                 if wanted then
-                    wantedCount = wantedCount + 1
+                    stats.wanted = stats.wanted + 1
                 end
+                statusByNode[node] = reason or "not_picked"
             end
         end
     end
 
-    if seenCount > 0 and (wantedCount == 0 or filteredCount > 0) then
-        printRobberyFilterDebug(robberyFolder, seenCount, wantedCount, filteredCount)
+    if stats.seen > 0 then
+        printRobberyFilterDebug(robberyFolder, stats, statusByNode)
     end
 
     return claimedCount
