@@ -1,0 +1,219 @@
+local TARGET_GAME_ID = 98664161516921
+if game.PlaceId ~= TARGET_GAME_ID then
+    warn(string.format("[ClaimAllRewards] 游戏ID不匹配: %d (需要 %d)，脚本已禁用", game.PlaceId, TARGET_GAME_ID))
+    return
+end
+
+-- 领取：塔每日、塔周/上赛季排行、Abyss每日钥匙(DailyReward)、每日宝箱。
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+local TAG = "[ClaimAllRewards]"
+task.wait(15)
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local PathTool = _G.PathTool
+if not PathTool then
+    PathTool = require(
+        ReplicatedStorage:WaitForChild("CommonLibrary")
+            :WaitForChild("Tool")
+            :WaitForChild("PathTool")
+    )
+    _G.PathTool = PathTool
+end
+
+local ViewUtil = PathTool.ViewUtil
+
+local function getGamePlayer()
+    if PathTool.ClientPlayerManager and PathTool.ClientPlayerManager.GetGamePlayer then
+        local ok, gp = pcall(function()
+            return PathTool.ClientPlayerManager.GetGamePlayer()
+        end)
+        if ok and gp then
+            return gp
+        end
+    end
+    return nil
+end
+
+local function doRequest(remote, ...)
+    local args = { ... }
+    return pcall(function()
+        if ViewUtil and ViewUtil.DoRequest then
+            return ViewUtil.DoRequest(remote, table.unpack(args))
+        end
+        return remote(table.unpack(args))
+    end)
+end
+
+local function shortResult(result)
+    if type(result) == "table" then
+        for _, key in ipairs({ "desc", "Desc", "msg", "Message", "error", "Error" }) do
+            if result[key] ~= nil then
+                return tostring(result[key])
+            end
+        end
+        return "table"
+    end
+    return tostring(result)
+end
+
+local function countList(value)
+    if type(value) ~= "table" then
+        return 0
+    end
+
+    local count = 0
+    for _ in pairs(value) do
+        count += 1
+    end
+    return count
+end
+
+local function claimOne(label, remote, ...)
+    if type(remote) ~= "function" then
+        print(string.format("%s  %s: 接口不可用", TAG, label))
+        return false
+    end
+
+    local ok, result = doRequest(remote, ...)
+    if ok and result then
+        print(string.format("%s  ✓ %s 领取成功", TAG, label))
+        return true, result
+    end
+
+    print(string.format("%s  %s: %s", TAG, label, shortResult(result)))
+    return false, result
+end
+
+local function sortedKeys(tbl)
+    local keys = {}
+    for key in pairs(tbl or {}) do
+        table.insert(keys, key)
+    end
+    table.sort(keys, function(a, b)
+        if type(a) == type(b) then
+            return a < b
+        end
+        return tostring(a) < tostring(b)
+    end)
+    return keys
+end
+
+local function claimChestRewards(gp)
+    print(string.format("\n%s --- 宝箱 / 每日宝箱 / Abyss每日钥匙 ---", TAG))
+
+    local system = PathTool.ChestRewardSystem
+    if not system then
+        print(string.format("%s  ChestRewardSystem 不可用", TAG))
+        return 0
+    end
+
+    local success = 0
+    local chestReward = gp and gp.chestReward
+
+    for _, chestId in ipairs(sortedKeys(PathTool.CfgChestReward and PathTool.CfgChestReward.MemberChest)) do
+        local shouldTry = true
+        if chestReward and chestReward.IsMemberChestTaken then
+            pcall(function()
+                shouldTry = not chestReward:IsMemberChestTaken(chestId)
+            end)
+        end
+
+        if shouldTry then
+            local ok = claimOne(string.format("MemberChest[%s]", tostring(chestId)), system.ClientTakeMemberChest, chestId)
+            if ok then
+                success += 1
+            end
+            task.wait(0.35)
+        else
+            print(string.format("%s  MemberChest[%s]: 已领取", TAG, tostring(chestId)))
+        end
+    end
+
+    for _, chestId in ipairs(sortedKeys(PathTool.CfgChestReward and PathTool.CfgChestReward.DailyChest)) do
+        local shouldTry = true
+        if chestReward and chestReward.CanDailyChestTake then
+            pcall(function()
+                shouldTry = chestReward:CanDailyChestTake(chestId)
+            end)
+        end
+
+        if shouldTry then
+            local ok = claimOne(string.format("DailyChest[%s]", tostring(chestId)), system.ClientTakeDailyChest, chestId)
+            if ok then
+                success += 1
+            end
+            task.wait(0.35)
+        else
+            print(string.format("%s  DailyChest[%s]: 今日不可领取或已领取", TAG, tostring(chestId)))
+        end
+    end
+
+    for _, rewardId in ipairs(sortedKeys(PathTool.CfgChestReward and PathTool.CfgChestReward.DailyReward)) do
+        local shouldTry = true
+        local cfg = PathTool.CfgChestReward.DailyReward[rewardId]
+        if chestReward and chestReward.GetDailyRewardTakenCount then
+            pcall(function()
+                shouldTry = chestReward:GetDailyRewardTakenCount(rewardId) < (cfg.DailyTakenAmount or 1)
+            end)
+        end
+
+        if shouldTry then
+            local ok = claimOne(string.format("DailyReward[%s] / Abyss每日钥匙", tostring(rewardId)), system.ClientTakeDailyReward, rewardId)
+            if ok then
+                success += 1
+            end
+            task.wait(0.35)
+        else
+            print(string.format("%s  DailyReward[%s] / Abyss每日钥匙: 今日不可领取或已领取", TAG, tostring(rewardId)))
+        end
+    end
+
+    print(string.format("%s  宝箱/每日宝箱/钥匙完成，成功项=%d", TAG, success))
+    return success
+end
+
+local function claimTowerRewards()
+    print(string.format("\n%s --- 塔每日 / 塔周 ---", TAG))
+
+    local system = PathTool.TowerSystem
+    if not system then
+        print(string.format("%s  TowerSystem 不可用", TAG))
+        return 0
+    end
+
+    local success = 0
+
+    local okDaily, dailyResult = claimOne("塔每日奖励(全部)", system.ClientTakeDailyRewardAll)
+    if okDaily then
+        success += math.max(1, countList(type(dailyResult) == "table" and dailyResult.TakenItemIds or nil))
+    end
+    task.wait(0.35)
+
+    local okWeek = claimOne("塔周/上赛季排行奖励", system.ClientTakePrevSeasonRankReward)
+    if okWeek then
+        success += 1
+    end
+
+    print(string.format("%s  塔奖励完成，成功项=%d", TAG, success))
+    return success
+end
+
+print(string.format("%s ===== 开始领取全部可领取奖励 =====", TAG))
+
+local gp = getGamePlayer()
+if not gp then
+    warn(string.format("%s 无法获取 GamePlayer", TAG))
+    return
+end
+
+local total = 0
+total += claimChestRewards(gp)
+task.wait(0.5)
+total += claimTowerRewards()
+
+print(string.format("\n%s ===== 领取完成，总成功项=%d =====", TAG, total))
