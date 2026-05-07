@@ -201,6 +201,19 @@ function LegacyDailyCompat:getTaskProgress(frame)
     return tonumber(current), tonumber(target)
 end
 
+function LegacyDailyCompat:getMissionFrameId(frame)
+    local nameId = tonumber(frame.Name)
+    if nameId then
+        return nameId
+    end
+
+    local layoutOrder = frame.LayoutOrder
+    if layoutOrder and layoutOrder < 0 then
+        return layoutOrder + 100
+    end
+    return layoutOrder
+end
+
 function LegacyDailyCompat:claimVisibleMissionFrames(listRoot, remote, afterClaim)
     if not listRoot or not remote then
         return 0
@@ -209,7 +222,7 @@ function LegacyDailyCompat:claimVisibleMissionFrames(listRoot, remote, afterClai
     local claimed = 0
     for _, child in ipairs(listRoot:GetChildren()) do
         if child:IsA("Frame") and child.Visible then
-            local missionId = tonumber(child.Name)
+            local missionId = self:getMissionFrameId(child)
             local current, target = self:getTaskProgress(child)
             if missionId and current and target and target > 0 and current >= target then
                 self:fireRemote(remote, missionId)
@@ -240,8 +253,9 @@ function LegacyDailyCompat:claimAllMail()
         return false
     end
 
-    local remote = self:getCommonRemote({ "邮件", "领取全部邮件" })
-    local fired = self:fireRemote(remote)
+    local fired = pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("\228\186\139\228\187\182"):WaitForChild("\229\133\172\231\148\168"):WaitForChild("\233\130\174\228\187\182"):WaitForChild("\233\162\134\229\143\150\229\133\168\233\131\168\233\130\174\228\187\182"):FireServer()
+    end)
     if fired then
         self:markDailyDone("claimallmail")
     end
@@ -290,11 +304,18 @@ function LegacyDailyCompat:getSortedGamePassGiftEntries(giftList)
     end
 
     local entries = {}
+    local rewardIndex = 0
     for _, child in ipairs(giftList:GetChildren()) do
         local index = tonumber(child.Name:match("^gamepassgift(%d+)$"))
         if index then
             table.insert(entries, {
                 index = index,
+                gift = child,
+            })
+        elseif child:IsA("Frame") and child.Name == "月通行证奖励预制体" then
+            rewardIndex = rewardIndex + 1
+            table.insert(entries, {
+                index = rewardIndex,
                 gift = child,
             })
         end
