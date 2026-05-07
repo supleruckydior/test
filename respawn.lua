@@ -6,7 +6,10 @@ local Services = {
 local player = Services.Players.LocalPlayer
 local env = (type(getgenv) == "function" and getgenv()) or _G
 
-if type(env.__CultivationLegacyDailyCompat) == "table" then
+local CompatVersion = "2026-05-07-achievement"
+
+if type(env.__CultivationLegacyDailyCompat) == "table"
+    and env.__CultivationLegacyDailyCompat.version == CompatVersion then
     return env.__CultivationLegacyDailyCompat
 end
 
@@ -16,9 +19,13 @@ local Config = {
     ClaimCooldown = 0.05,
     MailCooldown = 30,
     PotionCooldown = 1,
+    AchievementCooldown = 60,
+    AchievementSyncTimeout = 8,
+    AchievementClaimLimit = 200,
 }
 
 local LegacyDailyCompat = {
+    version = CompatVersion,
     state = {
         dateKey = "",
         dailyFlags = {},
@@ -117,6 +124,18 @@ function LegacyDailyCompat:fireRemote(remote, ...)
     end
     safeCall(remote.FireServer, remote, ...)
     return true
+end
+
+function LegacyDailyCompat:requireModule(module)
+    if not module then
+        return nil
+    end
+
+    local ok, data = pcall(require, module)
+    if ok and type(data) == "table" then
+        return data
+    end
+    return nil
 end
 
 function LegacyDailyCompat:runPathRenameOnce()
@@ -475,6 +494,86 @@ function LegacyDailyCompat:potionfull()
     return self:fireRemote(remote, 1)
 end
 
+function LegacyDailyCompat:claimachievement()
+    if not self:canRunAction("claimachievement", Config.AchievementCooldown) then
+        return 0
+    end
+
+    local rs = Services.ReplicatedStorage
+    local ok, result = pcall(function()
+        local applySyncEvent = rs["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\230\136\144\229\176\177"]["\231\148\179\232\175\183\229\144\140\230\173\165"]
+        local syncDataEvent = rs["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\230\136\144\229\176\177"]["\229\144\140\230\173\165"]
+        local claimRewardEvent = rs["\228\186\139\228\187\182"]["\229\133\172\231\148\168"]["\230\136\144\229\176\177"]["\233\162\134\229\143\150"]
+        local achievementTableModule = rs["\230\149\176\230\141\174"]["\230\136\144\229\176\177"]["\230\136\144\229\176\177\232\161\168"]
+        local achievementTable = self:requireModule(achievementTableModule)
+
+        if not applySyncEvent or not syncDataEvent or not claimRewardEvent or not achievementTable then
+            return 0
+        end
+
+        local syncedData = nil
+        local connection = syncDataEvent.OnClientEvent:Connect(function(data)
+            if data then
+                syncedData = data
+            end
+        end)
+
+        self:fireRemote(applySyncEvent)
+
+        local startAt = os.clock()
+        while not syncedData and os.clock() - startAt < Config.AchievementSyncTimeout do
+            task.wait(0.1)
+        end
+
+        connection:Disconnect()
+
+        if not syncedData then
+            return 0
+        end
+
+        local achievementDict = syncedData["\230\136\144\229\176\177\229\173\151\229\133\184"]
+        if type(achievementDict) ~= "table" then
+            return 0
+        end
+
+        local candidates = {}
+        for _, achievementConfig in pairs(achievementTable) do
+            local index = achievementConfig.Index
+            local state = achievementDict[tostring(index)]
+            local progress = state and tonumber(state["\232\191\155\229\186\166"]) or 0
+            local target = tonumber(achievementConfig["\230\157\161\228\187\182\229\128\188"]) or 0
+            local claimed = state and state["\229\183\178\233\162\134\229\143\150"] == true
+
+            if state and not claimed and target > 0 and progress >= target then
+                table.insert(candidates, index)
+            end
+        end
+
+        table.sort(candidates, function(a, b)
+            return tonumber(a) < tonumber(b)
+        end)
+
+        local claimed = 0
+        for _, index in ipairs(candidates) do
+            if claimed >= Config.AchievementClaimLimit then
+                break
+            end
+
+            if self:fireRemote(claimRewardEvent, tostring(index)) then
+                claimed = claimed + 1
+                task.wait(Config.ClaimCooldown)
+            end
+        end
+
+        return claimed
+    end)
+
+    if ok then
+        return result or 0
+    end
+    return 0
+end
+
 function LegacyDailyCompat:forceDailyReset()
     self.state.dateKey = ""
     self:ensureDailyState()
@@ -508,6 +607,9 @@ function LegacyDailyCompat:installGlobals()
         end,
         potionfull = function()
             return self:potionfull()
+        end,
+        claimachievement = function()
+            return self:claimachievement()
         end,
     }
 
