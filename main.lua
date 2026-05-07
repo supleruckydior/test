@@ -29,11 +29,6 @@ local Constants = {
     LegacyWorldSettingsFile = 'WorldSettings.json',
     LegacyDungeonSettingsFile = 'DungeonsMaxLevel.json',
     LegacyLanguageFile = 'Cultivation_languageSet.json',
-    LegacyCompatFiles = {
-        'C:/Users/Administrator/Downloads/respawn.lua',
-        'C:\\Users\\Administrator\\Downloads\\respawn.lua',
-        'respawn.lua',
-    },
     LegacyCompatUrls = {
         'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/respawn.lua',
     },
@@ -1528,6 +1523,7 @@ local LegacyDailyController = {
         'gamepassmission',
         'gamepassgiftget',
         'potionfull',
+        'claimachievement',
     },
     secondaryFunctions = {
         'claimallmail',
@@ -1538,7 +1534,11 @@ local LegacyDailyController = {
 }
 
 function LegacyDailyController:ensureCompatLoaded()
-    if Utils.getGlobalFunction('potionfull') and Utils.getGlobalFunction('mainmissionchack') then
+    if
+        Utils.getGlobalFunction('potionfull')
+        and Utils.getGlobalFunction('mainmissionchack')
+        and Utils.getGlobalFunction('claimachievement')
+    then
         return true
     end
 
@@ -1550,17 +1550,8 @@ function LegacyDailyController:ensureCompatLoaded()
 
     for _, url in ipairs(Constants.LegacyCompatUrls) do
         local ok = Utils.tryLoadLuaUrl(url)
-        if ok and Utils.getGlobalFunction('potionfull') then
+        if ok and Utils.getGlobalFunction('potionfull') and Utils.getGlobalFunction('claimachievement') then
             self.compatLoadSource = url
-            self.missingFunctions = {}
-            return true
-        end
-    end
-
-    for _, path in ipairs(Constants.LegacyCompatFiles) do
-        local ok = Utils.tryLoadLuaFile(path)
-        if ok and Utils.getGlobalFunction('potionfull') then
-            self.compatLoadSource = path
             self.missingFunctions = {}
             return true
         end
