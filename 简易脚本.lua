@@ -290,7 +290,7 @@ end
 success, err = pcall(function()
     loadstring(
         game:HttpGet(
-            'https://github.com/supleruckydior/test/raw/refs/heads/main/respawn.json'
+            'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/respawn.lua'
         )
     )()
 end)
