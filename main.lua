@@ -34,6 +34,9 @@ local Constants = {
         'C:\\Users\\Administrator\\Downloads\\respawn.lua',
         'respawn.lua',
     },
+    LegacyCompatUrls = {
+        'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/respawn.lua',
+    },
     DailyOffset = 8 * 3600,
     UILibraryUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/menu.json',
     RespawnScriptUrl = 'https://raw.githubusercontent.com/Tseting-nil/-Cultivation-Simulator-script/refs/heads/main/%E6%89%8B%E6%A9%9F%E7%AB%AFUI/%E9%85%8D%E7%BD%AE%E4%B8%BB%E5%A0%B4%E6%99%AF.lua',
@@ -306,6 +309,32 @@ function Utils.tryLoadLuaFile(path)
     return true, result
 end
 
+function Utils.tryLoadLuaUrl(url)
+    if type(game) ~= 'table' and type(game) ~= 'userdata' then
+        return false, 'missing game'
+    end
+    if type(game.HttpGet) ~= 'function' then
+        return false, 'missing HttpGet'
+    end
+
+    local ok, content = pcall(game.HttpGet, game, url, true)
+    if not ok or type(content) ~= 'string' or content == '' then
+        return false, 'fetch'
+    end
+
+    local chunk = loadstring(content)
+    if type(chunk) ~= 'function' then
+        return false, 'compile'
+    end
+
+    local runOk, result = pcall(chunk)
+    if not runOk then
+        return false, tostring(result)
+    end
+
+    return true, result
+end
+
 function Utils.readJsonFile(path)
     local content = Utils.tryReadFile(path)
     if not content or content == '' then
@@ -436,7 +465,6 @@ local defaultSettings = {
     autoRefinePrivilege = true,
     autoShowAllCurrency = false,
     autoRemoveRewardUi = true,
-    autoElixirCraft = false,
     autoLottery = false,
     useDiamondsForLottery = false,
     autoUpgradeFlyingSword = false,
@@ -1488,6 +1516,8 @@ function FarmController:onDailyReset()
     end
 end
 
+local BattlePassCraftingController
+
 local LegacyDailyController = {
     missingFunctions = {},
     compatLoadAttempted = false,
@@ -1517,6 +1547,15 @@ function LegacyDailyController:ensureCompatLoaded()
     end
 
     self.compatLoadAttempted = true
+
+    for _, url in ipairs(Constants.LegacyCompatUrls) do
+        local ok = Utils.tryLoadLuaUrl(url)
+        if ok and Utils.getGlobalFunction('potionfull') then
+            self.compatLoadSource = url
+            self.missingFunctions = {}
+            return true
+        end
+    end
 
     for _, path in ipairs(Constants.LegacyCompatFiles) do
         local ok = Utils.tryLoadLuaFile(path)
@@ -1557,11 +1596,18 @@ function LegacyDailyController:start()
             task.wait(60)
         end
     end)
+
+    if BattlePassCraftingController then
+        BattlePassCraftingController:start()
+    end
 end
 
 function LegacyDailyController:stop()
     Scheduler:stop('legacy_daily_primary_v2')
     Scheduler:stop('legacy_daily_secondary_v2')
+    if BattlePassCraftingController then
+        BattlePassCraftingController:stop()
+    end
 end
 
 function LegacyDailyController:getMissingCount()
@@ -2735,12 +2781,149 @@ function ElixirCraftController:disable(reason)
     end
 end
 
-function ElixirCraftController:syncManualSetting()
-    if State.settings.autoElixirCraft then
-        self:enable('manual')
-    else
-        self:disable('manual')
+local AutoForgeController = {}
+
+function AutoForgeController:startOnce()
+    return Utils.safePcall(function()
+        local replicatedStorage = Services.ReplicatedStorage
+        local valuesRoot = player:WaitForChild('\229\128\188', 5)
+        local levelValueObject = valuesRoot['\228\191\161\230\129\175']['\231\173\137\231\186\167']
+        local doubleRefineValueObject = valuesRoot['\231\137\185\230\157\131']['\229\143\140\229\128\141\231\130\188\229\136\182']
+        local countTable = require(replicatedStorage['\230\149\176\230\141\174']['\231\130\188\229\153\168\229\143\176']['\232\135\170\229\138\168\231\130\188\229\153\168\230\149\176\233\135\143\232\161\168'])
+
+        local level = levelValueObject.Value
+        local countData = countTable[level] or countTable[#countTable]
+        local baseCount = countData['\230\149\176\233\135\143']
+        local refineCount = baseCount
+
+        if doubleRefineValueObject.Value then
+            refineCount = refineCount * 2
+        end
+
+        print('[AutoForge]', 'level =', level, 'base =', baseCount, 'double =', doubleRefineValueObject.Value, 'final =', refineCount)
+
+        replicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\231\130\188\229\153\168']['\232\135\170\229\138\168\229\136\182\228\189\156']:FireServer(true, 1)
+        replicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\228\191\174\230\148\185\231\130\188\229\136\182\230\149\176\233\135\143']:Fire(refineCount)
+        replicatedStorage['\229\128\188']['\229\174\162\230\136\183\231\171\175']['\229\136\182\228\189\156\228\184\173'].Value = 1
+        replicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\231\161\174\229\174\154\229\188\128\229\167\139\232\135\170\229\138\168\231\130\188\229\136\182']:Fire(nil)
+    end)
+end
+
+function AutoForgeController:stopAuto()
+    return Utils.safePcall(function()
+        local replicatedStorage = Services.ReplicatedStorage
+        replicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\231\130\188\229\153\168']['\232\135\170\229\138\168\229\136\182\228\189\156']:FireServer(false, 1)
+        replicatedStorage['\229\128\188']['\229\174\162\230\136\183\231\171\175']['\229\136\182\228\189\156\228\184\173'].Value = 0
+        print('[AutoForge]', 'stopped')
+    end)
+end
+
+BattlePassCraftingController = {
+    running = false,
+}
+
+function BattlePassCraftingController:getMissionList()
+    return Utils.deepWait(playerGui, {
+        'GUI',
+        '二级界面',
+        '商店',
+        '通行证任务',
+        '背景',
+        '任务列表',
+    }, 1)
+end
+
+function BattlePassCraftingController:readCraftingTask()
+    local missionList = self:getMissionList()
+    if not missionList then
+        return nil
     end
+
+    for _, child in ipairs(missionList:GetChildren()) do
+        if child:IsA('Frame') and child.Visible then
+            local nameLabel = child:FindFirstChild('名称')
+            local text = nameLabel and nameLabel:IsA('TextLabel') and nameLabel.Text or ''
+
+            if text:find('Crafting Equipment', 1, true) then
+                local current, target = text:match('%((%d+)%s*/%s*(%d+)%)')
+                return {
+                    current = tonumber(current) or 0,
+                    target = tonumber(target) or 0,
+                    text = text,
+                }
+            end
+        end
+    end
+
+    return nil
+end
+
+function BattlePassCraftingController:stopForgeIfRunning()
+    if self.running then
+        self.running = false
+        AutoForgeController:stopAuto()
+    end
+end
+
+function BattlePassCraftingController:start()
+    Scheduler:ensure('battlepass_crafting_forge_v2', function(job)
+        while job.enabled and State.settings.autoLegacyDaily do
+            local taskInfo = self:readCraftingTask()
+
+            if taskInfo and taskInfo.target > 0 and taskInfo.current < taskInfo.target then
+                self.running = true
+                AutoForgeController:startOnce()
+                task.wait(5)
+            else
+                self:stopForgeIfRunning()
+                task.wait(10)
+            end
+        end
+
+        self:stopForgeIfRunning()
+    end)
+end
+
+function BattlePassCraftingController:stop()
+    Scheduler:stop('battlepass_crafting_forge_v2')
+    self:stopForgeIfRunning()
+end
+
+local AutoElixirController = {}
+
+function AutoElixirController:startOnce()
+    return Utils.safePcall(function()
+        local replicatedStorage = Services.ReplicatedStorage
+        local valuesRoot = player:WaitForChild('\229\128\188', 5)
+        local doubleRefineValueObject = valuesRoot['\231\137\185\230\157\131']['\229\143\140\229\128\141\231\130\188\229\136\182']
+        local alchemyFurnaceTable = require(replicatedStorage['\230\149\176\230\141\174']['\231\130\188\228\184\185\231\130\137']['\231\130\188\228\184\185\231\130\137\232\161\168'])
+
+        UiOpeners.openElixir()
+        task.wait(0.15)
+
+        local _, levelLabel = pcall(function()
+            return playerGui['GUI']['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137']['\232\131\140\230\153\175']['\229\177\158\230\128\167\229\140\186\229\159\159']['\229\177\158\230\128\167\229\136\151\232\161\168']['\229\136\151\232\161\168']['\231\173\137\231\186\167']['\229\128\188']
+        end)
+        local level = tonumber(levelLabel and levelLabel.Text and levelLabel.Text:match('%d+')) or 1
+        local furnaceData = alchemyFurnaceTable[level] or alchemyFurnaceTable[#alchemyFurnaceTable]
+        local baseCount = furnaceData['\228\186\167\229\135\186\230\149\176\233\135\143']
+        local refineCount = baseCount
+
+        if doubleRefineValueObject.Value then
+            refineCount = refineCount * 2
+        end
+
+        print('[AutoElixir]', 'level =', level, 'base =', baseCount, 'double =', doubleRefineValueObject.Value, 'final =', refineCount)
+
+        replicatedStorage['\228\186\139\228\187\182']['\229\133\172\231\148\168']['\231\130\188\229\153\168']['\232\135\170\229\138\168\229\136\182\228\189\156']:FireServer(true, 2)
+        replicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\228\191\174\230\148\185\231\130\188\229\136\182\230\149\176\233\135\143']:Fire(refineCount)
+        replicatedStorage['\229\128\188']['\229\174\162\230\136\183\231\171\175']['\229\136\182\228\189\156\228\184\173'].Value = 2
+        replicatedStorage['\228\186\139\228\187\182']['\229\174\162\230\136\183\231\171\175']['\229\174\162\230\136\183\231\171\175UI']['\231\161\174\229\174\154\229\188\128\229\167\139\232\135\170\229\138\168\231\130\188\229\136\182']:Fire(nil)
+
+        pcall(function()
+            playerGui['GUI']['\228\186\140\231\186\167\231\149\140\233\157\162']['\231\130\188\228\184\185\231\130\137'].Visible = false
+        end)
+    end)
 end
 
 local LotteryController = {
@@ -3571,12 +3754,11 @@ function UiController:updateSummary()
 
     if State.ui.elixirUpgradeLabel then
         State.ui.elixirUpgradeLabel.Text = (
-            '当前选择 丹炉：%s | 等级：%s | 目标：%s | 自动炼丹：%s'
+            '当前选择 丹炉：%s | 等级：%s | 目标：%s'
         ):format(
             self:formatShortLevel(State.settings.batch.selectedElixir or 1),
             self:formatShortLevel(State.upgrade.elixirCurrentLevel or 0),
-            self:formatShortLevel(State.settings.batch.elixirTarget or 80),
-            State.settings.autoElixirCraft and '开启' or '关闭'
+            self:formatShortLevel(State.settings.batch.elixirTarget or 80)
         )
     end
 
@@ -3816,9 +3998,11 @@ function UiController:create()
         updateSetting('useDiamondsForLottery', value)
     end)
 
-    controls.autoElixirSwitch = tabs.lottery:AddSwitch('自动炼丹药', function(value)
-        updateSetting('autoElixirCraft', value)
-        ElixirCraftController:syncManualSetting()
+    tabs.lottery:AddButton('自动炼丹药', function()
+        AutoElixirController:startOnce()
+    end)
+    tabs.lottery:AddButton('自动炼器', function()
+        AutoForgeController:startOnce()
     end)
     tabs.lottery:AddButton('自动交易初始化 1', function()
         MiscController:runTradeScript(1)
@@ -4028,7 +4212,6 @@ function UiController:create()
     self:safeSet(controls.guildShopSwitch, State.settings.autoGuildShop, 'guildShopSwitch')
     self:safeSet(controls.autoLotterySwitch, State.settings.autoLottery, 'autoLotterySwitch')
     self:safeSet(controls.useDiamondsSwitch, State.settings.useDiamondsForLottery, 'useDiamondsSwitch')
-    self:safeSet(controls.autoElixirSwitch, State.settings.autoElixirCraft, 'autoElixirSwitch')
     self:safeSet(controls.flyingSwordSwitch, State.settings.autoUpgradeFlyingSword, 'flyingSwordSwitch')
     self:safeSet(controls.weaponSkillSwitch, State.settings.autoUpgradeWeaponSkill, 'weaponSkillSwitch')
     self:safeSet(controls.runeSwitch, State.settings.autoUpgradeRune, 'runeSwitch')
@@ -4129,7 +4312,6 @@ local function bootstrap()
     WorldController:syncModes()
     DungeonController:syncModes()
     UpgradeController:syncModes()
-    ElixirCraftController:syncManualSetting()
     FollowController:sync()
     MonitorController:sync()
 
