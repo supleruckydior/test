@@ -41,7 +41,7 @@ local Constants = {
     },
     StatsScriptUrl = 'https://github.com/supleruckydior/test/raw/refs/heads/main/%E9%87%91%E5%B8%81.json',
     RuneFilterScriptUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E7%AC%A6%E6%96%87%E7%AD%9B%E9%80%89.lua',
-    yiwuScriptUrl = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E9%81%97%E7%89%A9%E5%8D%87%E7%BA%A7.lua"))()',
+    yiwuScriptUrl = 'https://raw.githubusercontent.com/supleruckydior/test/refs/heads/main/%E9%81%97%E7%89%A9%E5%8D%87%E7%BA%A7.lua',
     GithubUrl = 'https://github.com/Tseting-nil',
     GiftCodes = {
         'ilovethisgame',
@@ -200,6 +200,34 @@ end
 function Utils.getUtc8DateKey(timestamp)
     local utc8 = os.date('!*t', (timestamp or os.time()) + Constants.DailyOffset)
     return string.format('%04d-%02d-%02d', utc8.year, utc8.month, utc8.day)
+end
+
+function Utils.getBattlePassResetCountdownText()
+    local timezoneValue = Utils.deepFind(player, {
+        Constants.Paths.Values,
+        '信息',
+        '时区',
+    })
+    local timezone = tonumber(timezoneValue and timezoneValue.Value) or 8
+    local currentTimestamp = Services.Workspace:GetServerTimeNow()
+    local timezoneTimestamp = currentTimestamp + timezone * 3600
+    local date = os.date('!*t', timezoneTimestamp)
+
+    date.hour = 24
+    date.min = 0
+    date.sec = 0
+
+    local remaining = math.max(0, os.time(date) - timezoneTimestamp)
+    local days = math.floor(remaining / 86400)
+
+    if days > 1 then
+        return ('%d days, %d hours'):format(days, math.floor((remaining % 86400) / 3600))
+    end
+
+    local hours = math.floor(remaining / 3600)
+    local minutes = math.floor((remaining % 3600) / 60)
+    local seconds = math.floor(remaining % 60)
+    return string.format('%02d:%02d:%02d', hours, minutes, seconds)
 end
 
 function Utils.showTopRightNotice(text, lifetime)
@@ -3607,10 +3635,12 @@ function UiController:updateSummary()
     end
 
     if State.ui.summaryLabel then
+        local resetCountdown = Utils.getBattlePassResetCountdownText()
         State.ui.summaryLabel.Text = (
-            'UTC+8: %s | Respawn: %s'
+            'UTC+8: %s | 重置倒计时: %s | Respawn: %s'
         ):format(
             State.daily.currentDateKey,
+            resetCountdown,
             tostring(RespawnService.pointName)
         )
     end
