@@ -104,6 +104,8 @@ local Constants = {
         RespawnPoint = '\233\135\141\231\148\159\231\130\185',
         EnterWorld = '\232\191\155\229\133\165\228\184\150\231\149\140\229\133\179\229\141\161',
         EnterDungeon = '\232\191\155\229\133\165\229\137\175\230\156\172',
+        RequestDungeonRefresh = '\231\148\179\232\175\183\229\136\183\230\150\176',
+        SyncDungeonData = '\229\144\140\230\173\165\229\137\175\230\156\172\230\149\176\230\141\174',
         EnterOpenBattle = '\232\191\155\229\133\165\229\188\128\229\144\175\228\184\173\229\133\179\229\141\161',
         UpdateAssistTarget = '\230\155\180\230\150\176\229\141\143\229\138\169\231\155\174\230\160\135',
         ModifyPlayerSettings = '\231\142\169\229\174\182\228\191\174\230\148\185\232\174\190\231\189\174',
@@ -506,6 +508,7 @@ local defaultSettings = {
         autoStart = false,
         autoPlusOne = false,
         autoFinishAll = false,
+        autoReadMaxLevel = false,
         levels = {
             OreDungeon = 1,
             GemDungeon = 1,
@@ -624,6 +627,11 @@ local State = {
         lastEnterAt = 0,
         pendingVictory = false,
         awaitingResult = false,
+        syncedLevels = {},
+        syncedLastLevels = {},
+        dataSyncCount = 0,
+        lastDataSyncAt = 0,
+        oneShotDataInitPending = false,
     },
     lottery = {
         diamonds = 0,
@@ -694,6 +702,8 @@ function PathRegistry:init()
         ElixirUpgrade = self.Events.Elixir:FindFirstChild(paths.Upgrade),
         WorldEnter = self.Events.Stage:FindFirstChild(paths.EnterWorld),
         DungeonEnter = self.Events.Dungeon:FindFirstChild(paths.EnterDungeon),
+        DungeonRefresh = self.Events.Dungeon:FindFirstChild(paths.RequestDungeonRefresh),
+        DungeonDataSync = self.Events.Dungeon:FindFirstChild(paths.SyncDungeonData),
         AssistTeleport = self.Events.Stage:FindFirstChild(paths.EnterOpenBattle),
         AssistTarget = self.Events.Combat:FindFirstChild(paths.UpdateAssistTarget),
         InvestClaim = self.Events.Shop:FindFirstChild(paths.Bank)
@@ -2161,6 +2171,12 @@ local DungeonController = {
         HoverDungeon = { id = 7, label = 'Hover Dungeon', zh = '悬浮地下城', uiName = 'HoverDungeon' },
         GoldDungeon = { id = 6, label = 'Gold Dungeon', zh = '金币地下城', uiName = 'GoldDungeon' },
     },
+    dataKeys = {
+        dictionary = '\229\137\175\230\156\172\230\149\176\230\141\174\229\173\151\229\133\184',
+        keys = '\233\146\165\229\140\153',
+        highest = '\232\191\155\229\186\166',
+        last = '\228\184\138\230\172\161\230\140\145\230\136\152\232\191\155\229\186\166',
+    },
 }
 
 function DungeonController:getSelectedConfig()
@@ -2176,9 +2192,22 @@ function DungeonController:getInternalNameByUiName(uiName)
     return nil
 end
 
-function DungeonController:getSelectedLevel()
+function DungeonController:getSyncedMaxLevel(uiName)
+    local levels = State.dungeon.syncedLevels or {}
+    local level = tonumber(levels[uiName])
+    if level and level > 0 then
+        return math.floor(level)
+    end
+    return nil
+end
+
+function DungeonController:getLocalSelectedLevel()
     local key = self:getSelectedConfig()
     return math.max(1, tonumber(State.settings.dungeon.levels[key.uiName]) or 1)
+end
+
+function DungeonController:getSelectedLevel()
+    return self:getLocalSelectedLevel()
 end
 
 function DungeonController:setSelected(name)
@@ -2206,6 +2235,186 @@ function DungeonController:setLevelForUiName(uiName, level)
     local levels = Utils.cloneTable(State.settings.dungeon.levels)
     levels[uiName] = math.max(1, math.floor(tonumber(level) or 1))
     updateSetting({ 'dungeon', 'levels' }, levels)
+end
+
+function DungeonController:getDataSyncRemote()
+    local remote = PathRegistry.Remotes and PathRegistry.Remotes.DungeonDataSync
+    if not remote and PathRegistry.Events and PathRegistry.Events.Dungeon then
+        remote = PathRegistry.Events.Dungeon:FindFirstChild(Constants.Paths.SyncDungeonData)
+        if PathRegistry.Remotes then
+            PathRegistry.Remotes.DungeonDataSync = remote
+        end
+    end
+    return remote
+end
+
+function DungeonController:getRefreshRemote()
+    local remote = PathRegistry.Remotes and PathRegistry.Remotes.DungeonRefresh
+    if not remote and PathRegistry.Events and PathRegistry.Events.Dungeon then
+        remote = PathRegistry.Events.Dungeon:FindFirstChild(Constants.Paths.RequestDungeonRefresh)
+        if PathRegistry.Remotes then
+            PathRegistry.Remotes.DungeonRefresh = remote
+        end
+    end
+    return remote
+end
+
+function DungeonController:requestDataSync()
+    local remote = self:getRefreshRemote()
+    if not remote then
+        return false
+    end
+    return ActionThrottle:fireServer('dungeon_data_refresh', remote, 0.5, nil)
+end
+
+function DungeonController:applySyncedDungeonData(data)
+    local dictionary = type(data) == 'table' and data[self.dataKeys.dictionary] or nil
+    if type(dictionary) ~= 'table' then
+        return 0
+    end
+
+    State.dungeon.syncedLevels = State.dungeon.syncedLevels or {}
+    State.dungeon.syncedLastLevels = State.dungeon.syncedLastLevels or {}
+    local applied = 0
+
+    for _, name in ipairs(self.dungeonOrder) do
+        local config = self.configs[name]
+        local entry = config and dictionary[tostring(config.id)] or nil
+        if type(entry) == 'table' then
+            local keys = tonumber(entry[self.dataKeys.keys])
+            if keys then
+                local safeKeys = math.max(0, math.floor(keys))
+                State.dungeon.keyCounts[config.uiName] = safeKeys
+                State.dungeon.keyCounts[name] = safeKeys
+            end
+
+            local highest = tonumber(entry[self.dataKeys.highest])
+            local last = tonumber(entry[self.dataKeys.last])
+            if highest or last then
+                local maxLevel = math.max(1, math.floor(highest or last or 1))
+                local lastLevel = math.max(1, math.floor(last or maxLevel))
+
+                State.dungeon.syncedLevels[config.uiName] = maxLevel
+                State.dungeon.syncedLastLevels[config.uiName] = lastLevel
+                applied += 1
+            end
+        end
+    end
+
+    return applied
+end
+
+function DungeonController:writeSyncedLevelsToLocal()
+    local syncedLevels = State.dungeon.syncedLevels or {}
+    local levels = Utils.cloneTable(State.settings.dungeon.levels or {})
+    local applied = 0
+    local changed = false
+
+    for _, name in ipairs(self.dungeonOrder) do
+        local config = self.configs[name]
+        local level = config and tonumber(syncedLevels[config.uiName]) or nil
+        if level and level > 0 then
+            local safeLevel = math.max(1, math.floor(level))
+            applied += 1
+            if tonumber(levels[config.uiName]) ~= safeLevel then
+                levels[config.uiName] = safeLevel
+                changed = true
+            end
+        end
+    end
+
+    if changed then
+        updateSetting({ 'dungeon', 'levels' }, levels)
+    end
+
+    return applied
+end
+
+function DungeonController:handleSyncedDungeonData(data)
+    State.dungeon.dataSyncCount = (tonumber(State.dungeon.dataSyncCount) or 0) + 1
+    State.dungeon.lastDataSyncAt = os.clock()
+
+    local applied = self:applySyncedDungeonData(data)
+
+    if State.dungeon.oneShotDataInitPending and applied > 0 then
+        local localApplied = self:writeSyncedLevelsToLocal()
+        State.dungeon.oneShotDataInitPending = false
+        Utils.showTopRightNotice(('地下城本地关卡已更新：%d 项'):format(localApplied), 3)
+        if not State.settings.dungeon.autoReadMaxLevel then
+            self:stopDataListener()
+        end
+    end
+
+    return applied
+end
+
+function DungeonController:startDataListener()
+    if self.dataSyncConnection then
+        return true
+    end
+
+    local remote = self:getDataSyncRemote()
+    if not remote or not remote.OnClientEvent then
+        return false
+    end
+
+    self.dataSyncConnection = remote.OnClientEvent:Connect(function(data)
+        self:handleSyncedDungeonData(data)
+    end)
+    return true
+end
+
+function DungeonController:stopDataListener(force)
+    if not force and (State.settings.dungeon.autoReadMaxLevel or State.dungeon.oneShotDataInitPending) then
+        return
+    end
+
+    if self.dataSyncConnection then
+        self.dataSyncConnection:Disconnect()
+        self.dataSyncConnection = nil
+    end
+end
+
+function DungeonController:startPersistentDataRead()
+    if not self:startDataListener() then
+        Utils.showTopRightNotice('地下城数据同步事件未找到', 3)
+        return false
+    end
+
+    return true
+end
+
+function DungeonController:initializeFromDataOnce()
+    local applied = self:writeSyncedLevelsToLocal()
+    if applied > 0 then
+        Utils.showTopRightNotice(('地下城本地关卡已更新：%d 项'):format(applied), 3)
+        return true
+    end
+
+    State.dungeon.oneShotDataInitPending = true
+    if not self:startDataListener() then
+        State.dungeon.oneShotDataInitPending = false
+        Utils.showTopRightNotice('地下城数据同步事件未找到', 3)
+        return false
+    end
+
+    self:requestDataSync()
+    Scheduler:start('dungeon_data_init_once_v2', function(job)
+        local startedAt = os.clock()
+        while job.enabled and State.dungeon.oneShotDataInitPending do
+            if os.clock() - startedAt >= 10 then
+                State.dungeon.oneShotDataInitPending = false
+                Utils.showTopRightNotice('地下城本地关卡更新超时', 3)
+                if not State.settings.dungeon.autoReadMaxLevel then
+                    self:stopDataListener()
+                end
+                break
+            end
+            task.wait(0.1)
+        end
+    end)
+
+    return true
 end
 
 function DungeonController:adjustLevel(delta, source)
@@ -2735,6 +2944,12 @@ function DungeonController:syncModes()
         self:startSyncUi()
     else
         self:stopSyncUi()
+    end
+
+    if State.settings.dungeon.autoReadMaxLevel then
+        self:startPersistentDataRead()
+    else
+        self:stopDataListener()
     end
 
     if State.settings.dungeon.autoStart then
@@ -3711,7 +3926,7 @@ function UiController:updateSummary()
         local config = DungeonController:getSelectedConfig()
         local keys = tonumber(State.dungeon.keyCounts[config.uiName]) or 0
         State.ui.dungeonStatusLabel.Text = (
-            '地下城: %s | 钥匙:%d | 关卡:%d | 自动开始:%s'
+            '地下城: %s | 钥匙:%d | 本地关卡:%d | 自动开始:%s'
         ):format(
             config.zh,
             keys,
@@ -3724,7 +3939,7 @@ function UiController:updateSummary()
         local config = DungeonController:getSelectedConfig()
         local keys = tonumber(State.dungeon.keyCounts[config.uiName]) or 0
         State.ui.dungeonLabel.Text = (
-            '当前选择：%s | 钥匙：%s | 关卡选择：%s'
+            '当前选择：%s | 钥匙：%s | 本地关卡：%s'
         ):format(
             config.zh,
             self:formatShortLevel(keys),
@@ -3962,6 +4177,15 @@ function UiController:create()
     controls.dungeonFinishAllSwitch = tabs.dungeon:AddSwitch('钥匙耗尽自动切换', function(value)
         updateSetting({ 'dungeon', 'autoFinishAll' }, value)
         DungeonController:syncModes()
+    end)
+
+    controls.dungeonReadMaxSwitch = tabs.dungeon:AddSwitch('数据读取最大关卡', function(value)
+        updateSetting({ 'dungeon', 'autoReadMaxLevel' }, value)
+        DungeonController:syncModes()
+    end)
+
+    tabs.dungeon:AddButton('读取写入本地关卡', function()
+        DungeonController:initializeFromDataOnce()
     end)
 
     tabs.dungeon:AddTextBox('自订地下城关卡', function(text)
@@ -4229,6 +4453,7 @@ function UiController:create()
     self:safeSet(controls.dungeonAutoStartSwitch, State.settings.dungeon.autoStart, 'dungeonAutoStartSwitch')
     self:safeSet(controls.dungeonPlusOneSwitch, State.settings.dungeon.autoPlusOne, 'dungeonPlusOneSwitch')
     self:safeSet(controls.dungeonFinishAllSwitch, State.settings.dungeon.autoFinishAll, 'dungeonFinishAllSwitch')
+    self:safeSet(controls.dungeonReadMaxSwitch, State.settings.dungeon.autoReadMaxLevel, 'dungeonReadMaxSwitch')
     self:safeSet(controls.donateSwitch, State.settings.autoDonate, 'donateSwitch')
     self:safeSet(controls.guildShopSwitch, State.settings.autoGuildShop, 'guildShopSwitch')
     self:safeSet(controls.autoLotterySwitch, State.settings.autoLottery, 'autoLotterySwitch')
