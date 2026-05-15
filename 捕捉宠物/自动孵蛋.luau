@@ -81,8 +81,8 @@ local function installModuleCacheFallbacks()
         return
     end
 
-    if ModuleCache._HatchDirectRequireInstalled ~= true then
-        ModuleCache._HatchDirectRequireInstalled = true
+    if rawget(ModuleCache, "_HatchDirectRequireInstalled") ~= true then
+        rawset(ModuleCache, "_HatchDirectRequireInstalled", true)
         ModuleCache.Require = function(moduleNameOrScript)
             local isModuleScript = false
             pcall(function()
@@ -172,6 +172,18 @@ directRequireModule = function(moduleName, directPathParts)
     return nil, tostring(result)
 end
 
+local function getModule(moduleName)
+    if not ModuleCache then
+        ensureModuleCache()
+    end
+    local cached = ModuleCache and rawget(ModuleCache, moduleName)
+    if cached then
+        return cached
+    end
+    local result = directRequireModule(moduleName)
+    return result
+end
+
 local function WaitForModules(maxWait)
     maxWait = maxWait or 30
     ensureModuleCache()
@@ -197,7 +209,8 @@ local function WaitForModules(maxWait)
     waited = 0
     while not GamePlayer do
         local success, result = pcall(function()
-            return ModuleCache.ClientPlayerManager and ModuleCache.ClientPlayerManager.GetGamePlayer and ModuleCache.ClientPlayerManager.GetGamePlayer()
+            local clientPlayerManager = getModule("ClientPlayerManager")
+            return clientPlayerManager and clientPlayerManager.GetGamePlayer and clientPlayerManager.GetGamePlayer()
         end)
         if success and result then
             GamePlayer = result
@@ -471,9 +484,10 @@ local function getGamePlayer()
     if GamePlayer then
         return GamePlayer
     end
-    if ModuleCache.ClientPlayerManager and ModuleCache.ClientPlayerManager.GetGamePlayer then
+    local clientPlayerManager = getModule("ClientPlayerManager")
+    if clientPlayerManager and clientPlayerManager.GetGamePlayer then
         local ok, gp = pcall(function()
-            return ModuleCache.ClientPlayerManager.GetGamePlayer()
+            return clientPlayerManager.GetGamePlayer()
         end)
         if ok and gp then
             GamePlayer = gp
@@ -486,8 +500,9 @@ end
 local function doRequest(remote, ...)
     local args = { ... }
     return pcall(function()
-        if ModuleCache.ViewUtil and ModuleCache.ViewUtil.DoRequest then
-            return ModuleCache.ViewUtil.DoRequest(remote, table.unpack(args))
+        local viewUtil = getModule("ViewUtil")
+        if viewUtil and viewUtil.DoRequest then
+            return viewUtil.DoRequest(remote, table.unpack(args))
         end
         return remote(table.unpack(args))
     end)
@@ -680,13 +695,14 @@ end
 local function getEggList()
     local gp = getGamePlayer()
     local list = {}
-    if not (gp and gp.egg and gp.egg.IterEgg and ModuleCache.CfgEgg and ModuleCache.CfgEgg.Tmpls) then
+    local cfgEgg = getModule("CfgEgg")
+    if not (gp and gp.egg and gp.egg.IterEgg and cfgEgg and cfgEgg.Tmpls) then
         return list
     end
 
     pcall(function()
         gp.egg:IterEgg(function(tmplId, amount)
-            local cfg = ModuleCache.CfgEgg.Tmpls[tmplId]
+            local cfg = cfgEgg.Tmpls[tmplId]
             if cfg and amount and amount > 0 then
                 table.insert(list, {
                     tmplId = tmplId,
@@ -711,12 +727,14 @@ end
 local function getSlotList()
     local gp = getGamePlayer()
     local list = {}
-    if not (gp and gp.egg and ModuleCache.CfgEgg and ModuleCache.CfgEgg.Hatchs) then
+    local cfgEgg = getModule("CfgEgg")
+    local utils = getModule("Utils")
+    if not (gp and gp.egg and cfgEgg and cfgEgg.Hatchs and utils and utils.GetServerTime) then
         return list
     end
 
-    local now = ModuleCache.Utils.GetServerTime()
-    for slotIndex, cfg in pairs(ModuleCache.CfgEgg.Hatchs) do
+    local now = utils.GetServerTime()
+    for slotIndex, cfg in pairs(cfgEgg.Hatchs) do
         local unlocked = false
         local eggTmplId = nil
         local startTick = nil
@@ -730,8 +748,8 @@ local function getSlotList()
             startTick = gp.egg:GetHatchEggStartTick(slotIndex)
         end)
 
-        if eggTmplId and ModuleCache.CfgEgg.Tmpls[eggTmplId] then
-            local eggCfg = ModuleCache.CfgEgg.Tmpls[eggTmplId]
+        if eggTmplId and cfgEgg.Tmpls[eggTmplId] then
+            local eggCfg = cfgEgg.Tmpls[eggTmplId]
             eggName = tostring(eggCfg.Name or eggTmplId)
             local finishAt = (tonumber(startTick) or 0) + (tonumber(eggCfg.HatchTime) or 0)
             leftTime = math.max(0, finishAt - now)
@@ -759,9 +777,16 @@ end
 local refreshUi
 
 local function startHatch(slotIndex, eggTmplId)
-    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchStart, slotIndex, eggTmplId)
+    local eggSystem = getModule("EggSystem")
+    if not (eggSystem and eggSystem.ClientHatchStart) then
+        setStatus("EggSystem 未就绪", COLOR_ERR)
+        return false
+    end
+
+    local ok, result = doRequest(eggSystem.ClientHatchStart, slotIndex, eggTmplId)
     if ok and result then
-        local eggName = (ModuleCache.CfgEgg and ModuleCache.CfgEgg.Tmpls and ModuleCache.CfgEgg.Tmpls[eggTmplId] and ModuleCache.CfgEgg.Tmpls[eggTmplId].Name) or eggTmplId
+        local cfgEgg = getModule("CfgEgg")
+        local eggName = (cfgEgg and cfgEgg.Tmpls and cfgEgg.Tmpls[eggTmplId] and cfgEgg.Tmpls[eggTmplId].Name) or eggTmplId
         setStatus(string.format("槽位 %d 开始孵化 %s", slotIndex, tostring(eggName)), COLOR_OK)
         return true
     end
@@ -769,7 +794,13 @@ local function startHatch(slotIndex, eggTmplId)
 end
 
 local function takeHatched(slotIndex)
-    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchTaken, slotIndex)
+    local eggSystem = getModule("EggSystem")
+    if not (eggSystem and eggSystem.ClientHatchTaken) then
+        setStatus("EggSystem 未就绪", COLOR_ERR)
+        return false
+    end
+
+    local ok, result = doRequest(eggSystem.ClientHatchTaken, slotIndex)
     if ok and result then
         setStatus(string.format("槽位 %d 领取成功", slotIndex), COLOR_OK)
         return true
@@ -778,7 +809,13 @@ local function takeHatched(slotIndex)
 end
 
 local function skipHatch(slotIndex)
-    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchSkip, slotIndex, true)
+    local eggSystem = getModule("EggSystem")
+    if not (eggSystem and eggSystem.ClientHatchSkip) then
+        setStatus("EggSystem 未就绪", COLOR_ERR)
+        return false
+    end
+
+    local ok, result = doRequest(eggSystem.ClientHatchSkip, slotIndex, true)
     if ok and result then
         setStatus(string.format("槽位 %d 已跳过", slotIndex), COLOR_WARN)
         return true
@@ -787,16 +824,24 @@ local function skipHatch(slotIndex)
 end
 
 local function unlockSlot(slotIndex)
-    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchUnlock, slotIndex)
+    local eggSystem = getModule("EggSystem")
+    if not (eggSystem and eggSystem.ClientHatchUnlock) then
+        setStatus("EggSystem 未就绪", COLOR_ERR)
+        return false
+    end
+
+    local ok, result = doRequest(eggSystem.ClientHatchUnlock, slotIndex)
     if ok and result then
         setStatus(string.format("槽位 %d 解锁成功", slotIndex), COLOR_OK)
         return true
     end
-    if ModuleCache.ExchangeSystem and ModuleCache.CfgEgg and ModuleCache.CfgEgg.Hatchs and ModuleCache.CfgEgg.Hatchs[slotIndex] then
-        local cfg = ModuleCache.CfgEgg.Hatchs[slotIndex]
+    local exchangeSystem = getModule("ExchangeSystem")
+    local cfgEgg = getModule("CfgEgg")
+    if exchangeSystem and cfgEgg and cfgEgg.Hatchs and cfgEgg.Hatchs[slotIndex] then
+        local cfg = cfgEgg.Hatchs[slotIndex]
         if cfg.UnlockProductKey then
             local okBuy, buyResult = pcall(function()
-                return ModuleCache.ExchangeSystem.BuyGoods(cfg.UnlockProductKey)
+                return exchangeSystem.BuyGoods(cfg.UnlockProductKey)
             end)
             if okBuy and buyResult then
                 setStatus(string.format("槽位 %d 购买解锁成功", slotIndex), COLOR_OK)
@@ -991,7 +1036,8 @@ local function runAutomationLoop()
             eggAmount = gp.egg:GetEggAmount(State.selectedEggTmplId)
         end)
         if eggAmount <= 0 then
-            local eggName = (ModuleCache.CfgEgg and ModuleCache.CfgEgg.Tmpls and ModuleCache.CfgEgg.Tmpls[State.selectedEggTmplId] and ModuleCache.CfgEgg.Tmpls[State.selectedEggTmplId].Name) or State.selectedEggTmplId
+            local cfgEgg = getModule("CfgEgg")
+            local eggName = (cfgEgg and cfgEgg.Tmpls and cfgEgg.Tmpls[State.selectedEggTmplId] and cfgEgg.Tmpls[State.selectedEggTmplId].Name) or State.selectedEggTmplId
             setStatus(string.format("选中鸡蛋不足: %s", tostring(eggName)), COLOR_WARN)
             return
         end
@@ -1273,16 +1319,17 @@ connect(RunService.Heartbeat, function()
     runAutomationLoop()
 end)
 
-if ModuleCache.EventSystem then
-    ModuleCache.EventSystem.RegisterListener("EggBagChange", refreshUi)
-    ModuleCache.EventSystem.RegisterListener("EggHatchChange", refreshUi)
+local eventSystem = getModule("EventSystem")
+if eventSystem then
+    eventSystem.RegisterListener("EggBagChange", refreshUi)
+    eventSystem.RegisterListener("EggHatchChange", refreshUi)
     table.insert(Conns, {
         Disconnect = function()
             pcall(function()
-                ModuleCache.EventSystem.UnRegister("EggBagChange", refreshUi)
+                eventSystem.UnRegister("EggBagChange", refreshUi)
             end)
             pcall(function()
-                ModuleCache.EventSystem.UnRegister("EggHatchChange", refreshUi)
+                eventSystem.UnRegister("EggHatchChange", refreshUi)
             end)
         end
     })
