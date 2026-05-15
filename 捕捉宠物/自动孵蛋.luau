@@ -1,3 +1,9 @@
+local TARGET_GAME_ID = 98664161516921
+if game.PlaceId ~= TARGET_GAME_ID then
+    warn(string.format("[FindMonster] 游戏ID不匹配: %d (需要 %d)，脚本已禁用", game.PlaceId, TARGET_GAME_ID))
+    _G.__FINDMONSTER_DISABLED = true
+    return
+end
 -- hatchtestCURSOR.lua
 -- 孵化界面：可选蛋、自动孵化、自动领取、自动跳过
 
@@ -15,81 +21,169 @@ local HttpService = game:GetService("HttpService")
 
 local localPlayer = Players.LocalPlayer
 
-local PathTool = _G.PathTool
+local ModuleCache = rawget(_G, "PathTool")
 local GamePlayer = nil
 local LogicNumber = nil
 local MgrPetClient = nil
+local directRequireModule = nil
 
-local function WaitForPathTool(maxWait)
-    maxWait = maxWait or 30
-    local waited = 0
+local DIRECT_MODULE_PATHS = {
+    CfgEgg = { "CommonConfig", "Egg", "CfgEgg" },
+    ClientPlayerManager = { "CommonLibrary", "Player", "ClientPlayerManager" },
+    EggSystem = { "CommonLogic", "Egg", "EggSystem" },
+    EventSystem = { "CommonLibrary", "Base", "EventSystem" },
+    ExchangeSystem = { "CommonLibrary", "Foundation", "ExchangeSystem" },
+    LogicNumber = { "CommonLogic", "Fight", "Logic", "LogicNumber" },
+    MgrPetClient = { "ClientLogic", "Pet", "MgrPetClient" },
+    PetSystem = { "CommonLogic", "Pet", "PetSystem" },
+    Utils = { "CommonLibrary", "Tool", "Utils" },
+    ViewUtil = { "ClientLogic", "View", "ViewUtil" },
+}
 
-    if not PathTool then
-        local success, result = pcall(function()
-            return require(
-                ReplicatedStorage:WaitForChild("CommonLibrary")
-                    :WaitForChild("Tool")
-                    :WaitForChild("PathTool")
-            )
-        end)
-        if success and result then
-            PathTool = result
-            _G.PathTool = PathTool
-        end
+local PRELOAD_MODULES = {
+    "Utils",
+    "EventSystem",
+    "ViewUtil",
+    "ClientPlayerManager",
+    "LogicNumber",
+    "PetSystem",
+    "MgrPetClient",
+    "CfgEgg",
+    "ExchangeSystem",
+    "EggSystem",
+}
+
+local function findReplicatedStoragePath(parts)
+    if type(parts) ~= "table" then
+        return nil
     end
 
-    if not PathTool and _G.PathTool then
-        PathTool = _G.PathTool
-    end
-
-    while not PathTool do
-        task.wait(0.1)
-        waited = waited + 0.1
-        if waited >= maxWait then
-            error(string.format("%s PathTool 系统未找到，请确保游戏已加载", TAG))
-        end
-
-        local success, result = pcall(function()
-            return require(
-                ReplicatedStorage:WaitForChild("CommonLibrary")
-                    :WaitForChild("Tool")
-                    :WaitForChild("PathTool")
-            )
-        end)
-        if success and result then
-            PathTool = result
-            _G.PathTool = PathTool
-        elseif _G.PathTool then
-            PathTool = _G.PathTool
+    local node = ReplicatedStorage
+    for _, name in ipairs(parts) do
+        node = node:FindFirstChild(name)
+        if not node then
+            return nil
         end
     end
+    return node
+end
 
-    if not MgrPetClient then
-        pcall(function()
-            if PathTool.Require then
-                MgrPetClient = PathTool.Require("MgrPetClient")
-            end
-        end)
-        if not MgrPetClient then
+local function findModuleScriptByName(moduleName)
+    local found = ReplicatedStorage:FindFirstChild(moduleName, true)
+    if found and found:IsA("ModuleScript") then
+        return found
+    end
+    return nil
+end
+
+local function installModuleCacheFallbacks()
+    if not ModuleCache then
+        return
+    end
+
+    if ModuleCache._HatchDirectRequireInstalled ~= true then
+        ModuleCache._HatchDirectRequireInstalled = true
+        ModuleCache.Require = function(moduleNameOrScript)
+            local isModuleScript = false
             pcall(function()
-                MgrPetClient = require(
-                    ReplicatedStorage:WaitForChild("ClientLogic")
-                        :WaitForChild("Pet")
-                        :WaitForChild("MgrPetClient")
-                )
+                isModuleScript = typeof(moduleNameOrScript) == "Instance" and moduleNameOrScript:IsA("ModuleScript")
             end)
+
+            if isModuleScript then
+                local ok, result = pcall(require, moduleNameOrScript)
+                if ok and result then
+                    rawset(ModuleCache, moduleNameOrScript.Name, result)
+                    return result
+                end
+                error(string.format("%s CompatRequire %s err:%s", TAG, tostring(moduleNameOrScript), tostring(result)))
+            end
+
+            local moduleName = tostring(moduleNameOrScript or "")
+            if moduleName == "" then
+                error(TAG .. " CompatRequire moduleName empty")
+            end
+
+            local cached = rawget(ModuleCache, moduleName)
+            if cached then
+                return cached
+            end
+
+            local result, err = nil, "direct_loader_not_ready"
+            if type(directRequireModule) == "function" then
+                result, err = directRequireModule(moduleName)
+            end
+            if result then
+                return result
+            end
+
+            error(string.format("%s CompatRequire %s err:%s", TAG, moduleName, tostring(err)))
         end
     end
+end
 
-    if not LogicNumber then
-        pcall(function()
-            if PathTool.Require then
-                LogicNumber = PathTool.Require("LogicNumber")
-            end
-        end)
+local function ensureModuleCache()
+    if ModuleCache then
+        installModuleCacheFallbacks()
+        return true
+    end
+    if rawget(_G, "PathTool") then
+        ModuleCache = rawget(_G, "PathTool")
+        installModuleCacheFallbacks()
+        return ModuleCache ~= nil
     end
 
-    waited = 0
+    ModuleCache = {}
+    _G.PathTool = ModuleCache
+    installModuleCacheFallbacks()
+    return true
+end
+
+directRequireModule = function(moduleName, directPathParts)
+    ensureModuleCache()
+    if not ModuleCache then
+        return nil, "module_cache_missing"
+    end
+
+    local cached = rawget(ModuleCache, moduleName)
+    if cached then
+        return cached
+    end
+
+    local moduleScript = nil
+    local directPath = directPathParts or DIRECT_MODULE_PATHS[moduleName]
+    if directPath then
+        moduleScript = findReplicatedStoragePath(directPath)
+    end
+    moduleScript = moduleScript or findModuleScriptByName(moduleName)
+
+    if not moduleScript then
+        return nil, "module_not_found"
+    end
+    if not moduleScript:IsA("ModuleScript") then
+        return nil, "not_modulescript:" .. tostring(moduleScript.ClassName)
+    end
+
+    local ok, result = pcall(require, moduleScript)
+    if ok and result then
+        rawset(ModuleCache, moduleName, result)
+        return result
+    end
+
+    return nil, tostring(result)
+end
+
+local function WaitForModules(maxWait)
+    maxWait = maxWait or 30
+    ensureModuleCache()
+
+    for _, moduleName in ipairs(PRELOAD_MODULES) do
+        directRequireModule(moduleName)
+    end
+
+    MgrPetClient = MgrPetClient or directRequireModule("MgrPetClient")
+    LogicNumber = LogicNumber or directRequireModule("LogicNumber")
+
+    local waited = 0
     while not MgrPetClient do
         task.wait(0.1)
         waited = waited + 0.1
@@ -97,26 +191,13 @@ local function WaitForPathTool(maxWait)
             warn(string.format("%s MgrPetClient 模块未找到，部分功能可能受影响", TAG))
             break
         end
-        pcall(function()
-            if PathTool.Require then
-                MgrPetClient = PathTool.Require("MgrPetClient")
-            end
-        end)
-        if not MgrPetClient then
-            pcall(function()
-                MgrPetClient = require(
-                    ReplicatedStorage:WaitForChild("ClientLogic")
-                        :WaitForChild("Pet")
-                        :WaitForChild("MgrPetClient")
-                )
-            end)
-        end
+        MgrPetClient = directRequireModule("MgrPetClient")
     end
 
     waited = 0
     while not GamePlayer do
         local success, result = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
+            return ModuleCache.ClientPlayerManager and ModuleCache.ClientPlayerManager.GetGamePlayer and ModuleCache.ClientPlayerManager.GetGamePlayer()
         end)
         if success and result then
             GamePlayer = result
@@ -130,9 +211,9 @@ local function WaitForPathTool(maxWait)
         end
     end
 
-    print(string.format("%s [WaitForPathTool] PathTool=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
+    print(string.format("%s [WaitForModules] ModuleCache=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
         TAG,
-        PathTool and "OK" or "FAIL",
+        ModuleCache and "OK" or "FAIL",
         MgrPetClient and "OK" or "FAIL",
         LogicNumber and "OK" or "FAIL",
         GamePlayer and "OK" or "FAIL"
@@ -140,10 +221,17 @@ local function WaitForPathTool(maxWait)
     return true
 end
 
-WaitForPathTool(30)
+WaitForModules(30)
 
-if not localPlayer or localPlayer.Name ~= "Savanndavid" then
-    warn(string.format("%s 当前用户不允许使用该脚本: %s", TAG, tostring(localPlayer and localPlayer.Name or "Unknown")))
+local ALLOWED_PLAYER_NAMES = {
+    savanndavid = true,
+    josgwrp = true,
+    wshg1341 = true,
+}
+local ALLOWED_PLAYER_LIST = "josgwrp / Savanndavid / wshg1341"
+local currentPlayerNameKey = localPlayer and string.lower(localPlayer.Name) or ""
+if not localPlayer or not ALLOWED_PLAYER_NAMES[currentPlayerNameKey] then
+    warn(string.format("[MonsterTrackerWebUI] 未授权账号：%s（仅允许 %s 运行）", localPlayer and localPlayer.Name or "Unknown", ALLOWED_PLAYER_LIST))
     return
 end
 
@@ -169,6 +257,11 @@ local Ui = {
     statusLabel = nil,
     autoHatchBtn = nil,
     autoSkipBtn = nil,
+    titleLabel = nil,
+    refreshBtn = nil,
+    closeBtn = nil,
+    eggsTitle = nil,
+    slotsTitle = nil,
     collapsibleItems = {},
 }
 
@@ -288,6 +381,77 @@ local FRAME_WIDTH = 210
 local FRAME_EXPANDED_HEIGHT = 430
 local FRAME_COLLAPSED_HEIGHT = 36
 
+local function clampNumber(value, minValue, maxValue)
+    if maxValue < minValue then
+        return minValue
+    end
+    return math.clamp(value, minValue, maxValue)
+end
+
+local function getViewportSize()
+    local camera = workspace.CurrentCamera
+    if camera and camera.ViewportSize then
+        return camera.ViewportSize
+    end
+    return Vector2.new(1280, 720)
+end
+
+local function getUiMetrics()
+    local viewport = getViewportSize()
+    local mobile = UserInputService.TouchEnabled or viewport.X <= 760 or viewport.Y <= 520
+    local margin = mobile and 12 or 0
+    local maxWidth = math.max(180, viewport.X - margin * 2)
+    local maxHeight = math.max(220, viewport.Y - margin * 2)
+    local width = mobile and clampNumber(math.floor(maxWidth), math.min(260, maxWidth), 360) or FRAME_WIDTH
+    local expandedHeight = mobile and math.min(maxHeight, 560) or FRAME_EXPANDED_HEIGHT
+
+    return {
+        viewport = viewport,
+        mobile = mobile,
+        margin = margin,
+        width = width,
+        expandedHeight = mobile and clampNumber(expandedHeight, math.min(260, maxHeight), 560) or expandedHeight,
+        collapsedHeight = mobile and 44 or FRAME_COLLAPSED_HEIGHT,
+        titleHeight = mobile and 44 or 36,
+        buttonHeight = mobile and 34 or 26,
+        titleButtonWidth = mobile and 52 or 42,
+        outerPadding = mobile and 12 or 10,
+        gap = mobile and 8 or 6,
+        titleTextSize = mobile and 17 or 16,
+        sectionTextSize = mobile and 14 or 13,
+        buttonTextSize = mobile and 13 or 11,
+        bodyTextSize = mobile and 12 or 10,
+        rowTitleTextSize = mobile and 13 or 12,
+        eggRowHeight = mobile and 52 or 42,
+        slotRowHeight = mobile and 74 or 64,
+        scrollBarThickness = mobile and 7 or 5,
+    }
+end
+
+local function getFrameSize()
+    local metrics = getUiMetrics()
+    return metrics.width, State.collapsed and metrics.collapsedHeight or metrics.expandedHeight, metrics
+end
+
+local function clampFrameToViewport()
+    if not Ui.frame then
+        return
+    end
+
+    local width, height, metrics = getFrameSize()
+    local pos = Ui.frame.Position
+    local x = metrics.viewport.X * pos.X.Scale + pos.X.Offset
+    local y = metrics.viewport.Y * pos.Y.Scale + pos.Y.Offset
+    local minX = metrics.margin
+    local minY = metrics.margin
+    local maxX = math.max(minX, metrics.viewport.X - width - metrics.margin)
+    local maxY = math.max(minY, metrics.viewport.Y - height - metrics.margin)
+    Ui.frame.Position = UDim2.fromOffset(
+        clampNumber(math.floor(x), minX, maxX),
+        clampNumber(math.floor(y), minY, maxY)
+    )
+end
+
 local function connect(signal, fn)
     local conn = signal:Connect(fn)
     table.insert(Conns, conn)
@@ -307,9 +471,9 @@ local function getGamePlayer()
     if GamePlayer then
         return GamePlayer
     end
-    if PathTool.ClientPlayerManager and PathTool.ClientPlayerManager.GetGamePlayer then
+    if ModuleCache.ClientPlayerManager and ModuleCache.ClientPlayerManager.GetGamePlayer then
         local ok, gp = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
+            return ModuleCache.ClientPlayerManager.GetGamePlayer()
         end)
         if ok and gp then
             GamePlayer = gp
@@ -322,8 +486,8 @@ end
 local function doRequest(remote, ...)
     local args = { ... }
     return pcall(function()
-        if PathTool.ViewUtil and PathTool.ViewUtil.DoRequest then
-            return PathTool.ViewUtil.DoRequest(remote, table.unpack(args))
+        if ModuleCache.ViewUtil and ModuleCache.ViewUtil.DoRequest then
+            return ModuleCache.ViewUtil.DoRequest(remote, table.unpack(args))
         end
         return remote(table.unpack(args))
     end)
@@ -359,14 +523,15 @@ local function clearScrollingChildren(parent)
 end
 
 local function makeButton(parent, text, color, sizeX, onClick)
+    local metrics = getUiMetrics()
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, sizeX or 78, 0, 26)
+    btn.Size = UDim2.new(0, sizeX or 78, 0, metrics.buttonHeight)
     btn.BackgroundColor3 = color
     btn.BorderSizePixel = 0
     btn.TextColor3 = Color3.new(1, 1, 1)
     btn.Text = text
     btn.Font = Enum.Font.Gotham
-    btn.TextSize = 11
+    btn.TextSize = metrics.buttonTextSize
     btn.Parent = parent
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     if onClick then
@@ -380,9 +545,13 @@ local function addCollapsible(inst)
     return inst
 end
 
+local applyResponsiveLayout
+
 local function applyCollapseVisual()
     if Ui.frame then
-        Ui.frame.Size = UDim2.new(0, FRAME_WIDTH, 0, State.collapsed and FRAME_COLLAPSED_HEIGHT or FRAME_EXPANDED_HEIGHT)
+        local width, height = getFrameSize()
+        Ui.frame.Size = UDim2.new(0, width, 0, height)
+        clampFrameToViewport()
     end
 
     for _, inst in ipairs(Ui.collapsibleItems) do
@@ -399,6 +568,7 @@ end
 
 local function setCollapsed(collapsed)
     State.collapsed = collapsed == true
+    applyResponsiveLayout()
     applyCollapseVisual()
     saveMemory()
 end
@@ -414,16 +584,109 @@ local function updateToggleVisual()
     end
 end
 
+local function setButtonLayout(btn, width, x, y, metrics)
+    if not btn then
+        return
+    end
+    btn.Size = UDim2.new(0, width, 0, metrics.buttonHeight)
+    btn.Position = UDim2.new(0, x, 0, y)
+    btn.TextSize = metrics.buttonTextSize
+end
+
+applyResponsiveLayout = function()
+    if not Ui.frame then
+        return
+    end
+
+    local width, height, metrics = getFrameSize()
+    local pad = metrics.outerPadding
+    local gap = metrics.gap
+    State.lastViewportX = math.floor(metrics.viewport.X)
+    State.lastViewportY = math.floor(metrics.viewport.Y)
+
+    Ui.frame.Size = UDim2.new(0, width, 0, height)
+    clampFrameToViewport()
+
+    if Ui.titleBar then
+        Ui.titleBar.Size = UDim2.new(1, 0, 0, metrics.titleHeight)
+    end
+    if Ui.titleLabel then
+        local titleButtonsWidth = metrics.titleButtonWidth * 3 + gap * 4
+        Ui.titleLabel.Size = UDim2.new(1, -(titleButtonsWidth + pad), 1, 0)
+        Ui.titleLabel.Position = UDim2.new(0, pad, 0, 0)
+        Ui.titleLabel.TextSize = metrics.titleTextSize
+        Ui.titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    end
+
+    local titleButtonY = math.floor((metrics.titleHeight - metrics.buttonHeight) / 2)
+    local closeX = width - pad - metrics.titleButtonWidth
+    local refreshX = closeX - gap - metrics.titleButtonWidth
+    local collapseX = refreshX - gap - metrics.titleButtonWidth
+    setButtonLayout(Ui.collapseBtn, metrics.titleButtonWidth, collapseX, titleButtonY, metrics)
+    setButtonLayout(Ui.refreshBtn, metrics.titleButtonWidth, refreshX, titleButtonY, metrics)
+    setButtonLayout(Ui.closeBtn, metrics.titleButtonWidth, closeX, titleButtonY, metrics)
+
+    if State.collapsed then
+        return
+    end
+
+    local controlsY = metrics.titleHeight + gap
+    local controlWidth = math.floor((width - pad * 2 - gap) / 2)
+    setButtonLayout(Ui.autoHatchBtn, controlWidth, pad, controlsY, metrics)
+    setButtonLayout(Ui.autoSkipBtn, controlWidth, pad + controlWidth + gap, controlsY, metrics)
+
+    local eggsTitleY = controlsY + metrics.buttonHeight + gap
+    if Ui.eggsTitle then
+        Ui.eggsTitle.Size = UDim2.new(1, -pad * 2, 0, 18)
+        Ui.eggsTitle.Position = UDim2.new(0, pad, 0, eggsTitleY)
+        Ui.eggsTitle.TextSize = metrics.sectionTextSize
+    end
+
+    local statusHeight = metrics.mobile and 26 or 20
+    local statusY = height - statusHeight - gap
+    if Ui.statusLabel then
+        Ui.statusLabel.Size = UDim2.new(1, -pad * 2, 0, statusHeight)
+        Ui.statusLabel.Position = UDim2.new(0, pad, 0, statusY)
+        Ui.statusLabel.TextSize = metrics.buttonTextSize
+        Ui.statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    end
+
+    local eggsScrollY = eggsTitleY + 20
+    local slotsTitleHeight = 18
+    local available = math.max(180, statusY - eggsScrollY - slotsTitleHeight - gap * 3)
+    local eggsHeight = math.floor(available * (metrics.mobile and 0.44 or 0.46))
+    eggsHeight = clampNumber(eggsHeight, metrics.mobile and 100 or 96, math.max(100, available - 96))
+    local slotsTitleY = eggsScrollY + eggsHeight + gap
+    local slotsScrollY = slotsTitleY + 20
+    local slotsHeight = math.max(96, statusY - slotsScrollY - gap)
+
+    if Ui.eggsScroll then
+        Ui.eggsScroll.Size = UDim2.new(1, -pad * 2, 0, eggsHeight)
+        Ui.eggsScroll.Position = UDim2.new(0, pad, 0, eggsScrollY)
+        Ui.eggsScroll.ScrollBarThickness = metrics.scrollBarThickness
+    end
+    if Ui.slotsTitle then
+        Ui.slotsTitle.Size = UDim2.new(1, -pad * 2, 0, slotsTitleHeight)
+        Ui.slotsTitle.Position = UDim2.new(0, pad, 0, slotsTitleY)
+        Ui.slotsTitle.TextSize = metrics.sectionTextSize
+    end
+    if Ui.slotsScroll then
+        Ui.slotsScroll.Size = UDim2.new(1, -pad * 2, 0, slotsHeight)
+        Ui.slotsScroll.Position = UDim2.new(0, pad, 0, slotsScrollY)
+        Ui.slotsScroll.ScrollBarThickness = metrics.scrollBarThickness
+    end
+end
+
 local function getEggList()
     local gp = getGamePlayer()
     local list = {}
-    if not (gp and gp.egg and gp.egg.IterEgg and PathTool.CfgEgg and PathTool.CfgEgg.Tmpls) then
+    if not (gp and gp.egg and gp.egg.IterEgg and ModuleCache.CfgEgg and ModuleCache.CfgEgg.Tmpls) then
         return list
     end
 
     pcall(function()
         gp.egg:IterEgg(function(tmplId, amount)
-            local cfg = PathTool.CfgEgg.Tmpls[tmplId]
+            local cfg = ModuleCache.CfgEgg.Tmpls[tmplId]
             if cfg and amount and amount > 0 then
                 table.insert(list, {
                     tmplId = tmplId,
@@ -448,12 +711,12 @@ end
 local function getSlotList()
     local gp = getGamePlayer()
     local list = {}
-    if not (gp and gp.egg and PathTool.CfgEgg and PathTool.CfgEgg.Hatchs) then
+    if not (gp and gp.egg and ModuleCache.CfgEgg and ModuleCache.CfgEgg.Hatchs) then
         return list
     end
 
-    local now = PathTool.Utils.GetServerTime()
-    for slotIndex, cfg in pairs(PathTool.CfgEgg.Hatchs) do
+    local now = ModuleCache.Utils.GetServerTime()
+    for slotIndex, cfg in pairs(ModuleCache.CfgEgg.Hatchs) do
         local unlocked = false
         local eggTmplId = nil
         local startTick = nil
@@ -467,8 +730,8 @@ local function getSlotList()
             startTick = gp.egg:GetHatchEggStartTick(slotIndex)
         end)
 
-        if eggTmplId and PathTool.CfgEgg.Tmpls[eggTmplId] then
-            local eggCfg = PathTool.CfgEgg.Tmpls[eggTmplId]
+        if eggTmplId and ModuleCache.CfgEgg.Tmpls[eggTmplId] then
+            local eggCfg = ModuleCache.CfgEgg.Tmpls[eggTmplId]
             eggName = tostring(eggCfg.Name or eggTmplId)
             local finishAt = (tonumber(startTick) or 0) + (tonumber(eggCfg.HatchTime) or 0)
             leftTime = math.max(0, finishAt - now)
@@ -496,9 +759,9 @@ end
 local refreshUi
 
 local function startHatch(slotIndex, eggTmplId)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchStart, slotIndex, eggTmplId)
+    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchStart, slotIndex, eggTmplId)
     if ok and result then
-        local eggName = (PathTool.CfgEgg and PathTool.CfgEgg.Tmpls and PathTool.CfgEgg.Tmpls[eggTmplId] and PathTool.CfgEgg.Tmpls[eggTmplId].Name) or eggTmplId
+        local eggName = (ModuleCache.CfgEgg and ModuleCache.CfgEgg.Tmpls and ModuleCache.CfgEgg.Tmpls[eggTmplId] and ModuleCache.CfgEgg.Tmpls[eggTmplId].Name) or eggTmplId
         setStatus(string.format("槽位 %d 开始孵化 %s", slotIndex, tostring(eggName)), COLOR_OK)
         return true
     end
@@ -506,7 +769,7 @@ local function startHatch(slotIndex, eggTmplId)
 end
 
 local function takeHatched(slotIndex)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchTaken, slotIndex)
+    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchTaken, slotIndex)
     if ok and result then
         setStatus(string.format("槽位 %d 领取成功", slotIndex), COLOR_OK)
         return true
@@ -515,7 +778,7 @@ local function takeHatched(slotIndex)
 end
 
 local function skipHatch(slotIndex)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchSkip, slotIndex, true)
+    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchSkip, slotIndex, true)
     if ok and result then
         setStatus(string.format("槽位 %d 已跳过", slotIndex), COLOR_WARN)
         return true
@@ -524,16 +787,16 @@ local function skipHatch(slotIndex)
 end
 
 local function unlockSlot(slotIndex)
-    local ok, result = doRequest(PathTool.EggSystem.ClientHatchUnlock, slotIndex)
+    local ok, result = doRequest(ModuleCache.EggSystem.ClientHatchUnlock, slotIndex)
     if ok and result then
         setStatus(string.format("槽位 %d 解锁成功", slotIndex), COLOR_OK)
         return true
     end
-    if PathTool.ExchangeSystem and PathTool.CfgEgg and PathTool.CfgEgg.Hatchs and PathTool.CfgEgg.Hatchs[slotIndex] then
-        local cfg = PathTool.CfgEgg.Hatchs[slotIndex]
+    if ModuleCache.ExchangeSystem and ModuleCache.CfgEgg and ModuleCache.CfgEgg.Hatchs and ModuleCache.CfgEgg.Hatchs[slotIndex] then
+        local cfg = ModuleCache.CfgEgg.Hatchs[slotIndex]
         if cfg.UnlockProductKey then
             local okBuy, buyResult = pcall(function()
-                return PathTool.ExchangeSystem.BuyGoods(cfg.UnlockProductKey)
+                return ModuleCache.ExchangeSystem.BuyGoods(cfg.UnlockProductKey)
             end)
             if okBuy and buyResult then
                 setStatus(string.format("槽位 %d 购买解锁成功", slotIndex), COLOR_OK)
@@ -547,10 +810,11 @@ end
 local function renderEggs()
     clearScrollingChildren(Ui.eggsScroll)
     local eggs = getEggList()
+    local metrics = getUiMetrics()
 
     for i, egg in ipairs(eggs) do
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, -8, 0, 42)
+        row.Size = UDim2.new(1, -8, 0, metrics.eggRowHeight)
         row.BackgroundColor3 = (State.selectedEggTmplId == egg.tmplId) and COLOR_SELECTED or COLOR_PANEL_2
         row.BorderSizePixel = 0
         row.AutoButtonColor = false
@@ -566,18 +830,20 @@ local function renderEggs()
         title.TextXAlignment = Enum.TextXAlignment.Left
         title.TextColor3 = COLOR_TEXT
         title.Font = Enum.Font.GothamBold
-        title.TextSize = 12
+        title.TextSize = metrics.rowTitleTextSize
+        title.TextTruncate = Enum.TextTruncate.AtEnd
         title.Text = string.format("%s x%s", egg.name, tostring(egg.amount))
         title.Parent = row
 
         local desc = Instance.new("TextLabel")
         desc.Size = UDim2.new(1, -12, 0, 16)
-        desc.Position = UDim2.new(0, 8, 0, 22)
+        desc.Position = UDim2.new(0, 8, 0, metrics.mobile and 26 or 22)
         desc.BackgroundTransparency = 1
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextColor3 = COLOR_DIM
         desc.Font = Enum.Font.Gotham
-        desc.TextSize = 10
+        desc.TextSize = metrics.bodyTextSize
+        desc.TextTruncate = Enum.TextTruncate.AtEnd
         desc.Text = string.format("ID=%s | 孵化=%s", tostring(egg.tmplId), formatTimeLeft(egg.hatchTime))
         desc.Parent = row
 
@@ -596,10 +862,11 @@ end
 local function renderSlots()
     clearScrollingChildren(Ui.slotsScroll)
     local slots = getSlotList()
+    local metrics = getUiMetrics()
 
     for i, slot in ipairs(slots) do
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, -8, 0, 64)
+        row.Size = UDim2.new(1, -8, 0, metrics.slotRowHeight)
         row.BackgroundColor3 = COLOR_PANEL_2
         row.BorderSizePixel = 0
         row.LayoutOrder = i
@@ -613,12 +880,12 @@ local function renderSlots()
         title.TextXAlignment = Enum.TextXAlignment.Left
         title.TextColor3 = COLOR_TEXT
         title.Font = Enum.Font.GothamBold
-        title.TextSize = 12
+        title.TextSize = metrics.rowTitleTextSize
         title.Text = string.format("槽位 %d", slot.slotIndex)
         title.Parent = row
 
         local info = Instance.new("TextLabel")
-        info.Size = UDim2.new(1, -100, 0, 34)
+        info.Size = UDim2.new(1, -(metrics.mobile and 104 or 100), 0, metrics.slotRowHeight - 30)
         info.Position = UDim2.new(0, 8, 0, 22)
         info.BackgroundTransparency = 1
         info.TextWrapped = true
@@ -626,7 +893,7 @@ local function renderSlots()
         info.TextYAlignment = Enum.TextYAlignment.Top
         info.TextColor3 = COLOR_DIM
         info.Font = Enum.Font.Gotham
-        info.TextSize = 10
+        info.TextSize = metrics.bodyTextSize
         info.Parent = row
 
         if not slot.unlocked then
@@ -637,7 +904,7 @@ local function renderSlots()
                 else
                     setStatus(string.format("槽位 %d 解锁失败", slot.slotIndex), COLOR_ERR)
                 end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
+            end).Position = UDim2.new(1, -(metrics.mobile and 76 or 68), 0.5, -math.floor(metrics.buttonHeight / 2))
         elseif not slot.eggTmplId then
             info.Text = "状态: 空闲"
             makeButton(row, "开始", COLOR_BTN, 60, function()
@@ -650,7 +917,7 @@ local function renderSlots()
                 else
                     setStatus(string.format("槽位 %d 开始失败", slot.slotIndex), COLOR_ERR)
                 end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
+            end).Position = UDim2.new(1, -(metrics.mobile and 76 or 68), 0.5, -math.floor(metrics.buttonHeight / 2))
         elseif slot.completed then
             info.Text = string.format("状态: 已完成\n鸡蛋: %s", tostring(slot.eggName or slot.eggTmplId))
             makeButton(row, "领取", COLOR_BTN_ON, 60, function()
@@ -659,7 +926,7 @@ local function renderSlots()
                 else
                     setStatus(string.format("槽位 %d 领取失败", slot.slotIndex), COLOR_ERR)
                 end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
+            end).Position = UDim2.new(1, -(metrics.mobile and 76 or 68), 0.5, -math.floor(metrics.buttonHeight / 2))
         else
             info.Text = string.format("状态: 孵化中\n%s | 剩余 %s", tostring(slot.eggName or slot.eggTmplId), formatTimeLeft(slot.leftTime))
             makeButton(row, "跳过", COLOR_BTN_SKIP, 60, function()
@@ -668,7 +935,7 @@ local function renderSlots()
                 else
                     setStatus(string.format("槽位 %d 跳过失败", slot.slotIndex), COLOR_ERR)
                 end
-            end).Position = UDim2.new(1, -68, 0.5, -13)
+            end).Position = UDim2.new(1, -(metrics.mobile and 76 or 68), 0.5, -math.floor(metrics.buttonHeight / 2))
         end
     end
 
@@ -724,7 +991,7 @@ local function runAutomationLoop()
             eggAmount = gp.egg:GetEggAmount(State.selectedEggTmplId)
         end)
         if eggAmount <= 0 then
-            local eggName = (PathTool.CfgEgg and PathTool.CfgEgg.Tmpls and PathTool.CfgEgg.Tmpls[State.selectedEggTmplId] and PathTool.CfgEgg.Tmpls[State.selectedEggTmplId].Name) or State.selectedEggTmplId
+            local eggName = (ModuleCache.CfgEgg and ModuleCache.CfgEgg.Tmpls and ModuleCache.CfgEgg.Tmpls[State.selectedEggTmplId] and ModuleCache.CfgEgg.Tmpls[State.selectedEggTmplId].Name) or State.selectedEggTmplId
             setStatus(string.format("选中鸡蛋不足: %s", tostring(eggName)), COLOR_WARN)
             return
         end
@@ -753,6 +1020,7 @@ local function makeDraggable(handle, target)
             startPos.Y.Scale,
             startPos.Y.Offset + delta.Y
         )
+        clampFrameToViewport()
     end
 
     connect(handle.InputBegan, function(input)
@@ -782,6 +1050,7 @@ local function buildUI()
     if old then
         old:Destroy()
     end
+    local width, height, metrics = getFrameSize()
 
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "HatchTestCursorGui"
@@ -791,16 +1060,16 @@ local function buildUI()
     Ui.screenGui = screenGui
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, FRAME_WIDTH, 0, State.collapsed and FRAME_COLLAPSED_HEIGHT or FRAME_EXPANDED_HEIGHT)
+    frame.Size = UDim2.new(0, width, 0, height)
     if type(State.windowPosition) == "table" then
         frame.Position = UDim2.new(
             tonumber(State.windowPosition.xScale) or 0.5,
-            tonumber(State.windowPosition.xOffset) or -105,
+            tonumber(State.windowPosition.xOffset) or -math.floor(width / 2),
             tonumber(State.windowPosition.yScale) or 0.5,
-            tonumber(State.windowPosition.yOffset) or -215
+            tonumber(State.windowPosition.yOffset) or -math.floor(height / 2)
         )
     else
-        frame.Position = UDim2.new(0.5, -105, 0.5, -215)
+        frame.Position = UDim2.new(0.5, -math.floor(width / 2), 0.5, -math.floor(height / 2))
     end
     frame.BackgroundColor3 = COLOR_BG
     frame.BorderSizePixel = 0
@@ -810,7 +1079,7 @@ local function buildUI()
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
     local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 36)
+    titleBar.Size = UDim2.new(1, 0, 0, metrics.titleHeight)
     titleBar.BackgroundColor3 = COLOR_BG
     titleBar.BorderSizePixel = 0
     titleBar.Parent = frame
@@ -824,23 +1093,26 @@ local function buildUI()
     title.Text = "孵化界面"
     title.TextColor3 = COLOR_TEXT
     title.Font = Enum.Font.GothamBold
-    title.TextSize = 16
+    title.TextSize = metrics.titleTextSize
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = titleBar
+    Ui.titleLabel = title
 
     Ui.collapseBtn = makeButton(titleBar, State.collapsed and "展开" or "收起", COLOR_BTN_OFF, 42, function()
         setCollapsed(not State.collapsed)
     end)
     Ui.collapseBtn.Position = UDim2.new(1, -142, 0.5, -13)
 
-    makeButton(titleBar, "刷新", COLOR_BTN, 42, function()
+    Ui.refreshBtn = makeButton(titleBar, "刷新", COLOR_BTN, 42, function()
         setStatus("已刷新", COLOR_OK)
         refreshUi()
-    end).Position = UDim2.new(1, -96, 0.5, -13)
+    end)
+    Ui.refreshBtn.Position = UDim2.new(1, -96, 0.5, -13)
 
-    makeButton(titleBar, "关闭", COLOR_ERR, 42, function()
+    Ui.closeBtn = makeButton(titleBar, "关闭", COLOR_ERR, 42, function()
         HatchTest.Destroy()
-    end).Position = UDim2.new(1, -50, 0.5, -13)
+    end)
+    Ui.closeBtn.Position = UDim2.new(1, -50, 0.5, -13)
 
     Ui.autoHatchBtn = addCollapsible(makeButton(frame, "自动孵化", COLOR_BTN_OFF, 90, function()
         State.autoHatch = not State.autoHatch
@@ -865,9 +1137,10 @@ local function buildUI()
     eggsTitle.Text = "鸡蛋背包"
     eggsTitle.TextColor3 = COLOR_TEXT
     eggsTitle.Font = Enum.Font.GothamBold
-    eggsTitle.TextSize = 13
+    eggsTitle.TextSize = metrics.sectionTextSize
     eggsTitle.TextXAlignment = Enum.TextXAlignment.Left
     eggsTitle.Parent = frame
+    Ui.eggsTitle = eggsTitle
     addCollapsible(eggsTitle)
 
     local eggsScroll = Instance.new("ScrollingFrame")
@@ -875,7 +1148,7 @@ local function buildUI()
     eggsScroll.Position = UDim2.new(0, 10, 0, 96)
     eggsScroll.BackgroundColor3 = COLOR_PANEL
     eggsScroll.BorderSizePixel = 0
-    eggsScroll.ScrollBarThickness = 5
+    eggsScroll.ScrollBarThickness = metrics.scrollBarThickness
     eggsScroll.Parent = frame
     Ui.eggsScroll = eggsScroll
     addCollapsible(eggsScroll)
@@ -900,9 +1173,10 @@ local function buildUI()
     slotsTitle.Text = "孵化槽位"
     slotsTitle.TextColor3 = COLOR_TEXT
     slotsTitle.Font = Enum.Font.GothamBold
-    slotsTitle.TextSize = 13
+    slotsTitle.TextSize = metrics.sectionTextSize
     slotsTitle.TextXAlignment = Enum.TextXAlignment.Left
     slotsTitle.Parent = frame
+    Ui.slotsTitle = slotsTitle
     addCollapsible(slotsTitle)
 
     local slotsScroll = Instance.new("ScrollingFrame")
@@ -910,7 +1184,7 @@ local function buildUI()
     slotsScroll.Position = UDim2.new(0, 10, 0, 252)
     slotsScroll.BackgroundColor3 = COLOR_PANEL
     slotsScroll.BorderSizePixel = 0
-    slotsScroll.ScrollBarThickness = 5
+    slotsScroll.ScrollBarThickness = metrics.scrollBarThickness
     slotsScroll.Parent = frame
     Ui.slotsScroll = slotsScroll
     addCollapsible(slotsScroll)
@@ -935,12 +1209,13 @@ local function buildUI()
     status.Text = "就绪"
     status.TextColor3 = COLOR_OK
     status.Font = Enum.Font.Gotham
-    status.TextSize = 11
+    status.TextSize = metrics.buttonTextSize
     status.TextXAlignment = Enum.TextXAlignment.Left
     status.Parent = frame
     Ui.statusLabel = status
     addCollapsible(status)
 
+    applyResponsiveLayout()
     applyCollapseVisual()
 end
 
@@ -985,6 +1260,12 @@ connect(RunService.Heartbeat, function()
         return
     end
 
+    local viewport = getViewportSize()
+    if math.floor(viewport.X) ~= State.lastViewportX or math.floor(viewport.Y) ~= State.lastViewportY then
+        applyResponsiveLayout()
+        refreshUi()
+    end
+
     if tick() - State.lastUiRefresh >= 1.0 then
         refreshUi()
     end
@@ -992,16 +1273,16 @@ connect(RunService.Heartbeat, function()
     runAutomationLoop()
 end)
 
-if PathTool.EventSystem then
-    PathTool.EventSystem.RegisterListener("EggBagChange", refreshUi)
-    PathTool.EventSystem.RegisterListener("EggHatchChange", refreshUi)
+if ModuleCache.EventSystem then
+    ModuleCache.EventSystem.RegisterListener("EggBagChange", refreshUi)
+    ModuleCache.EventSystem.RegisterListener("EggHatchChange", refreshUi)
     table.insert(Conns, {
         Disconnect = function()
             pcall(function()
-                PathTool.EventSystem.UnRegister("EggBagChange", refreshUi)
+                ModuleCache.EventSystem.UnRegister("EggBagChange", refreshUi)
             end)
             pcall(function()
-                PathTool.EventSystem.UnRegister("EggHatchChange", refreshUi)
+                ModuleCache.EventSystem.UnRegister("EggHatchChange", refreshUi)
             end)
         end
     })
