@@ -55,6 +55,7 @@ local CFG = {
     NO_PICK_SWITCH_DELAY = 10,
     CLAIM_RETRY_DELAY = 2,
     JOB_CHANGE_TIMEOUT = 30,
+    SERVERHOP_POOL_SIZE = 100,
 }
 
 local SWITCH_MEMORY_FILE = string.format("auto_pick_switch_%s.json", tostring(localPlayer and localPlayer.UserId or "unknown"))
@@ -135,6 +136,9 @@ local Control = {
     lastDropPickSuccessAt = 0,
 }
 
+local serverHopPoolJobIds = {}
+local serverHopPoolSeen = {}
+
 function Control.Stop()
     if Control.running then
         Control.running = false
@@ -150,6 +154,22 @@ end
 
 function Control.ToggleServerSwitch()
     Control.SetServerSwitch(not Control.serverSwitchEnabled)
+end
+
+local function isExternalServerHopEnabled()
+    local globalValue = rawget(_G, "G_serverhop")
+    if globalValue == true then
+        return true
+    end
+
+    local ok, envValue = pcall(function()
+        return G_serverhop
+    end)
+    return ok and envValue == true
+end
+
+local function isServerSwitchEnabled()
+    return Control.serverSwitchEnabled == true or isExternalServerHopEnabled()
 end
 
 _G.AutoPickAllControl = Control
@@ -506,11 +526,12 @@ local function urlEncode(value)
 end
 
 local function httpGetJson(pathWithQuery)
-    if not CFG.LAN_SERVER_URL or CFG.LAN_SERVER_URL == "" then
+    local isAbsoluteUrl = tostring(pathWithQuery or ""):find("^https?://") ~= nil
+    if not isAbsoluteUrl and (not CFG.LAN_SERVER_URL or CFG.LAN_SERVER_URL == "") then
         return false, nil
     end
 
-    local url = pathWithQuery:find("^https?://") and pathWithQuery or (CFG.LAN_SERVER_URL .. pathWithQuery)
+    local url = isAbsoluteUrl and pathWithQuery or (CFG.LAN_SERVER_URL .. pathWithQuery)
     local ok, decoded = pcall(function()
         local body = game:HttpGet(url)
         if body then
@@ -545,6 +566,79 @@ local function getServerFromLAN()
         or (type(decoded) == "string" and decoded)
         or "no_valid_server"
     return nil, errMsg
+end
+
+local function fetchPublicServerJobIds()
+    local limit = math.clamp(tonumber(CFG.SERVERHOP_POOL_SIZE) or 100, 10, 100)
+    local url = string.format(
+        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=%d&excludeFullGames=true",
+        game.PlaceId,
+        limit
+    )
+
+    local ok, decoded = httpGetJson(url)
+    if not ok or type(decoded) ~= "table" or type(decoded.data) ~= "table" then
+        return nil, "public_server_fetch_failed"
+    end
+
+    local jobIds = {}
+    local seen = {}
+    for _, server in ipairs(decoded.data) do
+        local jobId = tostring(server and server.id or "")
+        local playing = tonumber(server and server.playing or 0) or 0
+        local maxPlayers = tonumber(server and server.maxPlayers or 0) or 0
+        local hasRoom = maxPlayers <= 0 or playing < maxPlayers
+        if jobId ~= "" and jobId ~= game.JobId and hasRoom and not seen[jobId] then
+            seen[jobId] = true
+            table.insert(jobIds, jobId)
+        end
+    end
+
+    return jobIds, "public-pool"
+end
+
+local function refillServerHopPool()
+    local jobIds, err = fetchPublicServerJobIds()
+    if type(jobIds) ~= "table" then
+        return false, err or "public_pool_failed"
+    end
+
+    table.clear(serverHopPoolJobIds)
+    for _, jobId in ipairs(jobIds) do
+        if not serverHopPoolSeen[jobId] and jobId ~= game.JobId then
+            table.insert(serverHopPoolJobIds, jobId)
+        end
+    end
+
+    if #serverHopPoolJobIds <= 0 then
+        table.clear(serverHopPoolSeen)
+        for _, jobId in ipairs(jobIds) do
+            if jobId ~= game.JobId then
+                table.insert(serverHopPoolJobIds, jobId)
+            end
+        end
+    end
+
+    return #serverHopPoolJobIds > 0, #serverHopPoolJobIds
+end
+
+local function takeServerHopJobId()
+    if #serverHopPoolJobIds <= 0 then
+        local ok, info = refillServerHopPool()
+        if not ok then
+            return nil, info
+        end
+        print(string.format("%s [G_serverhop] 已抓取服务器池: %s 个", TAG, tostring(info)))
+    end
+
+    if #serverHopPoolJobIds <= 0 then
+        return nil, "public_pool_empty"
+    end
+
+    local index = math.random(1, #serverHopPoolJobIds)
+    local jobId = table.remove(serverHopPoolJobIds, index)
+    serverHopPoolSeen[jobId] = true
+    return jobId, string.format("public-pool 剩余:%d", #serverHopPoolJobIds)
 end
 
 local function releaseToLAN(jobId, resolved)
@@ -623,11 +717,11 @@ local function switchServerForNoPick()
         return
     end
 
-    if not Control.serverSwitchEnabled then
+    if not isServerSwitchEnabled() then
         return
     end
 
-    if not CFG.LAN_SERVER_URL or CFG.LAN_SERVER_URL == "" then
+    if not isExternalServerHopEnabled() and (not CFG.LAN_SERVER_URL or CFG.LAN_SERVER_URL == "") then
         warn(string.format("%s [切服] LAN_SERVER_URL 未配置，跳过切服", TAG))
         return
     end
@@ -635,19 +729,39 @@ local function switchServerForNoPick()
     Control.switchingServer = true
     local oldJobId = game.JobId
 
-    pcall(function()
-        releaseToLAN(oldJobId, false)
-    end)
+    if CFG.LAN_SERVER_URL and CFG.LAN_SERVER_URL ~= "" then
+        pcall(function()
+            releaseToLAN(oldJobId, false)
+        end)
+    end
 
     task.spawn(function()
         local attempt = 0
-        while Control.running and Control.serverSwitchEnabled do
+        while Control.running and isServerSwitchEnabled() do
             attempt = attempt + 1
-            local server, err = getServerFromLAN()
+            local targetJobId = nil
+            local source = nil
+            local err = nil
 
-            if server and server.id and server.id ~= oldJobId then
-                print(string.format("%s [切服 第%d次] 获取到服务器: %s，正在传送", TAG, attempt, shortJobId(server.id)))
-                local tpOk = teleportToJob(server.id)
+            if isExternalServerHopEnabled() then
+                targetJobId, source = takeServerHopJobId()
+                if not targetJobId then
+                    warn(string.format("%s [G_serverhop 第%d次] 公共服务器池不可用: %s", TAG, attempt, tostring(source)))
+                end
+            end
+
+            if not targetJobId then
+                local server
+                server, err = getServerFromLAN()
+                if server and server.id then
+                    targetJobId = server.id
+                    source = "lan-server"
+                end
+            end
+
+            if targetJobId and targetJobId ~= oldJobId then
+                print(string.format("%s [切服 第%d次] 获取到服务器: %s (%s)，正在传送", TAG, attempt, shortJobId(targetJobId), tostring(source)))
+                local tpOk = teleportToJob(targetJobId)
                 if tpOk then
                     return
                 end
@@ -1586,10 +1700,11 @@ print(string.format("%s 启动成功，玩家=%s", TAG, tostring(localPlayer and
 print(string.format("%s 开始自动拾取：AreaPickUp / PickItem / Boost / DropPickUp / SpaceReward / RobberyReward", TAG))
 print(string.format("%s Robbery过滤: 只拾取 CountRewards[%s]", TAG, tostring(ROBBERY_ONLY_COUNT_REWARD_INDEX or "全部")))
 print(string.format(
-    "%s 无拾取 %ds 切服: %s | LAN=%s",
+    "%s 无拾取 %ds 切服: %s | G_serverhop=%s | LAN=%s",
     TAG,
     CFG.NO_PICK_SWITCH_DELAY,
-    Control.serverSwitchEnabled and "开启" or "关闭",
+    isServerSwitchEnabled() and "开启" or "关闭",
+    isExternalServerHopEnabled() and "开启" or "关闭",
     tostring(CFG.LAN_SERVER_URL)
 ))
 
@@ -1617,7 +1732,7 @@ task.spawn(function()
 
         if totalPicked > 0 or (Control.lastDropPickSuccessAt > lastPickAt) then
             lastPickAt = tick()
-        elseif Control.serverSwitchEnabled and not Control.switchingServer then
+        elseif isServerSwitchEnabled() and not Control.switchingServer then
             local idleSeconds = tick() - lastPickAt
             if idleSeconds >= CFG.NO_PICK_SWITCH_DELAY then
                 warn(string.format("%s 已 %.1fs 无拾取物，准备切换服务器", TAG, idleSeconds))
