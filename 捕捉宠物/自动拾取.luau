@@ -54,11 +54,14 @@ local CFG = {
     ENABLE_SERVER_SWITCH = ENABLE_SERVER_SWITCH,
     NO_PICK_SWITCH_DELAY = 10,
     CLAIM_RETRY_DELAY = 2,
-    JOB_CHANGE_TIMEOUT = 30,
+    JOB_CHANGE_TIMEOUT = 3,
+    TELEPORT_RETRY_COOLDOWN = 3,
     SERVERHOP_POOL_SIZE = 100,
+    SERVERHOP_CACHE_SECONDS = 3600,
 }
 
 local SWITCH_MEMORY_FILE = string.format("auto_pick_switch_%s.json", tostring(localPlayer and localPlayer.UserId or "unknown"))
+local SERVERHOP_CACHE_FILE = string.format("auto_pick_public_servers_%s.json", tostring(localPlayer and localPlayer.UserId or "unknown"))
 
 local function hasFileApi()
     return type(readfile) == "function" and type(writefile) == "function"
@@ -113,6 +116,94 @@ local function saveServerSwitchEnabled(enabled)
     end)
 end
 
+local function loadServerHopCache()
+    if not hasFileApi() then
+        return nil, "file_api_missing"
+    end
+
+    local ok, content = pcall(function()
+        if safeIsFile(SERVERHOP_CACHE_FILE) or type(isfile) ~= "function" then
+            return readfile(SERVERHOP_CACHE_FILE)
+        end
+        return nil
+    end)
+    if not ok or type(content) ~= "string" or content == "" then
+        return nil, "cache_missing"
+    end
+
+    local decodeOk, decoded = pcall(function()
+        return HttpService:JSONDecode(content)
+    end)
+    if not decodeOk or type(decoded) ~= "table" then
+        return nil, "cache_decode_failed"
+    end
+
+    if tonumber(decoded.placeId) ~= game.PlaceId then
+        return nil, "cache_place_mismatch"
+    end
+
+    local savedAt = tonumber(decoded.savedAt) or 0
+    local age = os.time() - savedAt
+    if age < 0 or age > CFG.SERVERHOP_CACHE_SECONDS then
+        return nil, "cache_expired"
+    end
+
+    if type(decoded.jobIds) ~= "table" or #decoded.jobIds <= 0 then
+        return nil, "cache_empty"
+    end
+
+    local jobIds = {}
+    local seen = {}
+    for _, jobId in ipairs(decoded.jobIds) do
+        jobId = tostring(jobId or "")
+        if jobId ~= "" and jobId ~= game.JobId and not seen[jobId] then
+            seen[jobId] = true
+            table.insert(jobIds, jobId)
+        end
+    end
+
+    if #jobIds <= 0 then
+        return nil, "cache_no_usable_job"
+    end
+
+    return jobIds, string.format("cache_age_%ds", age)
+end
+
+local function saveServerHopCache(jobIds)
+    if not hasFileApi() or type(jobIds) ~= "table" then
+        return false
+    end
+
+    local cleanJobIds = {}
+    local seen = {}
+    for _, jobId in ipairs(jobIds) do
+        jobId = tostring(jobId or "")
+        if jobId ~= "" and not seen[jobId] then
+            seen[jobId] = true
+            table.insert(cleanJobIds, jobId)
+        end
+    end
+
+    if #cleanJobIds <= 0 then
+        return false
+    end
+
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode({
+            savedAt = os.time(),
+            placeId = game.PlaceId,
+            jobIds = cleanJobIds,
+        })
+    end)
+    if not ok then
+        return false
+    end
+
+    return pcall(function()
+        writefile(SERVERHOP_CACHE_FILE, encoded)
+    end)
+end
+
 local areaPickCooldown = {}
 local pickItemCooldown = {}
 local boostPickCooldown = {}
@@ -138,6 +229,8 @@ local Control = {
 
 local serverHopPoolJobIds = {}
 local serverHopPoolSeen = {}
+local teleportFailureConn = nil
+local lastTeleportFailure = nil
 
 function Control.Stop()
     if Control.running then
@@ -182,6 +275,28 @@ end
 _G.AutoPickStop = function()
     return Control.Stop()
 end
+
+pcall(function()
+    if teleportFailureConn then
+        teleportFailureConn:Disconnect()
+    end
+    teleportFailureConn = TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+        if player ~= localPlayer then
+            return
+        end
+        lastTeleportFailure = {
+            at = tick(),
+            result = teleportResult,
+            message = errorMessage,
+        }
+        warn(string.format(
+            "%s [切服] TeleportInitFailed: %s | %s",
+            TAG,
+            tostring(teleportResult),
+            tostring(errorMessage)
+        ))
+    end)
+end)
 
 local function nowTick()
     return tick()
@@ -546,6 +661,17 @@ local function httpGetJson(pathWithQuery)
     return ok, decoded
 end
 
+local function getTeleportFailureMessage()
+    if not lastTeleportFailure then
+        return nil
+    end
+    local age = tick() - (lastTeleportFailure.at or 0)
+    if age > 10 then
+        return nil
+    end
+    return string.format("%s / %s", tostring(lastTeleportFailure.result), tostring(lastTeleportFailure.message))
+end
+
 local function shortJobId(jobId)
     if type(jobId) ~= "string" then
         return tostring(jobId)
@@ -569,13 +695,12 @@ local function getServerFromLAN()
 end
 
 local function fetchPublicServerJobIds()
-    local limit = math.clamp(tonumber(CFG.SERVERHOP_POOL_SIZE) or 100, 10, 100)
     local url = string.format(
-        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=%d&excludeFullGames=true",
-        game.PlaceId,
-        limit
+        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100&excludeFullGames=true",
+        game.PlaceId
     )
 
+    print(string.format("%s [G_serverhop] 请求 Roblox 公共服务器列表: limit=100 excludeFullGames=true", TAG))
     local ok, decoded = httpGetJson(url)
     if not ok or type(decoded) ~= "table" or type(decoded.data) ~= "table" then
         return nil, "public_server_fetch_failed"
@@ -594,11 +719,29 @@ local function fetchPublicServerJobIds()
         end
     end
 
+    if #jobIds <= 0 then
+        return jobIds, "public_pool_empty_or_full"
+    end
+
+    print(string.format("%s [G_serverhop] Roblox 返回服务器: %d 个，可用: %d 个", TAG, #decoded.data, #jobIds))
     return jobIds, "public-pool"
 end
 
 local function refillServerHopPool()
-    local jobIds, err = fetchPublicServerJobIds()
+    local jobIds, err = loadServerHopCache()
+    local source = "local-cache"
+    if type(jobIds) == "table" then
+        print(string.format("%s [G_serverhop] 使用本地服务器池缓存: %d 个 (%s)", TAG, #jobIds, tostring(err)))
+    else
+        print(string.format("%s [G_serverhop] 本地服务器池不可用: %s，重新拉取", TAG, tostring(err)))
+        jobIds, err = fetchPublicServerJobIds()
+        source = "roblox-public"
+        if type(jobIds) == "table" then
+            local saved = saveServerHopCache(jobIds)
+            print(string.format("%s [G_serverhop] 服务器池已保存本地: %s", TAG, saved and "成功" or "失败"))
+        end
+    end
+
     if type(jobIds) ~= "table" then
         return false, err or "public_pool_failed"
     end
@@ -619,7 +762,7 @@ local function refillServerHopPool()
         end
     end
 
-    return #serverHopPoolJobIds > 0, #serverHopPoolJobIds
+    return #serverHopPoolJobIds > 0, string.format("%d (%s)", #serverHopPoolJobIds, source)
 end
 
 local function takeServerHopJobId()
@@ -678,6 +821,9 @@ local function waitForJobIdChange(oldJobId, timeout)
         if game.JobId ~= oldJobId then
             return true
         end
+        if getTeleportFailureMessage() then
+            return false
+        end
         task.wait(0.25)
     until tick() >= deadline or not Control.running
     return false
@@ -689,6 +835,7 @@ local function teleportToJob(jobId)
     end
 
     local oldJobId = game.JobId
+    lastTeleportFailure = nil
     print(string.format("%s [切服] 传送到服务器: %s", TAG, shortJobId(jobId)))
     setCharacterAnchored(true)
 
@@ -704,7 +851,12 @@ local function teleportToJob(jobId)
 
     local changed = waitForJobIdChange(oldJobId, CFG.JOB_CHANGE_TIMEOUT)
     if not changed then
-        warn(string.format("%s [切服] 传送超时，%ds 内未切服", TAG, CFG.JOB_CHANGE_TIMEOUT))
+        local failureMessage = getTeleportFailureMessage()
+        if failureMessage then
+            warn(string.format("%s [切服] 传送失败回调: %s", TAG, failureMessage))
+        else
+            warn(string.format("%s [切服] 传送超时，%ds 内未切服", TAG, CFG.JOB_CHANGE_TIMEOUT))
+        end
         setCharacterAnchored(false)
         return false
     end
@@ -728,8 +880,15 @@ local function switchServerForNoPick()
 
     Control.switchingServer = true
     local oldJobId = game.JobId
+    print(string.format(
+        "%s [切服] 开始切服: oldJob=%s G_serverhop=%s LAN=%s",
+        TAG,
+        shortJobId(oldJobId),
+        isExternalServerHopEnabled() and "开启" or "关闭",
+        tostring(CFG.LAN_SERVER_URL)
+    ))
 
-    if CFG.LAN_SERVER_URL and CFG.LAN_SERVER_URL ~= "" then
+    if not isExternalServerHopEnabled() and CFG.LAN_SERVER_URL and CFG.LAN_SERVER_URL ~= "" then
         pcall(function()
             releaseToLAN(oldJobId, false)
         end)
@@ -743,19 +902,23 @@ local function switchServerForNoPick()
             local source = nil
             local err = nil
 
-            if isExternalServerHopEnabled() then
+            local usePublicServerHop = isExternalServerHopEnabled()
+
+            if usePublicServerHop then
                 targetJobId, source = takeServerHopJobId()
                 if not targetJobId then
                     warn(string.format("%s [G_serverhop 第%d次] 公共服务器池不可用: %s", TAG, attempt, tostring(source)))
                 end
             end
 
-            if not targetJobId then
+            if not usePublicServerHop and not targetJobId then
                 local server
                 server, err = getServerFromLAN()
                 if server and server.id then
                     targetJobId = server.id
                     source = "lan-server"
+                else
+                    err = err or "lan_no_server"
                 end
             end
 
@@ -765,12 +928,17 @@ local function switchServerForNoPick()
                 if tpOk then
                     return
                 end
-                warn(string.format("%s [切服 第%d次] 传送失败，重新调取服务器", TAG, attempt))
+                warn(string.format(
+                    "%s [切服 第%d次] 传送失败，%ds 后切换下一个 JobId",
+                    TAG,
+                    attempt,
+                    CFG.TELEPORT_RETRY_COOLDOWN
+                ))
             else
-                warn(string.format("%s [切服 第%d次] 获取服务器失败: %s", TAG, attempt, tostring(err)))
+                warn(string.format("%s [切服 第%d次] 获取服务器失败: %s", TAG, attempt, tostring(err or source)))
             end
 
-            frameSafeWait(CFG.CLAIM_RETRY_DELAY)
+            frameSafeWait(CFG.TELEPORT_RETRY_COOLDOWN)
         end
 
         Control.switchingServer = false
