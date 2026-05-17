@@ -207,6 +207,62 @@ local function saveServerHopCache(jobIds)
     end)
 end
 
+local function removeServerHopJobFromCache(jobIdToRemove)
+    jobIdToRemove = tostring(jobIdToRemove or "")
+    if jobIdToRemove == "" or not hasFileApi() then
+        return false
+    end
+
+    local ok, content = pcall(function()
+        if safeIsFile(SERVERHOP_CACHE_FILE) or type(isfile) ~= "function" then
+            return readfile(SERVERHOP_CACHE_FILE)
+        end
+        return nil
+    end)
+    if not ok or type(content) ~= "string" or content == "" then
+        return false
+    end
+
+    local decodeOk, decoded = pcall(function()
+        return HttpService:JSONDecode(content)
+    end)
+    if not decodeOk or type(decoded) ~= "table" or type(decoded.jobIds) ~= "table" then
+        return false
+    end
+
+    local changed = false
+    local remaining = {}
+    local seen = {}
+    for _, jobId in ipairs(decoded.jobIds) do
+        jobId = tostring(jobId or "")
+        if jobId == jobIdToRemove then
+            changed = true
+        elseif jobId ~= "" and not seen[jobId] then
+            seen[jobId] = true
+            table.insert(remaining, jobId)
+        end
+    end
+
+    if not changed then
+        return false
+    end
+
+    local encodeOk, encoded = pcall(function()
+        return HttpService:JSONEncode({
+            savedAt = tonumber(decoded.savedAt) or os.time(),
+            placeId = tonumber(decoded.placeId) or game.PlaceId,
+            jobIds = remaining,
+        })
+    end)
+    if not encodeOk then
+        return false
+    end
+
+    return pcall(function()
+        writefile(SERVERHOP_CACHE_FILE, encoded)
+    end)
+end
+
 local areaPickCooldown = {}
 local pickItemCooldown = {}
 local boostPickCooldown = {}
@@ -785,6 +841,7 @@ local function takeServerHopJobId()
     local index = math.random(1, #serverHopPoolJobIds)
     local jobId = table.remove(serverHopPoolJobIds, index)
     serverHopPoolSeen[jobId] = true
+    removeServerHopJobFromCache(jobId)
     return jobId, string.format("public-pool 剩余:%d", #serverHopPoolJobIds)
 end
 
