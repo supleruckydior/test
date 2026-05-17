@@ -293,7 +293,7 @@ local GradeOrderMap = {
     SS = 7,
 }
 
--- SpecialProp: 0=普通, 1=巨大, 2=闪光, 4=血月 (可组合)
+-- SpecialProp: 0=普通；其它值按游戏运行时定义自适应，可组合
 local SpecialPropDef = { Tp_Giant = 1, Tp_Shiny = 2, Tp_Bloodlit = 4 }
 local SpecialPropName = { [1] = "巨大", [2] = "闪光", [4] = "血月" }
 
@@ -388,37 +388,114 @@ local function GetGradeSortOrder(gradeName)
     return GradeOrderMap[gradeName] or 999
 end
 
-local function GetSpecialPropDisplayName(specialProp)
-    if specialProp == nil or specialProp == 0 then
+local function GetRawSpecialProp(petItem)
+    if not petItem then
+        return nil
+    end
+
+    local ok, value = pcall(function()
+        return petItem:GetSpecialProp()
+    end)
+    if ok and value ~= nil then
+        return value
+    end
+
+    ok, value = pcall(function()
+        local saveData = petItem.GetSaveData and petItem:GetSaveData() or petItem.saveData
+        if type(saveData) == "table" then
+            return saveData.P or saveData.SpecialProp or saveData.SpecialProperty
+        end
+    end)
+    if ok then
+        return value
+    end
+
+    return nil
+end
+
+local function GetSpecialPropDefinitions()
+    local defs = {}
+    local seen = {}
+    local runtimeDef = ModuleCache.PetSpecialPropUtil and ModuleCache.PetSpecialPropUtil.SpecialPropertyDef
+
+    if type(runtimeDef) == "table" then
+        for _, value in pairs(runtimeDef) do
+            local numericValue = tonumber(value)
+            if numericValue and numericValue > 0 and not seen[numericValue] then
+                seen[numericValue] = true
+                table.insert(defs, numericValue)
+            end
+        end
+    end
+
+    for _, value in pairs(SpecialPropDef) do
+        local numericValue = tonumber(value)
+        if numericValue and numericValue > 0 and not seen[numericValue] then
+            seen[numericValue] = true
+            table.insert(defs, numericValue)
+        end
+    end
+
+    table.sort(defs)
+    return defs
+end
+
+local function HasSpecialPropBit(value, bitValue)
+    if bit32 then
+        return bit32.band(value, bitValue) > 0
+    end
+    return math.floor(value / bitValue) % 2 == 1
+end
+
+local function GetSpecialPropPartName(value)
+    local desc = ModuleCache.PetSpecialPropUtil
+        and ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc
+        and ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc[value]
+
+    if desc and desc.Name then
+        return tostring(desc.Name)
+    end
+
+    return SpecialPropName[value] or tostring(value)
+end
+
+local function GetSpecialPropDisplayName(rawSpecialProp)
+    local specialProp = tonumber(rawSpecialProp)
+    if rawSpecialProp == nil or specialProp == 0 then
         return "普通"
     end
 
-    if ModuleCache.PetSpecialPropUtil and ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc then
-        local desc = ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc[specialProp]
+    if not specialProp then
+        return tostring(rawSpecialProp)
+    end
+
+    local descMap = ModuleCache.PetSpecialPropUtil and ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc
+    if type(descMap) == "table" then
+        local desc = descMap[specialProp]
         if desc and desc.Name then
-            return desc.Name
+            return tostring(desc.Name)
         end
     end
 
     local parts = {}
-    local function hasBit(n, b)
-        if bit32 then
-            return bit32.band(n, b) > 0
+    local remaining = specialProp
+
+    for _, val in ipairs(GetSpecialPropDefinitions()) do
+        if remaining > 0 and HasSpecialPropBit(remaining, val) then
+            table.insert(parts, GetSpecialPropPartName(val))
+            remaining = remaining - val
         end
-        return math.floor(n / b) % 2 == 1
     end
 
-    for _, val in pairs(SpecialPropDef) do
-        if hasBit(specialProp, val) and SpecialPropName[val] then
-            table.insert(parts, SpecialPropName[val])
-        end
+    if remaining > 0 then
+        table.insert(parts, tostring(remaining))
     end
 
     if #parts > 0 then
         return table.concat(parts, "+")
     end
 
-    return tostring(specialProp)
+    return tostring(rawSpecialProp)
 end
 
 -- 收集所有宠物 (按模板+品阶+特殊属性细分)
@@ -439,7 +516,7 @@ local function GetAllPetTemplates()
             local tmplId = petItem:GetTmplId()
             local rawGrade = petItem:GetGrade()
             local gradeKey = NormalizeGradeName(rawGrade)
-            local specialProp = petItem:GetSpecialProp()
+            local specialProp = GetRawSpecialProp(petItem)
             if specialProp == nil then
                 specialProp = 0
             end
@@ -511,7 +588,7 @@ local function SetPetLockByTemplate(tmplId, gradeKey, specialProp, lock)
             end
 
             if specialProp ~= nil then
-                local itemSpecialProp = petItem:GetSpecialProp()
+                local itemSpecialProp = GetRawSpecialProp(petItem)
                 if (itemSpecialProp or 0) ~= specialProp then
                     return true
                 end
