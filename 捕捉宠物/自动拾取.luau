@@ -36,10 +36,14 @@ local TeleportService = game:GetService("TeleportService")
 
 local localPlayer = Players.LocalPlayer
 
-local PathTool = _G.PathTool
+local ModuleCache = nil
 local GamePlayer = nil
 local LogicNumber = nil
 local MgrPetClient = nil
+local directRequireModule = nil
+local getModule = nil
+local requirePathModule = nil
+local WaitForModules = nil
 
 local LOOP_WAIT_IDLE = 1.0
 local LOOP_WAIT_BUSY = 0.25
@@ -175,24 +179,233 @@ local function isCooling(pool, key, cd)
     return (nowTick() - lastAt) < (cd or RETRY_COOLDOWN)
 end
 
-local function requirePathModule(moduleName)
-    if PathTool and PathTool[moduleName] then
-        return PathTool[moduleName]
+do
+local DIRECT_MODULE_PATHS = {
+    AreaPickUpSystem = { "CommonLogic", "Area", "AreaPickUpSystem" },
+    BoostSystem = { "CommonLogic", "Boost", "BoostSystem" },
+    CfgAreaPickUp = { "CommonConfig", "Area", "CfgAreaPickUp" },
+    CfgBoost = { "CommonConfig", "Boost", "CfgBoost" },
+    CfgCommonItem = { "CommonConfig", "Common", "CfgCommonItem" },
+    CfgEgg = { "CommonConfig", "Egg", "CfgEgg" },
+    CfgPet = { "CommonConfig", "Pet", "CfgPet" },
+    CfgPetExpItem = { "CommonConfig", "Pet", "CfgPetExpItem" },
+    CfgPickItem = { "CommonConfig", "Shower", "CfgPickItem" },
+    CfgRobberyReward = { "CommonConfig", "UpdateEvent", "CfgRobberyReward" },
+    CfgUpdateEventObby = { "CommonConfig", "UpdateEvent", "CfgUpdateEventObby" },
+    ClientPlayerManager = { "CommonLibrary", "Player", "ClientPlayerManager" },
+    DropPickUpRewardUtil = { "CommonLogic", "Effect", "DropPickUpRewardUtil" },
+    LogicNumber = { "CommonLogic", "Fight", "Logic", "LogicNumber" },
+    MessageSystem = { "CommonLibrary", "Base", "MessageSystem" },
+    MgrPetClient = { "ClientLogic", "Pet", "MgrPetClient" },
+    PickItemSystem = { "CommonLogic", "Shower", "PickItemSystem" },
+    ResourceConfig = { "CommonConfig", "ResourceConfig" },
+    SpaceRewardSystem = { "CommonConfig", "SpaceReward", "SpaceRewardSystem" },
+    Utils = { "CommonLibrary", "Tool", "Utils" },
+    ViewUtil = { "ClientLogic", "View", "ViewUtil" },
+}
+
+local PRELOAD_MODULES = {
+    "ClientPlayerManager",
+    "ViewUtil",
+    "Utils",
+    "LogicNumber",
+    "MgrPetClient",
+    "ResourceConfig",
+    "CfgAreaPickUp",
+    "CfgPickItem",
+    "CfgBoost",
+    "CfgCommonItem",
+    "CfgEgg",
+    "CfgPetExpItem",
+    "CfgPet",
+    "AreaPickUpSystem",
+    "PickItemSystem",
+    "BoostSystem",
+    "DropPickUpRewardUtil",
+    "MessageSystem",
+    "SpaceRewardSystem",
+    "CfgUpdateEventObby",
+    "CfgRobberyReward",
+}
+
+local function findReplicatedStoragePath(parts)
+    if type(parts) ~= "table" then
+        return nil
     end
 
-    if PathTool and PathTool.Require then
-        local ok, result = pcall(function()
-            return PathTool.Require(moduleName)
+    local node = ReplicatedStorage
+    for _, name in ipairs(parts) do
+        node = node:FindFirstChild(name)
+        if not node then
+            return nil
+        end
+    end
+    return node
+end
+
+local function findModuleScriptByName(moduleName)
+    local found = ReplicatedStorage:FindFirstChild(moduleName, true)
+    if found and found:IsA("ModuleScript") then
+        return found
+    end
+    return nil
+end
+
+local function buildPlainModuleCache()
+    if ModuleCache then
+        return
+    end
+
+    local existing = rawget(_G, "PathTool")
+    ModuleCache = {}
+
+    if type(existing) == "table" then
+        pcall(function()
+            for key, value in pairs(existing) do
+                rawset(ModuleCache, key, value)
+            end
         end)
-        if ok and result then
-            pcall(function()
-                PathTool[moduleName] = result
-            end)
+    end
+
+    _G.PathTool = ModuleCache
+end
+
+local function installModuleCacheRequire()
+    buildPlainModuleCache()
+    rawset(ModuleCache, "_AutoPickDirectRequireInstalled", true)
+    ModuleCache.Require = function(moduleNameOrScript)
+        local isModuleScript = false
+        pcall(function()
+            isModuleScript = typeof(moduleNameOrScript) == "Instance" and moduleNameOrScript:IsA("ModuleScript")
+        end)
+
+        if isModuleScript then
+            local ok, result = pcall(require, moduleNameOrScript)
+            if ok and result then
+                rawset(ModuleCache, moduleNameOrScript.Name, result)
+                return result
+            end
+            error(string.format("%s CompatRequire %s err:%s", TAG, tostring(moduleNameOrScript), tostring(result)))
+        end
+
+        local moduleName = tostring(moduleNameOrScript or "")
+        if moduleName == "" then
+            error(TAG .. " CompatRequire moduleName empty")
+        end
+
+        local cached = rawget(ModuleCache, moduleName)
+        if cached then
+            return cached
+        end
+
+        local result, err = nil, "direct_loader_not_ready"
+        if type(directRequireModule) == "function" then
+            result, err = directRequireModule(moduleName)
+        end
+        if result then
             return result
+        end
+
+        error(string.format("%s CompatRequire %s err:%s", TAG, moduleName, tostring(err)))
+    end
+end
+
+local function ensureModuleCache()
+    buildPlainModuleCache()
+    installModuleCacheRequire()
+    return ModuleCache ~= nil
+end
+
+directRequireModule = function(moduleName, directPathParts)
+    ensureModuleCache()
+    if not ModuleCache then
+        return nil, "module_cache_missing"
+    end
+
+    local cached = rawget(ModuleCache, moduleName)
+    if cached then
+        return cached
+    end
+
+    local moduleScript = nil
+    local directPath = directPathParts or DIRECT_MODULE_PATHS[moduleName]
+    if directPath then
+        moduleScript = findReplicatedStoragePath(directPath)
+    end
+    moduleScript = moduleScript or findModuleScriptByName(moduleName)
+
+    if not moduleScript then
+        return nil, "module_not_found"
+    end
+    if not moduleScript:IsA("ModuleScript") then
+        return nil, "not_modulescript:" .. tostring(moduleScript.ClassName)
+    end
+
+    local ok, result = pcall(require, moduleScript)
+    if ok and result then
+        rawset(ModuleCache, moduleName, result)
+        return result
+    end
+
+    return nil, tostring(result)
+end
+
+getModule = function(moduleName)
+    if not ModuleCache then
+        ensureModuleCache()
+    end
+
+    local cached = ModuleCache and rawget(ModuleCache, moduleName)
+    if cached then
+        return cached
+    end
+
+    local result = directRequireModule(moduleName)
+    return result
+end
+
+requirePathModule = function(moduleName)
+    return getModule(moduleName)
+end
+
+WaitForModules = function(maxWait)
+    maxWait = maxWait or 30
+    ensureModuleCache()
+
+    for _, moduleName in ipairs(PRELOAD_MODULES) do
+        directRequireModule(moduleName)
+    end
+
+    MgrPetClient = MgrPetClient or getModule("MgrPetClient")
+    LogicNumber = LogicNumber or getModule("LogicNumber")
+
+    local waited = 0
+    while not GamePlayer do
+        local success, result = pcall(function()
+            local clientPlayerManager = getModule("ClientPlayerManager")
+            return clientPlayerManager and clientPlayerManager.GetGamePlayer and clientPlayerManager.GetGamePlayer()
+        end)
+        if success and result then
+            GamePlayer = result
+            break
+        end
+        task.wait(0.5)
+        waited = waited + 0.5
+        if waited >= maxWait then
+            warn(string.format("%s GamePlayer 未就绪，可能影响部分功能", TAG))
+            break
         end
     end
 
-    return nil
+    print(string.format(
+        "%s [WaitForModules] ModuleCache=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
+        TAG,
+        ModuleCache and "OK" or "FAIL",
+        MgrPetClient and "OK" or "FAIL",
+        LogicNumber and "OK" or "FAIL",
+        GamePlayer and "OK" or "FAIL"
+    ))
+end
 end
 
 local dataPullFunc = nil
@@ -223,8 +436,8 @@ local function getCfgUpdateEventObby()
         return cfgUpdateEventObby
     end
 
-    if PathTool and PathTool.CfgUpdateEventObby then
-        cfgUpdateEventObby = PathTool.CfgUpdateEventObby
+    if ModuleCache and ModuleCache.CfgUpdateEventObby then
+        cfgUpdateEventObby = ModuleCache.CfgUpdateEventObby
         return cfgUpdateEventObby
     end
 
@@ -239,8 +452,8 @@ local function getCfgUpdateEventObby()
     if ok and result then
         cfgUpdateEventObby = result
         pcall(function()
-            if PathTool then
-                PathTool.CfgUpdateEventObby = result
+            if ModuleCache then
+                ModuleCache.CfgUpdateEventObby = result
             end
         end)
         return cfgUpdateEventObby
@@ -255,8 +468,8 @@ local function getCfgRobberyReward()
         return cfgRobberyReward
     end
 
-    if PathTool and PathTool.CfgRobberyReward then
-        cfgRobberyReward = PathTool.CfgRobberyReward
+    if ModuleCache and ModuleCache.CfgRobberyReward then
+        cfgRobberyReward = ModuleCache.CfgRobberyReward
         return cfgRobberyReward
     end
 
@@ -271,8 +484,8 @@ local function getCfgRobberyReward()
     if ok and result then
         cfgRobberyReward = result
         pcall(function()
-            if PathTool then
-                PathTool.CfgRobberyReward = result
+            if ModuleCache then
+                ModuleCache.CfgRobberyReward = result
             end
         end)
         return cfgRobberyReward
@@ -450,92 +663,8 @@ local function switchServerForNoPick()
     end)
 end
 
-local function WaitForPathTool(maxWait)
-    maxWait = maxWait or 30
-    local waited = 0
-
-    if not PathTool then
-        local success, result = pcall(function()
-            return require(
-                ReplicatedStorage:WaitForChild("CommonLibrary")
-                    :WaitForChild("Tool")
-                    :WaitForChild("PathTool")
-            )
-        end)
-        if success and result then
-            PathTool = result
-            _G.PathTool = PathTool
-        end
-    end
-
-    if not PathTool and _G.PathTool then
-        PathTool = _G.PathTool
-    end
-
-    while not PathTool do
-        task.wait(0.1)
-        waited = waited + 0.1
-        if waited >= maxWait then
-            error(string.format("%s PathTool 系统未找到，请确保游戏已加载", TAG))
-        end
-
-        local success, result = pcall(function()
-            return require(
-                ReplicatedStorage:WaitForChild("CommonLibrary")
-                    :WaitForChild("Tool")
-                    :WaitForChild("PathTool")
-            )
-        end)
-        if success and result then
-            PathTool = result
-            _G.PathTool = PathTool
-        elseif _G.PathTool then
-            PathTool = _G.PathTool
-        end
-    end
-
-    if not MgrPetClient then
-        pcall(function()
-            if PathTool.Require then
-                MgrPetClient = PathTool.Require("MgrPetClient")
-            end
-        end)
-        if not MgrPetClient then
-            pcall(function()
-                MgrPetClient = require(
-                    ReplicatedStorage:WaitForChild("ClientLogic")
-                        :WaitForChild("Pet")
-                        :WaitForChild("MgrPetClient")
-                )
-            end)
-        end
-    end
-
-    if not LogicNumber then
-        pcall(function()
-            if PathTool.Require then
-                LogicNumber = PathTool.Require("LogicNumber")
-            end
-        end)
-    end
-
-    waited = 0
-    while not GamePlayer do
-        local success, result = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
-        end)
-        if success and result then
-            GamePlayer = result
-            break
-        end
-        task.wait(0.5)
-        waited = waited + 0.5
-        if waited >= maxWait then
-            warn(string.format("%s GamePlayer 未就绪，可能影响部分功能", TAG))
-            break
-        end
-    end
-
+local function WaitForModulesReady(maxWait)
+    WaitForModules(maxWait or 30)
     requirePathModule("AreaPickUpSystem")
     requirePathModule("PickItemSystem")
     requirePathModule("BoostSystem")
@@ -545,24 +674,15 @@ local function WaitForPathTool(maxWait)
     getDataPullFunc()
     getCfgUpdateEventObby()
     getCfgRobberyReward()
-
-    print(string.format(
-        "%s [WaitForPathTool] PathTool=%s MgrPetClient=%s LogicNumber=%s GamePlayer=%s",
-        TAG,
-        PathTool and "OK" or "FAIL",
-        MgrPetClient and "OK" or "FAIL",
-        LogicNumber and "OK" or "FAIL",
-        GamePlayer and "OK" or "FAIL"
-    ))
 end
 
 local function getGamePlayer()
     if GamePlayer then
         return GamePlayer
     end
-    if PathTool and PathTool.ClientPlayerManager and PathTool.ClientPlayerManager.GetGamePlayer then
+    if ModuleCache and ModuleCache.ClientPlayerManager and ModuleCache.ClientPlayerManager.GetGamePlayer then
         local ok, gp = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
+            return ModuleCache.ClientPlayerManager.GetGamePlayer()
         end)
         if ok and gp then
             GamePlayer = gp
@@ -575,17 +695,17 @@ end
 local function doRequest(remote, ...)
     local args = { ... }
     return pcall(function()
-        if PathTool.ViewUtil and PathTool.ViewUtil.DoRequest then
-            return PathTool.ViewUtil.DoRequest(remote, table.unpack(args))
+        if ModuleCache.ViewUtil and ModuleCache.ViewUtil.DoRequest then
+            return ModuleCache.ViewUtil.DoRequest(remote, table.unpack(args))
         end
         return remote(table.unpack(args))
     end)
 end
 
 local function getServerTime()
-    if PathTool and PathTool.Utils and PathTool.Utils.GetServerTime then
+    if ModuleCache and ModuleCache.Utils and ModuleCache.Utils.GetServerTime then
         local ok, result = pcall(function()
-            return PathTool.Utils.GetServerTime()
+            return ModuleCache.Utils.GetServerTime()
         end)
         if ok and result then
             return result
@@ -603,12 +723,12 @@ local function getCfgName(cfgRoot, tmplId)
 end
 
 local function getValueName(valueType)
-    local boostCfg = PathTool and PathTool.CfgBoost and PathTool.CfgBoost.BoostList and PathTool.CfgBoost.BoostList[valueType]
+    local boostCfg = ModuleCache and ModuleCache.CfgBoost and ModuleCache.CfgBoost.BoostList and ModuleCache.CfgBoost.BoostList[valueType]
     if boostCfg then
         return boostCfg.Name or boostCfg.Title or tostring(valueType)
     end
 
-    local valueCfg = PathTool and PathTool.ResourceConfig and PathTool.ResourceConfig.ValueTypes and PathTool.ResourceConfig.ValueTypes[valueType]
+    local valueCfg = ModuleCache and ModuleCache.ResourceConfig and ModuleCache.ResourceConfig.ValueTypes and ModuleCache.ResourceConfig.ValueTypes[valueType]
     if valueCfg then
         return valueCfg.Name or valueCfg.Title or tostring(valueType)
     end
@@ -629,15 +749,15 @@ local function describeSingleReward(reward)
 
     local name
     if rewardRes == "CommonItem" then
-        name = getCfgName(PathTool.CfgCommonItem, reward.TmplId) or ("CommonItem#" .. tostring(reward.TmplId))
+        name = getCfgName(ModuleCache.CfgCommonItem, reward.TmplId) or ("CommonItem#" .. tostring(reward.TmplId))
     elseif rewardRes == "Egg" then
-        name = getCfgName(PathTool.CfgEgg, reward.TmplId) or ("Egg#" .. tostring(reward.TmplId))
+        name = getCfgName(ModuleCache.CfgEgg, reward.TmplId) or ("Egg#" .. tostring(reward.TmplId))
     elseif rewardRes == "PetExpItem" then
-        name = getCfgName(PathTool.CfgPetExpItem, reward.TmplId) or ("PetExpItem#" .. tostring(reward.TmplId))
+        name = getCfgName(ModuleCache.CfgPetExpItem, reward.TmplId) or ("PetExpItem#" .. tostring(reward.TmplId))
     elseif rewardRes == "Artifact" then
-        name = getCfgName(PathTool.CfgArtifact, reward.TmplId) or ("Artifact#" .. tostring(reward.TmplId))
+        name = getCfgName(ModuleCache.CfgArtifact, reward.TmplId) or ("Artifact#" .. tostring(reward.TmplId))
     elseif rewardRes == "Pet" then
-        name = getCfgName(PathTool.CfgPet, reward.TmplId) or ("Pet#" .. tostring(reward.TmplId))
+        name = getCfgName(ModuleCache.CfgPet, reward.TmplId) or ("Pet#" .. tostring(reward.TmplId))
     elseif rewardRes == "Value" then
         name = getValueName(reward.ValueType)
     else
@@ -686,11 +806,11 @@ local function decodeRewardJson(json)
 end
 
 local function canPickAreaTmpl(gp, tmplId)
-    if not (gp and gp.area and PathTool and PathTool.CfgAreaPickUp and PathTool.CfgAreaPickUp.Tmpls) then
+    if not (gp and gp.area and ModuleCache and ModuleCache.CfgAreaPickUp and ModuleCache.CfgAreaPickUp.Tmpls) then
         return true
     end
 
-    local cfg = PathTool.CfgAreaPickUp.Tmpls[tmplId]
+    local cfg = ModuleCache.CfgAreaPickUp.Tmpls[tmplId]
     if not cfg or not cfg.PickUpLimit then
         return true
     end
@@ -736,7 +856,7 @@ end
 
 local function scanPickItems()
     local gp = getGamePlayer()
-    local pickList = PathTool and PathTool.CfgPickItem and PathTool.CfgPickItem.PickList
+    local pickList = ModuleCache and ModuleCache.CfgPickItem and ModuleCache.CfgPickItem.PickList
     local pickItemSystem = requirePathModule("PickItemSystem")
     if not (gp and gp.pickItem and pickItemSystem and pickItemSystem.ClientPick and pickList) then
         return 0
@@ -756,7 +876,7 @@ local function scanPickItems()
             end)
 
             if itemId and readyTick <= serverNow then
-                local itemCfg = PathTool.CfgPickItem.ItemList and PathTool.CfgPickItem.ItemList[itemId]
+                local itemCfg = ModuleCache.CfgPickItem.ItemList and ModuleCache.CfgPickItem.ItemList[itemId]
                 local previewReward = itemCfg and itemCfg.Reward
                 local previewText = previewReward and describeRewardList(previewReward) or ("PickItem#" .. tostring(itemId))
 
@@ -791,7 +911,7 @@ local function scanBoostPickUps()
     local pickedCount = 0
     for boostKey, info in pairs(boosts) do
         if type(info) == "table" and info.ItemId and info.CanShow ~= 0 and info.Claimed ~= 1 and not isCooling(boostPickCooldown, boostKey) then
-            local itemCfg = PathTool.CfgPickItem and PathTool.CfgPickItem.ItemList and PathTool.CfgPickItem.ItemList[info.ItemId]
+            local itemCfg = ModuleCache.CfgPickItem and ModuleCache.CfgPickItem.ItemList and ModuleCache.CfgPickItem.ItemList[info.ItemId]
             local previewReward = itemCfg and itemCfg.Reward
             local previewText = previewReward and describeRewardList(previewReward) or ("BoostItem#" .. tostring(info.ItemId))
 
@@ -1072,8 +1192,8 @@ end
 
 local function getRuntimeRobberyPoint(index)
     local mgr = nil
-    if type(PathTool) == "table" then
-        mgr = rawget(PathTool, "UpdateEventObbyMgr")
+    if type(ModuleCache) == "table" then
+        mgr = rawget(ModuleCache, "UpdateEventObbyMgr")
     end
     if not mgr and type(_G) == "table" then
         mgr = rawget(_G, "UpdateEventObbyMgr")
@@ -1460,7 +1580,7 @@ local function scanRobberyRewards()
     return claimedCount
 end
 
-WaitForPathTool(30)
+WaitForModulesReady(30)
 
 print(string.format("%s 启动成功，玩家=%s", TAG, tostring(localPlayer and localPlayer.Name or "Unknown")))
 print(string.format("%s 开始自动拾取：AreaPickUp / PickItem / Boost / DropPickUp / SpaceReward / RobberyReward", TAG))
