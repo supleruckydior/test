@@ -256,7 +256,8 @@ end
 local function claimChestRewards(gp)
     print(string.format("\n%s --- 宝箱 / 每日宝箱 / Abyss每日钥匙 ---", TAG))
 
-    local system = PathTool.ChestRewardSystem
+    local system = getModule("ChestRewardSystem")
+    local cfgChestReward = getModule("CfgChestReward")
     if not system then
         print(string.format("%s  ChestRewardSystem 不可用", TAG))
         return 0
@@ -265,7 +266,7 @@ local function claimChestRewards(gp)
     local success = 0
     local chestReward = gp and gp.chestReward
 
-    for _, chestId in ipairs(sortedKeys(PathTool.CfgChestReward and PathTool.CfgChestReward.MemberChest)) do
+    for _, chestId in ipairs(sortedKeys(cfgChestReward and cfgChestReward.MemberChest)) do
         local shouldTry = true
         if chestReward and chestReward.IsMemberChestTaken then
             pcall(function()
@@ -284,7 +285,7 @@ local function claimChestRewards(gp)
         end
     end
 
-    for _, chestId in ipairs(sortedKeys(PathTool.CfgChestReward and PathTool.CfgChestReward.DailyChest)) do
+    for _, chestId in ipairs(sortedKeys(cfgChestReward and cfgChestReward.DailyChest)) do
         local shouldTry = true
         if chestReward and chestReward.CanDailyChestTake then
             pcall(function()
@@ -303,9 +304,9 @@ local function claimChestRewards(gp)
         end
     end
 
-    for _, rewardId in ipairs(sortedKeys(PathTool.CfgChestReward and PathTool.CfgChestReward.DailyReward)) do
+    for _, rewardId in ipairs(sortedKeys(cfgChestReward and cfgChestReward.DailyReward)) do
         local shouldTry = true
-        local cfg = PathTool.CfgChestReward.DailyReward[rewardId]
+        local cfg = cfgChestReward.DailyReward[rewardId]
         if chestReward and chestReward.GetDailyRewardTakenCount then
             pcall(function()
                 shouldTry = chestReward:GetDailyRewardTakenCount(rewardId) < (cfg.DailyTakenAmount or 1)
@@ -330,7 +331,7 @@ end
 local function claimTowerRewards()
     print(string.format("\n%s --- 塔每日 / 塔周 ---", TAG))
 
-    local system = PathTool.TowerSystem
+    local system = getModule("TowerSystem")
     if not system then
         print(string.format("%s  TowerSystem 不可用", TAG))
         return 0
