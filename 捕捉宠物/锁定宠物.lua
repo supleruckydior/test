@@ -1,3 +1,9 @@
+local TARGET_GAME_ID = 98664161516921
+if game.PlaceId ~= TARGET_GAME_ID then
+    warn(string.format("[FindMonster] 游戏ID不匹配: %d (需要 %d)，脚本已禁用", game.PlaceId, TARGET_GAME_ID))
+    _G.__FINDMONSTER_DISABLED = true
+    return
+end
 -- 一键锁定/解锁背包全部宠物 (带模板筛选功能)
 -- API: PetSystem.ClientLockPet(petItemId, isLocked)
 if not game:IsLoaded() then
@@ -16,21 +22,210 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer
 
--- 加载 PathTool
-local PathTool = _G.PathTool
-if not PathTool then
-    local ok = pcall(function()
-        PathTool = require(ReplicatedStorage:WaitForChild("CommonLibrary"):WaitForChild("Tool"):WaitForChild("PathTool"))
-        _G.PathTool = PathTool
-    end)
-    if not ok or not PathTool then
-        warn("[一键锁宠] PathTool 加载失败")
-        return
+local ModuleCache = nil
+local PetSystem = nil
+
+do
+    local missingWarned = {}
+    local directRequireModule = nil
+    local modulePaths = {
+        AnalyticManager = { "CommonLibrary", "Tool", "AnalyticManager" },
+        BakaTipSystem = { "CommonLogic", "BakaUtils", "BakaTipSystem" },
+        CfgCommonItem = { "CommonConfig", "Common", "CfgCommonItem" },
+        CfgPet = { "CommonConfig", "Pet", "CfgPet" },
+        CfgPetExpItem = { "CommonConfig", "Pet", "CfgPetExpItem" },
+        CfgPetGear = { "CommonConfig", "Pet", "CfgPetGear" },
+        CfgPetVault = { "CommonConfig", "Pet", "CfgPetVault" },
+        ClientMsgUtil = { "CommonLibrary", "Tool", "ClientMsgUtil" },
+        ClientPlayerManager = { "CommonLibrary", "Player", "ClientPlayerManager" },
+        Constants = { "CommonLibrary", "Constants" },
+        DataPullManager = { "CommonLibrary", "Tool", "DataPullManager" },
+        EventSystem = { "CommonLibrary", "Base", "EventSystem" },
+        ExchangeSystem = { "CommonLibrary", "Foundation", "ExchangeSystem" },
+        FloatRewardListView = { "ClientLogic", "Common", "FloatRewardListView" },
+        GamePlayer = { "CommonLogic", "Player", "GamePlayer" },
+        GamesIdConfig = { "CommonConfig", "GamesIdConfig" },
+        ListenUtil = { "CommonLibrary", "Tool", "ListenUtil" },
+        LocalizeKey = { "CommonLibrary", "Tool", "LocalizeKey" },
+        Localizer = { "CommonLibrary", "Tool", "Localizer" },
+        MgrListener = { "CommonLibrary", "Base", "MgrListener" },
+        PetData = { "CommonLogic", "Pet", "PetData" },
+        PetGearItem = { "CommonLogic", "Pet", "PetGearItem" },
+        PetSpecialPropUtil = { "CommonLogic", "Pet", "PetSpecialPropUtil" },
+        PetSystem = { "CommonLogic", "Pet", "PetSystem" },
+        RedDotUtil = { "ClientLogic", "View", "RedDotUtil" },
+        RemoteManager = { "CommonLibrary", "Tool", "RemoteManager" },
+        RewardSystem = { "CommonLibrary", "Foundation", "RewardSystem" },
+        Timer = { "CommonLibrary", "Tool", "Timer" },
+        Utils = { "CommonLibrary", "Tool", "Utils" },
+        ViewUtil = { "ClientLogic", "View", "ViewUtil" },
+    }
+
+    local function findPath(parts, timeout)
+        local node = ReplicatedStorage
+        for _, name in ipairs(parts or {}) do
+            node = node:FindFirstChild(name)
+            if not node and timeout and timeout > 0 then
+                node = node:WaitForChild(name, timeout)
+            end
+            if not node then
+                return nil
+            end
+        end
+        return node
     end
+
+    local function findModuleScript(moduleName)
+        local directPath = modulePaths[moduleName]
+        local moduleScript = directPath and findPath(directPath, 0) or nil
+        if moduleScript and moduleScript:IsA("ModuleScript") then
+            return moduleScript
+        end
+
+        moduleScript = ReplicatedStorage:FindFirstChild(moduleName, true)
+        if moduleScript and moduleScript:IsA("ModuleScript") then
+            return moduleScript
+        end
+        return nil
+    end
+
+    local function buildModuleCache()
+        if ModuleCache then
+            return
+        end
+
+        ModuleCache = {}
+        local existing = rawget(_G, "PathTool")
+        if type(existing) == "table" then
+            pcall(function()
+                for key, value in pairs(existing) do
+                    rawset(ModuleCache, key, value)
+                end
+            end)
+        end
+
+        if rawget(ModuleCache, "IsClient") == nil then
+            rawset(ModuleCache, "IsClient", true)
+        end
+        if rawget(ModuleCache, "IsServer") == nil then
+            rawset(ModuleCache, "IsServer", false)
+        end
+
+        _G.PathTool = ModuleCache
+    end
+
+    local function installCompat()
+        buildModuleCache()
+        ModuleCache.Require = function(moduleNameOrScript)
+            local isModuleScript = false
+            pcall(function()
+                isModuleScript = typeof(moduleNameOrScript) == "Instance" and moduleNameOrScript:IsA("ModuleScript")
+            end)
+
+            if isModuleScript then
+                local ok, result = pcall(require, moduleNameOrScript)
+                if ok and result then
+                    rawset(ModuleCache, moduleNameOrScript.Name, result)
+                    return result
+                end
+                error("[一键锁宠] CompatRequire " .. tostring(moduleNameOrScript) .. " err:" .. tostring(result))
+            end
+
+            local moduleName = tostring(moduleNameOrScript or "")
+            if moduleName == "" then
+                error("[一键锁宠] CompatRequire moduleName empty")
+            end
+
+            local cached = rawget(ModuleCache, moduleName)
+            if cached then
+                return cached
+            end
+            if type(directRequireModule) == "function" then
+                local result = directRequireModule(moduleName)
+                if result then
+                    return result
+                end
+            end
+            error("[一键锁宠] CompatRequire " .. moduleName .. " failed")
+        end
+
+        if type(rawget(ModuleCache, "FindForPath")) ~= "function" then
+            ModuleCache.FindForPath = function(root, path)
+                local node = root
+                for part in tostring(path or ""):gmatch("[^%.]+") do
+                    if not node then
+                        return nil
+                    end
+                    node = node:FindFirstChild(part)
+                end
+                return node
+            end
+        end
+    end
+
+    directRequireModule = function(moduleName)
+        installCompat()
+
+        local cached = rawget(ModuleCache, moduleName)
+        if cached then
+            return cached
+        end
+
+        local moduleScript = findModuleScript(moduleName)
+        if not moduleScript then
+            if not missingWarned[moduleName] then
+                missingWarned[moduleName] = true
+                warn("[一键锁宠] 模块路径未找到，请补充路径: " .. tostring(moduleName))
+            end
+            return nil
+        end
+
+        local ok, result = pcall(require, moduleScript)
+        if ok and result then
+            rawset(ModuleCache, moduleName, result)
+            return result
+        end
+
+        warn("[一键锁宠] 直接加载模块失败: " .. tostring(moduleName) .. " err:" .. tostring(result))
+        return nil
+    end
+
+    installCompat()
+    for _, moduleName in ipairs({
+        "Utils",
+        "LocalizeKey",
+        "GamesIdConfig",
+        "RemoteManager",
+        "Timer",
+        "GamePlayer",
+        "ClientPlayerManager",
+        "ClientMsgUtil",
+        "ListenUtil",
+        "DataPullManager",
+        "Constants",
+        "CfgPet",
+        "CfgPetExpItem",
+        "CfgCommonItem",
+        "CfgPetVault",
+        "CfgPetGear",
+        "ExchangeSystem",
+        "EventSystem",
+        "MgrListener",
+        "PetData",
+        "PetGearItem",
+        "RewardSystem",
+        "RedDotUtil",
+        "FloatRewardListView",
+        "BakaTipSystem",
+        "PetSpecialPropUtil",
+        "ViewUtil",
+    }) do
+        directRequireModule(moduleName)
+    end
+
+    PetSystem = directRequireModule("PetSystem")
 end
 
--- 获取 PetSystem
-local PetSystem = PathTool.PetSystem or (PathTool.Require and PathTool.Require("PetSystem"))
 if not PetSystem then
     warn("[一键锁宠] PetSystem 加载失败")
     return
@@ -43,11 +238,11 @@ local function GetGamePlayer()
     end
 
     local ok, gp = pcall(function()
-        return PathTool.ClientPlayerManager:GetGamePlayer()
+        return ModuleCache.ClientPlayerManager:GetGamePlayer()
     end)
     if not ok or not gp then
         ok, gp = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
+            return ModuleCache.ClientPlayerManager.GetGamePlayer()
         end)
     end
 
@@ -106,7 +301,7 @@ local cachedGradeAliasMap
 
 local function BuildGradeAliasMap()
     local aliases = {}
-    local petGrade = PathTool.Constants and PathTool.Constants.PetGrade
+    local petGrade = ModuleCache.Constants and ModuleCache.Constants.PetGrade
 
     if type(petGrade) == "table" then
         for enumName, gradeName in pairs(GradeEnumNameMap) do
@@ -164,9 +359,9 @@ local function NormalizeGradeName(value)
     end
 
     if valueType == "number" then
-        local constantsName = PathTool.Constants
-            and PathTool.Constants.PetGradeName
-            and PathTool.Constants.PetGradeName[value]
+        local constantsName = ModuleCache.Constants
+            and ModuleCache.Constants.PetGradeName
+            and ModuleCache.Constants.PetGradeName[value]
         if constantsName ~= nil then
             local normalizedConstantsName = NormalizeGradeName(constantsName)
             if normalizedConstantsName then
@@ -198,8 +393,8 @@ local function GetSpecialPropDisplayName(specialProp)
         return "普通"
     end
 
-    if PathTool.PetSpecialPropUtil and PathTool.PetSpecialPropUtil.SpecialPropertyDesc then
-        local desc = PathTool.PetSpecialPropUtil.SpecialPropertyDesc[specialProp]
+    if ModuleCache.PetSpecialPropUtil and ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc then
+        local desc = ModuleCache.PetSpecialPropUtil.SpecialPropertyDesc[specialProp]
         if desc and desc.Name then
             return desc.Name
         end
