@@ -15,6 +15,9 @@ local SPACE_REWARD_TARGETS = {
 -- true = 自动扫描 CfgUpdateEventObby 里所有没领过的 SpaceReward
 local CLAIM_ALL_SPACE_REWARDS = true
 
+-- AreaPickUp 不拾取指定 TmplId；nil = 不过滤
+local AREA_PICKUP_BLOCKED_TMPL_ID = 102
+
 -- Robbery 只拾取 CfgRobberyReward.CountRewards[2] 的高档刷新物；改成 nil = 全部拾取
 local ROBBERY_ONLY_COUNT_REWARD_INDEX = 2
 local ROBBERY_FILTER_DEBUG = true
@@ -224,6 +227,7 @@ local Control = {
     running = true,
     serverSwitchEnabled = CFG.ENABLE_SERVER_SWITCH,
     switchingServer = false,
+    switchingStartedAt = 0,
     lastDropPickSuccessAt = 0,
 }
 
@@ -866,7 +870,15 @@ end
 
 local function switchServerForNoPick()
     if Control.switchingServer then
-        return
+        local switchingAge = tick() - (tonumber(Control.switchingStartedAt) or 0)
+        if switchingAge < 5 then
+            print(string.format("%s [切服] 已在切服中 %.1fs，跳过重复触发", TAG, switchingAge))
+            return
+        end
+
+        warn(string.format("%s [切服] 切服状态卡住 %.1fs，强制复位后重试", TAG, switchingAge))
+        Control.switchingServer = false
+        Control.switchingStartedAt = 0
     end
 
     if not isServerSwitchEnabled() then
@@ -879,6 +891,7 @@ local function switchServerForNoPick()
     end
 
     Control.switchingServer = true
+    Control.switchingStartedAt = tick()
     local oldJobId = game.JobId
     print(string.format(
         "%s [切服] 开始切服: oldJob=%s G_serverhop=%s LAN=%s",
@@ -894,7 +907,7 @@ local function switchServerForNoPick()
         end)
     end
 
-    task.spawn(function()
+    local function runSwitchLoop()
         local attempt = 0
         while Control.running and isServerSwitchEnabled() do
             attempt = attempt + 1
@@ -942,6 +955,17 @@ local function switchServerForNoPick()
         end
 
         Control.switchingServer = false
+        Control.switchingStartedAt = 0
+    end
+
+    task.spawn(function()
+        local ok, err = xpcall(runSwitchLoop, debug.traceback)
+        if not ok then
+            warn(string.format("%s [切服] 后台切服任务异常，已复位: %s", TAG, tostring(err)))
+            Control.switchingServer = false
+            Control.switchingStartedAt = 0
+            setCharacterAnchored(false)
+        end
     end)
 end
 
@@ -1088,6 +1112,10 @@ local function decodeRewardJson(json)
 end
 
 local function canPickAreaTmpl(gp, tmplId)
+    if AREA_PICKUP_BLOCKED_TMPL_ID ~= nil and tonumber(tmplId) == tonumber(AREA_PICKUP_BLOCKED_TMPL_ID) then
+        return false
+    end
+
     if not (gp and gp.area and ModuleCache and ModuleCache.CfgAreaPickUp and ModuleCache.CfgAreaPickUp.Tmpls) then
         return true
     end
@@ -1866,6 +1894,7 @@ WaitForModulesReady(30)
 
 print(string.format("%s 启动成功，玩家=%s", TAG, tostring(localPlayer and localPlayer.Name or "Unknown")))
 print(string.format("%s 开始自动拾取：AreaPickUp / PickItem / Boost / DropPickUp / SpaceReward / RobberyReward", TAG))
+print(string.format("%s AreaPickUp过滤: 不拾取 TmplId=%s", TAG, tostring(AREA_PICKUP_BLOCKED_TMPL_ID or "无")))
 print(string.format("%s Robbery过滤: 只拾取 CountRewards[%s]", TAG, tostring(ROBBERY_ONLY_COUNT_REWARD_INDEX or "全部")))
 print(string.format(
     "%s 无拾取 %ds 切服: %s | G_serverhop=%s | LAN=%s",
