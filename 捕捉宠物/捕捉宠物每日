@@ -11,26 +11,175 @@ if not game:IsLoaded() then
 end
 
 local TAG = "[ClaimAllRewards]"
-task.wait(15)
+task.wait(6)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local PathTool = _G.PathTool
-if not PathTool then
-    PathTool = require(
-        ReplicatedStorage:WaitForChild("CommonLibrary")
-            :WaitForChild("Tool")
-            :WaitForChild("PathTool")
-    )
-    _G.PathTool = PathTool
+local ModuleCache = nil
+local directRequireModule = nil
+
+local DIRECT_MODULE_PATHS = {
+    CfgChestReward = { "CommonConfig", "ChestReward", "CfgChestReward" },
+    ChestRewardSystem = { "CommonLogic", "ChestReward", "ChestRewardSystem" },
+    ClientPlayerManager = { "CommonLibrary", "Player", "ClientPlayerManager" },
+    TowerSystem = { "CommonLogic", "Tower", "TowerSystem" },
+    ViewUtil = { "ClientLogic", "View", "ViewUtil" },
+}
+
+local PRELOAD_MODULES = {
+    "ClientPlayerManager",
+    "ViewUtil",
+    "CfgChestReward",
+    "ChestRewardSystem",
+    "TowerSystem",
+}
+
+local function findReplicatedStoragePath(parts)
+    if type(parts) ~= "table" then
+        return nil
+    end
+
+    local node = ReplicatedStorage
+    for _, name in ipairs(parts) do
+        node = node:FindFirstChild(name)
+        if not node then
+            return nil
+        end
+    end
+    return node
 end
 
-local ViewUtil = PathTool.ViewUtil
+local function findModuleScriptByName(moduleName)
+    local found = ReplicatedStorage:FindFirstChild(moduleName, true)
+    if found and found:IsA("ModuleScript") then
+        return found
+    end
+    return nil
+end
+
+local function buildPlainModuleCache()
+    if ModuleCache then
+        return
+    end
+
+    local existing = rawget(_G, "PathTool")
+    ModuleCache = {}
+
+    if type(existing) == "table" then
+        pcall(function()
+            for key, value in pairs(existing) do
+                rawset(ModuleCache, key, value)
+            end
+        end)
+    end
+
+    _G.PathTool = ModuleCache
+end
+
+local function installModuleCacheRequire()
+    buildPlainModuleCache()
+    rawset(ModuleCache, "_ClaimRewardsDirectRequireInstalled", true)
+    ModuleCache.Require = function(moduleNameOrScript)
+        local isModuleScript = false
+        pcall(function()
+            isModuleScript = typeof(moduleNameOrScript) == "Instance" and moduleNameOrScript:IsA("ModuleScript")
+        end)
+
+        if isModuleScript then
+            local ok, result = pcall(require, moduleNameOrScript)
+            if ok and result then
+                rawset(ModuleCache, moduleNameOrScript.Name, result)
+                return result
+            end
+            error(string.format("%s CompatRequire %s err:%s", TAG, tostring(moduleNameOrScript), tostring(result)))
+        end
+
+        local moduleName = tostring(moduleNameOrScript or "")
+        if moduleName == "" then
+            error(TAG .. " CompatRequire moduleName empty")
+        end
+
+        local cached = rawget(ModuleCache, moduleName)
+        if cached then
+            return cached
+        end
+
+        local result, err = nil, "direct_loader_not_ready"
+        if type(directRequireModule) == "function" then
+            result, err = directRequireModule(moduleName)
+        end
+        if result then
+            return result
+        end
+
+        error(string.format("%s CompatRequire %s err:%s", TAG, moduleName, tostring(err)))
+    end
+end
+
+local function ensureModuleCache()
+    buildPlainModuleCache()
+    installModuleCacheRequire()
+    return ModuleCache ~= nil
+end
+
+directRequireModule = function(moduleName, directPathParts)
+    ensureModuleCache()
+    if not ModuleCache then
+        return nil, "module_cache_missing"
+    end
+
+    local cached = rawget(ModuleCache, moduleName)
+    if cached then
+        return cached
+    end
+
+    local moduleScript = nil
+    local directPath = directPathParts or DIRECT_MODULE_PATHS[moduleName]
+    if directPath then
+        moduleScript = findReplicatedStoragePath(directPath)
+    end
+    moduleScript = moduleScript or findModuleScriptByName(moduleName)
+
+    if not moduleScript then
+        return nil, "module_not_found"
+    end
+    if not moduleScript:IsA("ModuleScript") then
+        return nil, "not_modulescript:" .. tostring(moduleScript.ClassName)
+    end
+
+    local ok, result = pcall(require, moduleScript)
+    if ok and result then
+        rawset(ModuleCache, moduleName, result)
+        return result
+    end
+
+    return nil, tostring(result)
+end
+
+local function getModule(moduleName)
+    if not ModuleCache then
+        ensureModuleCache()
+    end
+
+    local cached = ModuleCache and rawget(ModuleCache, moduleName)
+    if cached then
+        return cached
+    end
+
+    local result = directRequireModule(moduleName)
+    return result
+end
+
+ensureModuleCache()
+for _, moduleName in ipairs(PRELOAD_MODULES) do
+    directRequireModule(moduleName)
+end
 
 local function getGamePlayer()
-    if PathTool.ClientPlayerManager and PathTool.ClientPlayerManager.GetGamePlayer then
+    local clientPlayerManager = getModule("ClientPlayerManager")
+    if clientPlayerManager and clientPlayerManager.GetGamePlayer then
         local ok, gp = pcall(function()
-            return PathTool.ClientPlayerManager.GetGamePlayer()
+            return clientPlayerManager.GetGamePlayer()
         end)
         if ok and gp then
             return gp
@@ -42,8 +191,9 @@ end
 local function doRequest(remote, ...)
     local args = { ... }
     return pcall(function()
-        if ViewUtil and ViewUtil.DoRequest then
-            return ViewUtil.DoRequest(remote, table.unpack(args))
+        local viewUtil = getModule("ViewUtil")
+        if viewUtil and viewUtil.DoRequest then
+            return viewUtil.DoRequest(remote, table.unpack(args))
         end
         return remote(table.unpack(args))
     end)
