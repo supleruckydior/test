@@ -756,7 +756,7 @@ end
 
 local function fetchPublicServerJobIds()
     local url = string.format(
-        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100&excludeFullGames=true",
+        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true",
         game.PlaceId
     )
 
