@@ -240,11 +240,12 @@ local ALLOWED_PLAYER_NAMES = {
     savanndavid = true,
     josgwrp = true,
     wshg1341 = true,
+    TheShy114514 = true,
 }
-local ALLOWED_PLAYER_LIST = "josgwrp / Savanndavid / wshg1341"
-local currentPlayerNameKey = localPlayer and string.lower(localPlayer.Name) or ""
-if not localPlayer or not ALLOWED_PLAYER_NAMES[currentPlayerNameKey] then
-    warn(string.format("[MonsterTrackerWebUI] 未授权账号：%s（仅允许 %s 运行）", localPlayer and localPlayer.Name or "Unknown", ALLOWED_PLAYER_LIST))
+local ALLOWED_PLAYER_LIST = "josgwrp / Savanndavid / wshg1341 / TheShy114514"
+local currentPlayerNameKey = player and string.lower(player.Name) or ""
+if not player or not ALLOWED_PLAYER_NAMES[currentPlayerNameKey] then
+    warn(string.format("[MonsterTrackerWebUI] 未授权账号：%s（仅允许 %s 运行）", player and player.Name or "Unknown", ALLOWED_PLAYER_LIST))
     return
 end
 
