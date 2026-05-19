@@ -240,7 +240,7 @@ local ALLOWED_PLAYER_NAMES = {
     savanndavid = true,
     josgwrp = true,
     wshg1341 = true,
-    TheShy114514 = true,
+    theshy114514 = true,
 }
 local ALLOWED_PLAYER_LIST = "josgwrp / Savanndavid / wshg1341 / TheShy114514"
 local currentPlayerNameKey = player and string.lower(player.Name) or ""
