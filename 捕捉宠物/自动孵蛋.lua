@@ -236,15 +236,29 @@ end
 
 WaitForModules(30)
 
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
 local ALLOWED_PLAYER_NAMES = {
-    savanndavid = true,
-    josgwrp = true,
-    wshg1341 = true,
+    ["savanndavid"] = true,
+    ["josgwrp"] = true,
+    ["wshg1341"] = true,
+    ["theshy114514"] = true,
 }
-local ALLOWED_PLAYER_LIST = "josgwrp / Savanndavid / wshg1341"
-local currentPlayerNameKey = localPlayer and string.lower(localPlayer.Name) or ""
-if not localPlayer or not ALLOWED_PLAYER_NAMES[currentPlayerNameKey] then
-    warn(string.format("[MonsterTrackerWebUI] 未授权账号：%s（仅允许 %s 运行）", localPlayer and localPlayer.Name or "Unknown", ALLOWED_PLAYER_LIST))
+
+local function normalize(name)
+    return string.lower(string.gsub(name, "%s+", ""))
+end
+
+local currentPlayerNameKey = player and normalize(player.Name) or ""
+
+print("Current:", currentPlayerNameKey)
+
+if not player or not ALLOWED_PLAYER_NAMES[currentPlayerNameKey] then
+    warn(string.format(
+        "[MonsterTrackerWebUI] 未授权账号：%s",
+        player and player.Name or "Unknown"
+    ))
     return
 end
 
