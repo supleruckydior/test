@@ -31,6 +31,7 @@ local DIRECT_MODULE_PATHS = {
     AchieveData = { "CommonLogic", "Achieve", "AchieveData" },
     ActivityData = { "CommonLogic", "Activity", "ActivityData" },
     AnalyticManager = { "CommonLogic", "Analytic", "AnalyticSystem" },
+    AudioPlayer = { "CommonLibrary", "Audio", "AudioPlayer" },
     BakaAttrSystem = { "CommonLogic", "BakaUtils", "BakaAttrSystem" },
     BakaGCSystem = { "CommonLogic", "BakaUtils", "BakaGCSystem" },
     BakaTipSystem = { "CommonLogic", "BakaUtils", "BakaTipSystem" },
@@ -61,6 +62,7 @@ local DIRECT_MODULE_PATHS = {
     EventSystem = { "CommonLibrary", "Base", "EventSystem" },
     ExchangeSystem = { "CommonLibrary", "Foundation", "ExchangeSystem" },
     ExchangeUtil = { "CommonLogic", "Foundation", "ExchangeUtil" },
+    FlyLogicUtil = { "ClientLogic", "Common", "FlyLogicUtil" },
     GambleRewardAnim = { "ClientLogic", "Common", "GambleRewardAnim" },
     GambleRewardUI = { "ClientLogic", "Common", "GambleRewardUI" },
     GamesIdConfig = { "CommonConfig", "GamesIdConfig" },
@@ -70,6 +72,7 @@ local DIRECT_MODULE_PATHS = {
     LocalizeKey = { "CommonLibrary", "Tool", "LocalizeKey" },
     Localizer = { "CommonLibrary", "Tool", "Localizer" },
     MessageSystem = { "CommonLibrary", "Base", "MessageSystem" },
+    ModelSyncUtil = { "CommonLibrary", "Tool", "ModelSyncUtil" },
     MgrPlayerAudio = { "CommonLibrary", "Common", "MgrPlayerAudio" },
     MgrSmoothShiftLock = { "CommonLogic", "Fight", "Base", "MgrSmoothShiftLock" },
     MgrPetClient = { "ClientLogic", "Pet", "MgrPetClient" },
@@ -98,69 +101,46 @@ local DIRECT_MODULE_PATHS = {
 local PRELOAD_MODULES = {
     "Utils",
     "Constants",
-    "CfgGlobal",
     "LocalizeKey",
-    "Localizer",
     "LogicNumber",
-    "RemoteManager",
     "EventSystem",
     "ClientPlayerManager",
-    "GamesIdConfig",
-    "ClientMsgUtil",
-    "ListenUtil",
     "DataPullManager",
-    "ResourceConfig",
     "CfgEgg",
+    "PetSystem",
+    "MgrPetClient",
+    "ExchangeSystem",
+    "ViewUtil",
+    "EggSystem",
+}
+
+local HATCH_TAKEN_MODULES = {
+    "CfgGlobal",
+    "Localizer",
+    "RemoteManager",
+    "ResourceConfig",
     "CfgPet",
     "CfgCommonItem",
     "CfgConstItem",
-    "CfgPetExpItem",
-    "CfgPetGear",
-    "CfgPetGearAttribute",
-    "CfgAchieve",
-    "CfgArena",
-    "CfgCatcher",
-    "CfgStore",
-    "CfgTitle",
-    "CfgTreasureBox",
-    "CfgBoost",
-    "CfgLevel",
-    "CfgMonsterLevelExp",
     "ExchangeUtil",
-    "PetSystem",
-    "PetItem",
-    "PetSpecialPropUtil",
-    "PetGearAttrUtil",
-    "PetGearItem",
-    "MgrPetClient",
-    "ExchangeSystem",
     "RewardModeUtil",
     "RewardSystemPlus",
     "RewardSystem",
-    "BakaUtil",
-    "BakaAttrSystem",
-    "TimeLineTweenUtil",
-    "BakaGCSystem",
-    "BakaTipSystem",
     "BaseView",
     "ViewManagerBase",
+    "GamesIdConfig",
     "ViewShortcutManager",
     "ViewManager",
-    "ViewUtil",
+    "PetItem",
+    "PetSpecialPropUtil",
+    "AudioPlayer",
+    "ModelSyncUtil",
+    "FlyLogicUtil",
     "GambleRewardUI",
     "VfxPlayer",
     "GambleRewardAnim",
     "AchieveData",
-    "ActivityData",
     "AnalyticManager",
-    "MgrPlayerAudio",
-    "MessageSystem",
-    "GlobalPropertyUtil",
-    "TipsUtil",
-    "RewardHintView",
-    "PetBagView",
-    "MgrSmoothShiftLock",
-    "EggSystem",
 }
 
 local function findReplicatedStoragePath(parts)
@@ -314,6 +294,18 @@ local function getModule(moduleName)
     end
     local result = directRequireModule(moduleName)
     return result
+end
+
+local function ensureModules(moduleNames)
+    local ok = true
+    for _, moduleName in ipairs(moduleNames) do
+        local module = getModule(moduleName)
+        if not module then
+            ok = false
+            warn(string.format("%s 模块未就绪: %s", TAG, tostring(moduleName)))
+        end
+    end
+    return ok
 end
 
 local function WaitForModules(maxWait)
@@ -1034,6 +1026,7 @@ local function takeHatched(slotIndex)
     end
 
     local petBagBefore = getPetBagAmount()
+    ensureModules(HATCH_TAKEN_MODULES)
     local ok, result = doRequest(eggSystem.ClientHatchTaken, slotIndex)
     if ok and result then
         local petBagAfter = getPetBagAmount()
@@ -1041,11 +1034,8 @@ local function takeHatched(slotIndex)
             clearPendingPetBagUpdate()
             setStatus(string.format("槽位 %d 领取成功，宠物背包 %d -> %d", slotIndex, petBagBefore, petBagAfter), COLOR_OK)
         else
-            State.awaitingPetBagUpdate = true
-            State.pendingPetBagBefore = petBagBefore
-            State.pendingPetBagSlotIndex = slotIndex
-            State.pendingPetBagSince = tick()
-            setStatus(string.format("槽位 %d 领取成功，等待宠物背包更新", slotIndex), COLOR_WARN)
+            clearPendingPetBagUpdate()
+            setStatus(string.format("槽位 %d 领取成功，等待奖励动画回调刷新背包", slotIndex), COLOR_WARN)
         end
         return true
     end
@@ -1101,6 +1091,20 @@ local function renderEggs()
     local eggs = getEggList()
     local metrics = getUiMetrics()
 
+    if #eggs == 0 then
+        local row = Instance.new("TextLabel")
+        row.Size = UDim2.new(1, -8, 0, metrics.eggRowHeight)
+        row.BackgroundColor3 = COLOR_PANEL_2
+        row.BorderSizePixel = 0
+        row.TextColor3 = COLOR_DIM
+        row.Font = Enum.Font.Gotham
+        row.TextSize = metrics.bodyTextSize
+        row.TextWrapped = true
+        row.Text = "鸡蛋背包暂无可显示数据"
+        row.Parent = Ui.eggsScroll
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    end
+
     for i, egg in ipairs(eggs) do
         local row = Instance.new("TextButton")
         row.Size = UDim2.new(1, -8, 0, metrics.eggRowHeight)
@@ -1152,6 +1156,20 @@ local function renderSlots()
     clearScrollingChildren(Ui.slotsScroll)
     local slots = getSlotList()
     local metrics = getUiMetrics()
+
+    if #slots == 0 then
+        local row = Instance.new("TextLabel")
+        row.Size = UDim2.new(1, -8, 0, metrics.slotRowHeight)
+        row.BackgroundColor3 = COLOR_PANEL_2
+        row.BorderSizePixel = 0
+        row.TextColor3 = COLOR_DIM
+        row.Font = Enum.Font.Gotham
+        row.TextSize = metrics.bodyTextSize
+        row.TextWrapped = true
+        row.Text = "孵化槽位暂无可显示数据"
+        row.Parent = Ui.slotsScroll
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    end
 
     for i, slot in ipairs(slots) do
         local row = Instance.new("Frame")
