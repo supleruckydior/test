@@ -270,6 +270,11 @@ local State = {
     autoSkip = false,
     lastUiRefresh = 0,
     lastLoopAt = 0,
+    awaitingPetBagUpdate = false,
+    pendingPetBagBefore = nil,
+    pendingPetBagSlotIndex = nil,
+    pendingPetBagSince = nil,
+    lastPetBagChangeAt = 0,
     windowPosition = nil,
     collapsed = false,
 }
@@ -790,6 +795,88 @@ end
 
 local refreshUi
 
+local function getPetBagAmount()
+    local gp = getGamePlayer()
+    if not (gp and gp.pet) then
+        return nil
+    end
+
+    if type(gp.pet.GetBagAmount) == "function" then
+        local ok, amount = pcall(gp.pet.GetBagAmount, gp.pet)
+        if ok and amount ~= nil then
+            return tonumber(tostring(amount))
+        end
+    end
+
+    if type(gp.pet.GetItemAmount) == "function" then
+        local ok, amount = pcall(gp.pet.GetItemAmount, gp.pet)
+        if ok and amount ~= nil then
+            return tonumber(tostring(amount))
+        end
+    end
+
+    local count = 0
+    local iter = gp.pet.IterBagItem or gp.pet.IterItem
+    if type(iter) == "function" then
+        local ok = pcall(function()
+            iter(gp.pet, function()
+                count = count + 1
+                return true
+            end)
+        end)
+        if ok then
+            return count
+        end
+    end
+
+    return nil
+end
+
+local function clearPendingPetBagUpdate()
+    State.awaitingPetBagUpdate = false
+    State.pendingPetBagBefore = nil
+    State.pendingPetBagSlotIndex = nil
+    State.pendingPetBagSince = nil
+end
+
+local function resolvePendingPetBagUpdate()
+    if not State.awaitingPetBagUpdate then
+        return true
+    end
+
+    local current = getPetBagAmount()
+    if State.pendingPetBagBefore ~= nil and current ~= nil and current > State.pendingPetBagBefore then
+        local before = State.pendingPetBagBefore
+        clearPendingPetBagUpdate()
+        setStatus(string.format("宠物背包已更新: %d -> %d", before, current), COLOR_OK)
+        return true
+    end
+
+    if State.pendingPetBagBefore == nil
+        and State.lastPetBagChangeAt > 0
+        and State.pendingPetBagSince
+        and State.lastPetBagChangeAt >= State.pendingPetBagSince
+    then
+        clearPendingPetBagUpdate()
+        setStatus("宠物背包变更事件已收到", COLOR_OK)
+        return true
+    end
+
+    local waited = tick() - (State.pendingPetBagSince or tick())
+    setStatus(string.format("等待宠物背包更新 %.1fs", waited), COLOR_WARN)
+    return false
+end
+
+local function markPetBagChanged()
+    State.lastPetBagChangeAt = tick()
+    if State.awaitingPetBagUpdate then
+        resolvePendingPetBagUpdate()
+    end
+    if refreshUi then
+        refreshUi()
+    end
+end
+
 local function startHatch(slotIndex, eggTmplId)
     local eggSystem = getModule("EggSystem")
     if not (eggSystem and eggSystem.ClientHatchStart) then
@@ -814,9 +901,20 @@ local function takeHatched(slotIndex)
         return false
     end
 
+    local petBagBefore = getPetBagAmount()
     local ok, result = doRequest(eggSystem.ClientHatchTaken, slotIndex)
     if ok and result then
-        setStatus(string.format("槽位 %d 领取成功", slotIndex), COLOR_OK)
+        local petBagAfter = getPetBagAmount()
+        if petBagBefore ~= nil and petBagAfter ~= nil and petBagAfter > petBagBefore then
+            clearPendingPetBagUpdate()
+            setStatus(string.format("槽位 %d 领取成功，宠物背包 %d -> %d", slotIndex, petBagBefore, petBagAfter), COLOR_OK)
+        else
+            State.awaitingPetBagUpdate = true
+            State.pendingPetBagBefore = petBagBefore
+            State.pendingPetBagSlotIndex = slotIndex
+            State.pendingPetBagSince = tick()
+            setStatus(string.format("槽位 %d 领取成功，等待宠物背包更新", slotIndex), COLOR_WARN)
+        end
         return true
     end
     return false
@@ -1020,6 +1118,10 @@ local function runAutomationLoop()
         return
     end
     State.lastLoopAt = tick()
+
+    if not resolvePendingPetBagUpdate() then
+        return
+    end
 
     local slots = getSlotList()
 
@@ -1337,6 +1439,7 @@ local eventSystem = getModule("EventSystem")
 if eventSystem then
     eventSystem.RegisterListener("EggBagChange", refreshUi)
     eventSystem.RegisterListener("EggHatchChange", refreshUi)
+    eventSystem.RegisterListener("PetBagChange", markPetBagChanged)
     table.insert(Conns, {
         Disconnect = function()
             pcall(function()
@@ -1344,6 +1447,9 @@ if eventSystem then
             end)
             pcall(function()
                 eventSystem.UnRegister("EggHatchChange", refreshUi)
+            end)
+            pcall(function()
+                eventSystem.UnRegister("PetBagChange", markPetBagChanged)
             end)
         end
     })
