@@ -28,29 +28,119 @@ local MgrPetClient = nil
 local directRequireModule = nil
 
 local DIRECT_MODULE_PATHS = {
+    AchieveData = { "CommonLogic", "Achieve", "AchieveData" },
+    ActivityData = { "CommonLogic", "Activity", "ActivityData" },
+    AnalyticManager = { "CommonLogic", "Analytic", "AnalyticSystem" },
+    AudioPlayer = { "CommonLibrary", "Audio", "AudioPlayer" },
+    BakaAttrSystem = { "CommonLogic", "BakaUtils", "BakaAttrSystem" },
+    BakaGCSystem = { "CommonLogic", "BakaUtils", "BakaGCSystem" },
+    BakaTipSystem = { "CommonLogic", "BakaUtils", "BakaTipSystem" },
+    BakaUtil = { "CommonLogic", "BakaUtils", "BakaUtil" },
+    BaseView = { "ClientLogic", "View", "BaseView" },
+    CfgAchieve = { "CommonConfig", "Achieve", "CfgAchieve" },
+    CfgArena = { "CommonConfig", "Arena", "CfgArena" },
+    CfgBoost = { "CommonConfig", "Boost", "CfgBoost" },
+    CfgCatcher = { "CommonConfig", "Catcher", "CfgCatcher" },
+    CfgCommonItem = { "CommonConfig", "Common", "CfgCommonItem" },
+    CfgConstItem = { "CommonConfig", "Common", "CfgConstItem" },
     CfgEgg = { "CommonConfig", "Egg", "CfgEgg" },
+    CfgGlobal = { "CommonConfig", "CfgGlobal" },
+    CfgLevel = { "CommonConfig", "CfgLevel" },
+    CfgMonsterLevelExp = { "CommonConfig", "Monster", "CfgMonsterLevelExp" },
+    CfgPet = { "CommonConfig", "Pet", "CfgPet" },
+    CfgPetExpItem = { "CommonConfig", "Pet", "CfgPetExpItem" },
+    CfgPetGear = { "CommonConfig", "Pet", "CfgPetGear" },
+    CfgPetGearAttribute = { "CommonConfig", "Pet", "CfgPetGearAttribute" },
+    CfgStore = { "CommonConfig", "Store", "CfgStore" },
+    CfgTitle = { "CommonConfig", "CfgTitle" },
+    CfgTreasureBox = { "CommonConfig", "Common", "CfgTreasureBox" },
+    ClientMsgUtil = { "CommonLibrary", "Tool", "ClientMsgUtil" },
     ClientPlayerManager = { "CommonLibrary", "Player", "ClientPlayerManager" },
+    Constants = { "CommonLibrary", "Constants" },
+    DataPullManager = { "CommonLibrary", "Tool", "DataPullManager" },
     EggSystem = { "CommonLogic", "Egg", "EggSystem" },
     EventSystem = { "CommonLibrary", "Base", "EventSystem" },
     ExchangeSystem = { "CommonLibrary", "Foundation", "ExchangeSystem" },
+    ExchangeUtil = { "CommonLogic", "Foundation", "ExchangeUtil" },
+    FlyLogicUtil = { "ClientLogic", "Common", "FlyLogicUtil" },
+    GambleRewardAnim = { "ClientLogic", "Common", "GambleRewardAnim" },
+    GambleRewardUI = { "ClientLogic", "Common", "GambleRewardUI" },
+    GamesIdConfig = { "CommonConfig", "GamesIdConfig" },
+    GlobalPropertyUtil = { "CommonLogic", "Common", "GlobalPropertyUtil" },
+    ListenUtil = { "CommonLibrary", "Tool", "ListenUtil" },
     LogicNumber = { "CommonLogic", "Fight", "Logic", "LogicNumber" },
+    LocalizeKey = { "CommonLibrary", "Tool", "LocalizeKey" },
+    Localizer = { "CommonLibrary", "Tool", "Localizer" },
+    MessageSystem = { "CommonLibrary", "Base", "MessageSystem" },
+    ModelSyncUtil = { "CommonLibrary", "Tool", "ModelSyncUtil" },
+    MgrPlayerAudio = { "CommonLibrary", "Common", "MgrPlayerAudio" },
+    MgrSmoothShiftLock = { "CommonLogic", "Fight", "Base", "MgrSmoothShiftLock" },
     MgrPetClient = { "ClientLogic", "Pet", "MgrPetClient" },
+    PetBagView = { "ClientLogic", "Pet", "PetBagView" },
+    PetGearAttrUtil = { "CommonLogic", "Pet", "PetGearAttrUtil" },
+    PetGearItem = { "CommonLogic", "Pet", "PetGearItem" },
+    PetItem = { "CommonLogic", "Pet", "PetItem" },
+    PetSpecialPropUtil = { "CommonLogic", "Pet", "PetSpecialPropUtil" },
     PetSystem = { "CommonLogic", "Pet", "PetSystem" },
+    RemoteManager = { "CommonLibrary", "Tool", "RemoteManager" },
+    ResourceConfig = { "CommonConfig", "ResourceConfig" },
+    RewardHintView = { "ClientLogic", "View", "RewardHintView" },
+    RewardModeUtil = { "CommonLibrary", "Foundation", "RewardModeUtil" },
+    RewardSystem = { "CommonLibrary", "Foundation", "RewardSystem" },
+    RewardSystemPlus = { "CommonLogic", "Foundation", "RewardSystemPlus" },
+    TipsUtil = { "ClientLogic", "View", "TipsUtil" },
+    TimeLineTweenUtil = { "CommonLogic", "BakaUtils", "TimeLineTweenUtil" },
     Utils = { "CommonLibrary", "Tool", "Utils" },
+    VfxPlayer = { "Vfx", "VfxCore", "VfxPlayer" },
+    ViewManager = { "ClientLogic", "View", "ViewManager" },
+    ViewManagerBase = { "ClientLogic", "View", "ViewManagerBase" },
+    ViewShortcutManager = { "ClientLogic", "View", "ConsoleViewManager", "ViewShortcutManager" },
     ViewUtil = { "ClientLogic", "View", "ViewUtil" },
 }
 
 local PRELOAD_MODULES = {
     "Utils",
-    "EventSystem",
-    "ViewUtil",
-    "ClientPlayerManager",
+    "Constants",
+    "LocalizeKey",
     "LogicNumber",
+    "EventSystem",
+    "ClientPlayerManager",
+    "DataPullManager",
+    "CfgEgg",
     "PetSystem",
     "MgrPetClient",
-    "CfgEgg",
     "ExchangeSystem",
+    "ViewUtil",
     "EggSystem",
+}
+
+local HATCH_TAKEN_MODULES = {
+    "CfgGlobal",
+    "Localizer",
+    "RemoteManager",
+    "ResourceConfig",
+    "CfgPet",
+    "CfgCommonItem",
+    "CfgConstItem",
+    "ExchangeUtil",
+    "RewardModeUtil",
+    "RewardSystemPlus",
+    "RewardSystem",
+    "BaseView",
+    "ViewManagerBase",
+    "GamesIdConfig",
+    "ViewShortcutManager",
+    "ViewManager",
+    "PetItem",
+    "PetSpecialPropUtil",
+    "AudioPlayer",
+    "ModelSyncUtil",
+    "FlyLogicUtil",
+    "GambleRewardUI",
+    "VfxPlayer",
+    "GambleRewardAnim",
+    "AchieveData",
+    "AnalyticManager",
 }
 
 local function findReplicatedStoragePath(parts)
@@ -68,17 +158,39 @@ local function findReplicatedStoragePath(parts)
     return node
 end
 
-local function findModuleScriptByName(moduleName)
-    local found = ReplicatedStorage:FindFirstChild(moduleName, true)
-    if found and found:IsA("ModuleScript") then
-        return found
-    end
-    return nil
-end
-
 local function installModuleCacheFallbacks()
     if not ModuleCache then
         return
+    end
+
+    if type(rawget(ModuleCache, "FindForPath")) ~= "function" then
+        ModuleCache.FindForPath = function(root, path)
+            local node = root
+            for part in tostring(path or ""):gmatch("[^%.]+") do
+                if not node then
+                    return nil
+                end
+                node = node:FindFirstChild(part)
+            end
+            return node
+        end
+    end
+
+    if type(rawget(ModuleCache, "WaitForPath")) ~= "function" then
+        ModuleCache.WaitForPath = function(root, path, timeout)
+            local node = root
+            for part in tostring(path or ""):gmatch("[^%.]+") do
+                if not node then
+                    return nil
+                end
+                if timeout and timeout > 0 then
+                    node = node:WaitForChild(part, timeout)
+                else
+                    node = node:WaitForChild(part)
+                end
+            end
+            return node
+        end
     end
 
     if rawget(ModuleCache, "_HatchDirectRequireInstalled") ~= true then
@@ -149,12 +261,12 @@ directRequireModule = function(moduleName, directPathParts)
         return cached
     end
 
-    local moduleScript = nil
     local directPath = directPathParts or DIRECT_MODULE_PATHS[moduleName]
-    if directPath then
-        moduleScript = findReplicatedStoragePath(directPath)
+    if not directPath then
+        return nil, "module_path_not_declared"
     end
-    moduleScript = moduleScript or findModuleScriptByName(moduleName)
+
+    local moduleScript = findReplicatedStoragePath(directPath)
 
     if not moduleScript then
         return nil, "module_not_found"
@@ -182,6 +294,18 @@ local function getModule(moduleName)
     end
     local result = directRequireModule(moduleName)
     return result
+end
+
+local function ensureModules(moduleNames)
+    local ok = true
+    for _, moduleName in ipairs(moduleNames) do
+        local module = getModule(moduleName)
+        if not module then
+            ok = false
+            warn(string.format("%s 模块未就绪: %s", TAG, tostring(moduleName)))
+        end
+    end
+    return ok
 end
 
 local function WaitForModules(maxWait)
@@ -236,16 +360,29 @@ end
 
 WaitForModules(30)
 
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
 local ALLOWED_PLAYER_NAMES = {
-    savanndavid = true,
-    josgwrp = true,
-    wshg1341 = true,
-    theshy114514 = true,
+    ["savanndavid"] = true,
+    ["josgwrp"] = true,
+    ["wshg1341"] = true,
+    ["theshy114514"] = true,
 }
-local ALLOWED_PLAYER_LIST = "josgwrp / Savanndavid / wshg1341 / TheShy114514"
-local currentPlayerNameKey = player and string.lower(player.Name) or ""
+
+local function normalize(name)
+    return string.lower(string.gsub(name, "%s+", ""))
+end
+
+local currentPlayerNameKey = player and normalize(player.Name) or ""
+
+print("Current:", currentPlayerNameKey)
+
 if not player or not ALLOWED_PLAYER_NAMES[currentPlayerNameKey] then
-    warn(string.format("[MonsterTrackerWebUI] 未授权账号：%s（仅允许 %s 运行）", player and player.Name or "Unknown", ALLOWED_PLAYER_LIST))
+    warn(string.format(
+        "[MonsterTrackerWebUI] 未授权账号：%s",
+        player and player.Name or "Unknown"
+    ))
     return
 end
 
@@ -257,6 +394,11 @@ local State = {
     autoSkip = false,
     lastUiRefresh = 0,
     lastLoopAt = 0,
+    awaitingPetBagUpdate = false,
+    pendingPetBagBefore = nil,
+    pendingPetBagSlotIndex = nil,
+    pendingPetBagSince = nil,
+    lastPetBagChangeAt = 0,
     windowPosition = nil,
     collapsed = false,
 }
@@ -777,6 +919,88 @@ end
 
 local refreshUi
 
+local function getPetBagAmount()
+    local gp = getGamePlayer()
+    if not (gp and gp.pet) then
+        return nil
+    end
+
+    if type(gp.pet.GetBagAmount) == "function" then
+        local ok, amount = pcall(gp.pet.GetBagAmount, gp.pet)
+        if ok and amount ~= nil then
+            return tonumber(tostring(amount))
+        end
+    end
+
+    if type(gp.pet.GetItemAmount) == "function" then
+        local ok, amount = pcall(gp.pet.GetItemAmount, gp.pet)
+        if ok and amount ~= nil then
+            return tonumber(tostring(amount))
+        end
+    end
+
+    local count = 0
+    local iter = gp.pet.IterBagItem or gp.pet.IterItem
+    if type(iter) == "function" then
+        local ok = pcall(function()
+            iter(gp.pet, function()
+                count = count + 1
+                return true
+            end)
+        end)
+        if ok then
+            return count
+        end
+    end
+
+    return nil
+end
+
+local function clearPendingPetBagUpdate()
+    State.awaitingPetBagUpdate = false
+    State.pendingPetBagBefore = nil
+    State.pendingPetBagSlotIndex = nil
+    State.pendingPetBagSince = nil
+end
+
+local function resolvePendingPetBagUpdate()
+    if not State.awaitingPetBagUpdate then
+        return true
+    end
+
+    local current = getPetBagAmount()
+    if State.pendingPetBagBefore ~= nil and current ~= nil and current > State.pendingPetBagBefore then
+        local before = State.pendingPetBagBefore
+        clearPendingPetBagUpdate()
+        setStatus(string.format("宠物背包已更新: %d -> %d", before, current), COLOR_OK)
+        return true
+    end
+
+    if State.pendingPetBagBefore == nil
+        and State.lastPetBagChangeAt > 0
+        and State.pendingPetBagSince
+        and State.lastPetBagChangeAt >= State.pendingPetBagSince
+    then
+        clearPendingPetBagUpdate()
+        setStatus("宠物背包变更事件已收到", COLOR_OK)
+        return true
+    end
+
+    local waited = tick() - (State.pendingPetBagSince or tick())
+    setStatus(string.format("等待宠物背包更新 %.1fs", waited), COLOR_WARN)
+    return false
+end
+
+local function markPetBagChanged()
+    State.lastPetBagChangeAt = tick()
+    if State.awaitingPetBagUpdate then
+        resolvePendingPetBagUpdate()
+    end
+    if refreshUi then
+        refreshUi()
+    end
+end
+
 local function startHatch(slotIndex, eggTmplId)
     local eggSystem = getModule("EggSystem")
     if not (eggSystem and eggSystem.ClientHatchStart) then
@@ -801,9 +1025,18 @@ local function takeHatched(slotIndex)
         return false
     end
 
+    local petBagBefore = getPetBagAmount()
+    ensureModules(HATCH_TAKEN_MODULES)
     local ok, result = doRequest(eggSystem.ClientHatchTaken, slotIndex)
     if ok and result then
-        setStatus(string.format("槽位 %d 领取成功", slotIndex), COLOR_OK)
+        local petBagAfter = getPetBagAmount()
+        if petBagBefore ~= nil and petBagAfter ~= nil and petBagAfter > petBagBefore then
+            clearPendingPetBagUpdate()
+            setStatus(string.format("槽位 %d 领取成功，宠物背包 %d -> %d", slotIndex, petBagBefore, petBagAfter), COLOR_OK)
+        else
+            clearPendingPetBagUpdate()
+            setStatus(string.format("槽位 %d 领取成功，等待奖励动画回调刷新背包", slotIndex), COLOR_WARN)
+        end
         return true
     end
     return false
@@ -858,6 +1091,20 @@ local function renderEggs()
     local eggs = getEggList()
     local metrics = getUiMetrics()
 
+    if #eggs == 0 then
+        local row = Instance.new("TextLabel")
+        row.Size = UDim2.new(1, -8, 0, metrics.eggRowHeight)
+        row.BackgroundColor3 = COLOR_PANEL_2
+        row.BorderSizePixel = 0
+        row.TextColor3 = COLOR_DIM
+        row.Font = Enum.Font.Gotham
+        row.TextSize = metrics.bodyTextSize
+        row.TextWrapped = true
+        row.Text = "鸡蛋背包暂无可显示数据"
+        row.Parent = Ui.eggsScroll
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    end
+
     for i, egg in ipairs(eggs) do
         local row = Instance.new("TextButton")
         row.Size = UDim2.new(1, -8, 0, metrics.eggRowHeight)
@@ -909,6 +1156,20 @@ local function renderSlots()
     clearScrollingChildren(Ui.slotsScroll)
     local slots = getSlotList()
     local metrics = getUiMetrics()
+
+    if #slots == 0 then
+        local row = Instance.new("TextLabel")
+        row.Size = UDim2.new(1, -8, 0, metrics.slotRowHeight)
+        row.BackgroundColor3 = COLOR_PANEL_2
+        row.BorderSizePixel = 0
+        row.TextColor3 = COLOR_DIM
+        row.Font = Enum.Font.Gotham
+        row.TextSize = metrics.bodyTextSize
+        row.TextWrapped = true
+        row.Text = "孵化槽位暂无可显示数据"
+        row.Parent = Ui.slotsScroll
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    end
 
     for i, slot in ipairs(slots) do
         local row = Instance.new("Frame")
@@ -1007,6 +1268,10 @@ local function runAutomationLoop()
         return
     end
     State.lastLoopAt = tick()
+
+    if not resolvePendingPetBagUpdate() then
+        return
+    end
 
     local slots = getSlotList()
 
@@ -1324,6 +1589,7 @@ local eventSystem = getModule("EventSystem")
 if eventSystem then
     eventSystem.RegisterListener("EggBagChange", refreshUi)
     eventSystem.RegisterListener("EggHatchChange", refreshUi)
+    eventSystem.RegisterListener("PetBagChange", markPetBagChanged)
     table.insert(Conns, {
         Disconnect = function()
             pcall(function()
@@ -1331,6 +1597,9 @@ if eventSystem then
             end)
             pcall(function()
                 eventSystem.UnRegister("EggHatchChange", refreshUi)
+            end)
+            pcall(function()
+                eventSystem.UnRegister("PetBagChange", markPetBagChanged)
             end)
         end
     })
