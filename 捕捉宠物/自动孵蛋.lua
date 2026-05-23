@@ -28,28 +28,132 @@ local MgrPetClient = nil
 local directRequireModule = nil
 
 local DIRECT_MODULE_PATHS = {
+    AchieveData = { "CommonLogic", "Achieve", "AchieveData" },
+    ActivityData = { "CommonLogic", "Activity", "ActivityData" },
+    AnalyticManager = { "CommonLogic", "Analytic", "AnalyticSystem" },
+    BakaTipSystem = { "CommonLogic", "BakaUtils", "BakaTipSystem" },
+    BakaUtil = { "CommonLogic", "BakaUtils", "BakaUtil" },
+    BaseView = { "ClientLogic", "View", "BaseView" },
+    CfgAchieve = { "CommonConfig", "Achieve", "CfgAchieve" },
+    CfgArena = { "CommonConfig", "Arena", "CfgArena" },
+    CfgBoost = { "CommonConfig", "Boost", "CfgBoost" },
+    CfgCatcher = { "CommonConfig", "Catcher", "CfgCatcher" },
+    CfgCommonItem = { "CommonConfig", "Common", "CfgCommonItem" },
+    CfgConstItem = { "CommonConfig", "Common", "CfgConstItem" },
     CfgEgg = { "CommonConfig", "Egg", "CfgEgg" },
+    CfgGlobal = { "CommonConfig", "CfgGlobal" },
+    CfgLevel = { "CommonConfig", "CfgLevel" },
+    CfgMonsterLevelExp = { "CommonConfig", "Monster", "CfgMonsterLevelExp" },
+    CfgPet = { "CommonConfig", "Pet", "CfgPet" },
+    CfgPetExpItem = { "CommonConfig", "Pet", "CfgPetExpItem" },
+    CfgPetGear = { "CommonConfig", "Pet", "CfgPetGear" },
+    CfgPetGearAttribute = { "CommonConfig", "Pet", "CfgPetGearAttribute" },
+    CfgStore = { "CommonConfig", "Store", "CfgStore" },
+    CfgTitle = { "CommonConfig", "CfgTitle" },
+    CfgTreasureBox = { "CommonConfig", "Common", "CfgTreasureBox" },
+    ClientMsgUtil = { "CommonLibrary", "Tool", "ClientMsgUtil" },
     ClientPlayerManager = { "CommonLibrary", "Player", "ClientPlayerManager" },
+    Constants = { "CommonLibrary", "Constants" },
+    DataPullManager = { "CommonLibrary", "Tool", "DataPullManager" },
     EggSystem = { "CommonLogic", "Egg", "EggSystem" },
     EventSystem = { "CommonLibrary", "Base", "EventSystem" },
     ExchangeSystem = { "CommonLibrary", "Foundation", "ExchangeSystem" },
+    ExchangeUtil = { "CommonLogic", "Foundation", "ExchangeUtil" },
+    GambleRewardAnim = { "ClientLogic", "Common", "GambleRewardAnim" },
+    GambleRewardUI = { "ClientLogic", "Common", "GambleRewardUI" },
+    GamesIdConfig = { "CommonConfig", "GamesIdConfig" },
+    GlobalPropertyUtil = { "CommonLogic", "Common", "GlobalPropertyUtil" },
+    ListenUtil = { "CommonLibrary", "Tool", "ListenUtil" },
     LogicNumber = { "CommonLogic", "Fight", "Logic", "LogicNumber" },
+    LocalizeKey = { "CommonLibrary", "Tool", "LocalizeKey" },
+    Localizer = { "CommonLibrary", "Tool", "Localizer" },
+    MessageSystem = { "CommonLibrary", "Base", "MessageSystem" },
+    MgrPlayerAudio = { "CommonLibrary", "Common", "MgrPlayerAudio" },
+    MgrSmoothShiftLock = { "CommonLogic", "Fight", "Base", "MgrSmoothShiftLock" },
     MgrPetClient = { "ClientLogic", "Pet", "MgrPetClient" },
+    PetBagView = { "ClientLogic", "Pet", "PetBagView" },
+    PetGearAttrUtil = { "CommonLogic", "Pet", "PetGearAttrUtil" },
+    PetGearItem = { "CommonLogic", "Pet", "PetGearItem" },
+    PetItem = { "CommonLogic", "Pet", "PetItem" },
+    PetSpecialPropUtil = { "CommonLogic", "Pet", "PetSpecialPropUtil" },
     PetSystem = { "CommonLogic", "Pet", "PetSystem" },
+    RemoteManager = { "CommonLibrary", "Tool", "RemoteManager" },
+    ResourceConfig = { "CommonConfig", "ResourceConfig" },
+    RewardHintView = { "ClientLogic", "View", "RewardHintView" },
+    RewardModeUtil = { "CommonLibrary", "Foundation", "RewardModeUtil" },
+    RewardSystem = { "CommonLibrary", "Foundation", "RewardSystem" },
+    RewardSystemPlus = { "CommonLogic", "Foundation", "RewardSystemPlus" },
+    TipsUtil = { "ClientLogic", "View", "TipsUtil" },
     Utils = { "CommonLibrary", "Tool", "Utils" },
+    VfxPlayer = { "Vfx", "VfxCore", "VfxPlayer" },
+    ViewManager = { "ClientLogic", "View", "ViewManager" },
+    ViewManagerBase = { "ClientLogic", "View", "ViewManagerBase" },
+    ViewShortcutManager = { "ClientLogic", "View", "ConsoleViewManager", "ViewShortcutManager" },
     ViewUtil = { "ClientLogic", "View", "ViewUtil" },
 }
 
 local PRELOAD_MODULES = {
     "Utils",
-    "EventSystem",
-    "ViewUtil",
-    "ClientPlayerManager",
+    "Constants",
+    "CfgGlobal",
+    "LocalizeKey",
+    "Localizer",
     "LogicNumber",
-    "PetSystem",
-    "MgrPetClient",
+    "RemoteManager",
+    "EventSystem",
+    "ClientPlayerManager",
+    "GamesIdConfig",
+    "ClientMsgUtil",
+    "ListenUtil",
+    "DataPullManager",
+    "ResourceConfig",
     "CfgEgg",
+    "CfgPet",
+    "CfgCommonItem",
+    "CfgConstItem",
+    "CfgPetExpItem",
+    "CfgPetGear",
+    "CfgPetGearAttribute",
+    "CfgAchieve",
+    "CfgArena",
+    "CfgCatcher",
+    "CfgStore",
+    "CfgTitle",
+    "CfgTreasureBox",
+    "CfgBoost",
+    "CfgLevel",
+    "CfgMonsterLevelExp",
+    "ExchangeUtil",
+    "PetSystem",
+    "PetItem",
+    "PetSpecialPropUtil",
+    "PetGearAttrUtil",
+    "PetGearItem",
+    "MgrPetClient",
     "ExchangeSystem",
+    "RewardModeUtil",
+    "RewardSystemPlus",
+    "RewardSystem",
+    "BakaUtil",
+    "BakaTipSystem",
+    "BaseView",
+    "ViewManagerBase",
+    "ViewShortcutManager",
+    "ViewManager",
+    "ViewUtil",
+    "GambleRewardUI",
+    "VfxPlayer",
+    "GambleRewardAnim",
+    "AchieveData",
+    "ActivityData",
+    "AnalyticManager",
+    "MgrPlayerAudio",
+    "MessageSystem",
+    "GlobalPropertyUtil",
+    "TipsUtil",
+    "RewardHintView",
+    "PetBagView",
+    "MgrSmoothShiftLock",
     "EggSystem",
 }
 
@@ -79,6 +183,36 @@ end
 local function installModuleCacheFallbacks()
     if not ModuleCache then
         return
+    end
+
+    if type(rawget(ModuleCache, "FindForPath")) ~= "function" then
+        ModuleCache.FindForPath = function(root, path)
+            local node = root
+            for part in tostring(path or ""):gmatch("[^%.]+") do
+                if not node then
+                    return nil
+                end
+                node = node:FindFirstChild(part)
+            end
+            return node
+        end
+    end
+
+    if type(rawget(ModuleCache, "WaitForPath")) ~= "function" then
+        ModuleCache.WaitForPath = function(root, path, timeout)
+            local node = root
+            for part in tostring(path or ""):gmatch("[^%.]+") do
+                if not node then
+                    return nil
+                end
+                if timeout and timeout > 0 then
+                    node = node:WaitForChild(part, timeout)
+                else
+                    node = node:WaitForChild(part)
+                end
+            end
+            return node
+        end
     end
 
     if rawget(ModuleCache, "_HatchDirectRequireInstalled") ~= true then
