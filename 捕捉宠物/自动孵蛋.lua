@@ -31,6 +31,8 @@ local DIRECT_MODULE_PATHS = {
     AchieveData = { "CommonLogic", "Achieve", "AchieveData" },
     ActivityData = { "CommonLogic", "Activity", "ActivityData" },
     AnalyticManager = { "CommonLogic", "Analytic", "AnalyticSystem" },
+    BakaAttrSystem = { "CommonLogic", "BakaUtils", "BakaAttrSystem" },
+    BakaGCSystem = { "CommonLogic", "BakaUtils", "BakaGCSystem" },
     BakaTipSystem = { "CommonLogic", "BakaUtils", "BakaTipSystem" },
     BakaUtil = { "CommonLogic", "BakaUtils", "BakaUtil" },
     BaseView = { "ClientLogic", "View", "BaseView" },
@@ -84,6 +86,7 @@ local DIRECT_MODULE_PATHS = {
     RewardSystem = { "CommonLibrary", "Foundation", "RewardSystem" },
     RewardSystemPlus = { "CommonLogic", "Foundation", "RewardSystemPlus" },
     TipsUtil = { "ClientLogic", "View", "TipsUtil" },
+    TimeLineTweenUtil = { "CommonLogic", "BakaUtils", "TimeLineTweenUtil" },
     Utils = { "CommonLibrary", "Tool", "Utils" },
     VfxPlayer = { "Vfx", "VfxCore", "VfxPlayer" },
     ViewManager = { "ClientLogic", "View", "ViewManager" },
@@ -135,6 +138,9 @@ local PRELOAD_MODULES = {
     "RewardSystemPlus",
     "RewardSystem",
     "BakaUtil",
+    "BakaAttrSystem",
+    "TimeLineTweenUtil",
+    "BakaGCSystem",
     "BakaTipSystem",
     "BaseView",
     "ViewManagerBase",
@@ -170,14 +176,6 @@ local function findReplicatedStoragePath(parts)
         end
     end
     return node
-end
-
-local function findModuleScriptByName(moduleName)
-    local found = ReplicatedStorage:FindFirstChild(moduleName, true)
-    if found and found:IsA("ModuleScript") then
-        return found
-    end
-    return nil
 end
 
 local function installModuleCacheFallbacks()
@@ -283,12 +281,12 @@ directRequireModule = function(moduleName, directPathParts)
         return cached
     end
 
-    local moduleScript = nil
     local directPath = directPathParts or DIRECT_MODULE_PATHS[moduleName]
-    if directPath then
-        moduleScript = findReplicatedStoragePath(directPath)
+    if not directPath then
+        return nil, "module_path_not_declared"
     end
-    moduleScript = moduleScript or findModuleScriptByName(moduleName)
+
+    local moduleScript = findReplicatedStoragePath(directPath)
 
     if not moduleScript then
         return nil, "module_not_found"
