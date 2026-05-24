@@ -30,7 +30,6 @@ if not game:IsLoaded() then
 end
 
 local TAG = "[自动拾取]"
-task.wait(6)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
