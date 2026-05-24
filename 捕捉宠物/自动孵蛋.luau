@@ -21,7 +21,7 @@ local HttpService = game:GetService("HttpService")
 
 local localPlayer = Players.LocalPlayer
 
-local ModuleCache = rawget(_G, "PathTool")
+local ModuleCache = nil
 local GamePlayer = nil
 local LogicNumber = nil
 local MgrPetClient = nil
@@ -103,6 +103,10 @@ local PRELOAD_MODULES = {
     "Constants",
     "LocalizeKey",
     "LogicNumber",
+    "RemoteManager",
+    "GamesIdConfig",
+    "ClientMsgUtil",
+    "ListenUtil",
     "EventSystem",
     "ClientPlayerManager",
     "DataPullManager",
@@ -233,21 +237,44 @@ local function installModuleCacheFallbacks()
     end
 end
 
+local function buildPlainModuleCache()
+    if ModuleCache then
+        return true
+    end
+
+    local existing = rawget(_G, "PathTool")
+    ModuleCache = {}
+
+    if type(existing) == "table" then
+        pcall(function()
+            for key, value in pairs(existing) do
+                rawset(ModuleCache, key, value)
+            end
+        end)
+    end
+
+    if rawget(ModuleCache, "IsClient") == nil then
+        rawset(ModuleCache, "IsClient", RunService:IsClient())
+    end
+    if rawget(ModuleCache, "IsServer") == nil then
+        rawset(ModuleCache, "IsServer", RunService:IsServer())
+    end
+    if rawget(ModuleCache, "IsStudio") == nil then
+        rawset(ModuleCache, "IsStudio", RunService:IsStudio())
+    end
+
+    _G.PathTool = ModuleCache
+    installModuleCacheFallbacks()
+    return true
+end
+
 local function ensureModuleCache()
     if ModuleCache then
         installModuleCacheFallbacks()
         return true
     end
-    if rawget(_G, "PathTool") then
-        ModuleCache = rawget(_G, "PathTool")
-        installModuleCacheFallbacks()
-        return ModuleCache ~= nil
-    end
 
-    ModuleCache = {}
-    _G.PathTool = ModuleCache
-    installModuleCacheFallbacks()
-    return true
+    return buildPlainModuleCache()
 end
 
 directRequireModule = function(moduleName, directPathParts)
