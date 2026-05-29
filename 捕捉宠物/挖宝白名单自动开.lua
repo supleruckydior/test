@@ -15,7 +15,6 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-task.wait(6)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
