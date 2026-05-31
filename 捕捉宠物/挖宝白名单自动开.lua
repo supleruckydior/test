@@ -27,7 +27,7 @@ local CFG = {
     PRINT_GRID = true,
     PRINT_ALL_TREASURES = true,
     AUTO_OPEN_WHITELIST = true,
-    OPEN_INTERVAL = 0.25,
+    OPEN_INTERVAL = 0.05,
     MAX_TREASURES_TO_OPEN = nil, -- nil=开完全部白名单宝藏；数字=最多开几个白名单宝藏
     STOP_ON_SYNC_MISMATCH = true,
     REWARD_WHITELIST_TMPL_IDS = {
