@@ -25,7 +25,7 @@ task.wait(3)
 local CFG = {
     ACTIVITY_ID = 23,
     AUTO_OPEN = true,                  -- false=只预测不开
-    OPEN_INTERVAL = 0.25,
+    OPEN_INTERVAL = 0.05,
     NIL_FS_FILLER_COUNT = 18,          -- nil-FS 的 N 默认值
     REQUIRE_SYNC_VERIFY = true,         -- true=有 syncedMap 必须验证才开
     USE_PROBE_IF_NO_SYNC = false,       -- (OPEN_ALL_PLACEMENTS 模式下不需要探针)
