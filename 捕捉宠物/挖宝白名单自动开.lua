@@ -18,6 +18,7 @@ local ACTIVITY_ID = 23
 local AUTO_OPEN = true  -- true=通过校验后自动开格，会消耗铲子
 local OPEN_INTERVAL = 0.25
 local AUTO_OPEN_ALL_FIXED_TREASURES = true -- true=开启当前算法预测出的全部非1000固定奖励
+local AUTO_OPEN_ALLOW_NO_SYNC_FOR_ALL_FIXED = true -- allFixed 模式下，允许无 syncedMap 时按 fs+500000 坐标池开
 local AUTO_OPEN_ALLOW_FREE_BINDINGS = true -- DP 的 free 补位未被 synced 直接验证；true=也开，false=只开 synced
 local AUTO_OPEN_HIGH_QUALITY = true -- true=除白名单外，也开配置 HighQuality 里的高品质奖励
 local AUTO_OPEN_VALUE_TMPL_IDS = {
@@ -92,6 +93,10 @@ if okSeed then fs = sv end
 
 log("当前状态: fs=%s user=%d refresh=%d", tostring(fs), userId, refreshTick)
 
+local function mod1e6(value)
+    return ((value % 1000000) + 1000000) % 1000000
+end
+
 -- 候选 rawSeed 派生公式
 local candidates = {
     {"fs", fs or 0},
@@ -100,8 +105,9 @@ local candidates = {
     {"fs+user%1e6", (fs or 0) + userId % 1000000},
     {"refresh+user%1e5", refreshTick + userId % 100000},
     {"refresh+fs", refreshTick + (fs or 0)},
-    {"(fs+500000) mod 1e6", ((fs or 0) + 500000) % 1000000},
+    {"(fs+500000) mod 1e6", mod1e6((fs or 0) + 500000)},
     {"refresh%1e6 + 500000", refreshTick % 1000000 + 500000},
+    {"dailyNil refresh+user+400000 mod 1e6", mod1e6(refreshTick + userId + 400000)},
 }
 
 -- 旧版 generateUniformChests
@@ -768,7 +774,7 @@ local function printPostOpenValidation(primaryResult, beforeSyncedMap, openedTar
             local actual = actualByCoord[("%s_%s"):format(tostring(target.row), tostring(target.col))]
             if actual then
                 local ok = actual.tmpl == target.tmpl
-                log("  openedCoord=(%s,%s) expectedTmpl=%s actualTmpl=%s key=%s %s",
+                log("  openedCoord=(%s,%s) expectedTarget=%s actualTmpl=%s key=%s %s",
                     tostring(target.row),
                     tostring(target.col),
                     tostring(target.tmpl),
@@ -776,7 +782,7 @@ local function printPostOpenValidation(primaryResult, beforeSyncedMap, openedTar
                     tostring(actual.key),
                     ok and "HIT" or "SWAP")
             else
-                log("  openedCoord=(%s,%s) expectedTmpl=%s actualTmpl=nil",
+                log("  openedCoord=(%s,%s) expectedTarget=%s actualTmpl=nil",
                     tostring(target.row),
                     tostring(target.col),
                     tostring(target.tmpl))
@@ -805,6 +811,13 @@ local function shouldAutoOpenTreasure(treasure, whitelist, highQualitySet)
     return false, "skip"
 end
 
+local function isPreferredRawSeedResult(result)
+    if not result then return false end
+    return result.name == "fs+500000"
+        or result.name == "(fs+500000) mod 1e6"
+        or result.name == "dailyNil refresh+user+400000 mod 1e6"
+end
+
 local function autoOpenPredictedWhitelisted(primaryResult, whitelist, highQualitySet)
     if not AUTO_OPEN then
         log("\n自动开格: AUTO_OPEN=false，跳过")
@@ -816,48 +829,72 @@ local function autoOpenPredictedWhitelisted(primaryResult, whitelist, highQualit
         return
     end
 
-    if not primaryResult.hit or not primaryResult.chk or primaryResult.chk <= 0 then
-        warnf("\n自动开格停止: 没有 syncedMap 校验数据")
-        return
-    end
-
-    if primaryResult.hit ~= primaryResult.chk then
-        warnf("\n自动开格停止: syncedVerify=%s/%s 未满分", tostring(primaryResult.hit), tostring(primaryResult.chk))
-        return
-    end
-
-    if primaryResult.poolHit and primaryResult.poolChk and primaryResult.poolHit ~= primaryResult.poolChk then
-        warnf("\n自动开格停止: placement pool=%s/%s 未满分", tostring(primaryResult.poolHit), tostring(primaryResult.poolChk))
-        return
-    end
-
     local toOpen = {}
-    for _, treasure in pairs(primaryResult.map) do
-        local shouldOpen, reason = shouldAutoOpenTreasure(treasure, whitelist, highQualitySet)
-        if shouldOpen and not isRewardClaimed(treasure.tmpl) then
-            if treasure.source ~= "free" or AUTO_OPEN_ALLOW_FREE_BINDINGS then
-                treasure.openReason = reason
-                table.insert(toOpen, treasure)
+
+    if AUTO_OPEN_ALL_FIXED_TREASURES then
+        if not isPreferredRawSeedResult(primaryResult) or primaryResult.orderMode ~= "bruteforce_synced_fit" then
+            warnf("\n自动开格停止: allFixed 只允许已验证 rawSeed 分支，当前=%s/%s",
+                tostring(primaryResult.name),
+                tostring(primaryResult.orderMode))
+            return
+        end
+
+        for placementIndex, placement in ipairs(primaryResult.rawPlacements or primaryResult.placements or {}) do
+            table.insert(toOpen, {
+                tmpl=("fixed#%d"):format(placementIndex),
+                row=placement.r,
+                col=placement.c,
+                size=placement.size,
+                reward=nil,
+                source="placementPool",
+                openReason="allFixed",
+                placementIndex=placementIndex,
+            })
+        end
+    else
+        local hasSyncedCheck = primaryResult.hit and primaryResult.chk and primaryResult.chk > 0
+        if not hasSyncedCheck then
+            warnf("\n自动开格停止: 没有 syncedMap 校验数据")
+            return
+        end
+
+        if primaryResult.hit ~= primaryResult.chk then
+            warnf("\n自动开格停止: syncedVerify=%s/%s 未满分", tostring(primaryResult.hit), tostring(primaryResult.chk))
+            return
+        end
+
+        if primaryResult.poolHit and primaryResult.poolChk and primaryResult.poolHit ~= primaryResult.poolChk then
+            warnf("\n自动开格停止: placement pool=%s/%s 未满分", tostring(primaryResult.poolHit), tostring(primaryResult.poolChk))
+            return
+        end
+
+        for _, treasure in pairs(primaryResult.map) do
+            local shouldOpen, reason = shouldAutoOpenTreasure(treasure, whitelist, highQualitySet)
+            if shouldOpen and not isRewardClaimed(treasure.tmpl) then
+                if treasure.source ~= "free" or AUTO_OPEN_ALLOW_FREE_BINDINGS then
+                    treasure.openReason = reason
+                    table.insert(toOpen, treasure)
+                end
             end
         end
-    end
 
-    table.sort(toOpen, function(a, b)
-        local aVerified = a.source == "synced"
-        local bVerified = b.source == "synced"
-        if aVerified ~= bVerified then return aVerified end
-        local aHigh = a.openReason == "highQuality"
-        local bHigh = b.openReason == "highQuality"
-        if aHigh ~= bHigh then return aHigh end
-        local aValue = a.openReason == "valueTmpl"
-        local bValue = b.openReason == "valueTmpl"
-        if aValue ~= bValue then return aValue end
-        local aWhite = a.openReason == "whitelist"
-        local bWhite = b.openReason == "whitelist"
-        if aWhite ~= bWhite then return aWhite end
-        if a.size ~= b.size then return a.size > b.size end
-        return a.tmpl < b.tmpl
-    end)
+        table.sort(toOpen, function(a, b)
+            local aVerified = a.source == "synced"
+            local bVerified = b.source == "synced"
+            if aVerified ~= bVerified then return aVerified end
+            local aHigh = a.openReason == "highQuality"
+            local bHigh = b.openReason == "highQuality"
+            if aHigh ~= bHigh then return aHigh end
+            local aValue = a.openReason == "valueTmpl"
+            local bValue = b.openReason == "valueTmpl"
+            if aValue ~= bValue then return aValue end
+            local aWhite = a.openReason == "whitelist"
+            local bWhite = b.openReason == "whitelist"
+            if aWhite ~= bWhite then return aWhite end
+            if a.size ~= b.size then return a.size > b.size end
+            return a.tmpl < b.tmpl
+        end)
+    end
 
     log("\n========== 自动开目标奖励 (公式=%s order=%s/%s verify=%s/%s pool=%s/%s allFixed=%s highQuality=%s) ==========",
         tostring(primaryResult.name),
@@ -879,7 +916,7 @@ local function autoOpenPredictedWhitelisted(primaryResult, whitelist, highQualit
     local openedTreasures, openedCells = 0, 0
     local openedTargets = {}
     for _, treasure in ipairs(toOpen) do
-        log("准备开: tmpl=%s reason=%s source=%s size=%dx%d topLeft=(%d,%d) reward=%s",
+        log("准备开: target=%s reason=%s source=%s size=%dx%d topLeft=(%d,%d) reward=%s",
             tostring(treasure.tmpl),
             tostring(treasure.openReason),
             tostring(treasure.source),
@@ -1020,6 +1057,28 @@ table.sort(results, function(a, b)
     return (a.chk or 0) > (b.chk or 0)
 end)
 
+local function selectPrimaryResult(sortedResults)
+    if AUTO_OPEN_ALL_FIXED_TREASURES then
+        local fallback = nil
+        for _, result in ipairs(sortedResults) do
+            local isPreferredSeed = isPreferredRawSeedResult(result)
+            local isPreferredMode = result.orderMode == "bruteforce_synced_fit"
+                and result.placementOrderMode == "generated_pool"
+            if isPreferredSeed and isPreferredMode then
+                fallback = fallback or result
+                if result.hit and result.chk and result.chk > 0 and result.hit == result.chk then
+                    return result, "verified_preferred"
+                end
+            end
+        end
+        if fallback then
+            return fallback, "preferred_no_sync"
+        end
+    end
+
+    return sortedResults[1], "best_score"
+end
+
 log("\n========== 暴力排序上限 (使用 syncedMap 反推绑定, 非真实算法) ==========")
 for _, result in ipairs(results) do
     if result.orderMode == "bruteforce_synced_fit" then
@@ -1047,10 +1106,10 @@ for _, result in ipairs(results) do
     end
 end
 
--- 取命中最多的候选详细打印一份地图作参考
-local primary = results[1]
-log("\n========== 详细预测 (公式=%s, order=%s, placementSeed=%d) ==========",
-    primary.name, primary.orderMode .. "/" .. tostring(primary.placementOrderMode), primary.place)
+-- 取主候选详细打印一份地图作参考
+local primary, primaryReason = selectPrimaryResult(results)
+log("\n========== 详细预测 (公式=%s, order=%s, placementSeed=%d, reason=%s) ==========",
+    primary.name, primary.orderMode .. "/" .. tostring(primary.placementOrderMode), primary.place, tostring(primaryReason))
 local list = {}
 for _, v in pairs(primary.map) do table.insert(list, v) end
 table.sort(list, function(a,b)
@@ -1139,8 +1198,9 @@ autoOpenPredictedWhitelisted(primary, WHITELIST, HIGH_QUALITY)
 log("\n========== 用法 ==========")
 log("1. 看 '试 %d 个 rawSeed 候选' 那一段, 找出 syncedVerify 命中的公式 (如果开过格子)", #candidates)
 log("2. 如果没开过格子, 你可以手动开 1-2 个预测的便宜格子(比如 tmpl=1 那个), 看是否中")
-log("3. 当前 AUTO_OPEN=%s; AUTO_OPEN_ALL_FIXED_TREASURES=%s; AUTO_OPEN_ALLOW_FREE_BINDINGS=%s; AUTO_OPEN_HIGH_QUALITY=%s; valueTmpl=3,4,5,6",
+log("3. 当前 AUTO_OPEN=%s; AUTO_OPEN_ALL_FIXED_TREASURES=%s; AUTO_OPEN_ALLOW_NO_SYNC_FOR_ALL_FIXED=%s; AUTO_OPEN_ALLOW_FREE_BINDINGS=%s; AUTO_OPEN_HIGH_QUALITY=%s; valueTmpl=3,4,5,6; dailyNil=refresh+user+400000 mod 1e6",
     tostring(AUTO_OPEN),
     tostring(AUTO_OPEN_ALL_FIXED_TREASURES),
+    tostring(AUTO_OPEN_ALLOW_NO_SYNC_FOR_ALL_FIXED),
     tostring(AUTO_OPEN_ALLOW_FREE_BINDINGS),
     tostring(AUTO_OPEN_HIGH_QUALITY))
