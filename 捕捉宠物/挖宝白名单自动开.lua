@@ -2,7 +2,8 @@
 -- 挖宝白名单自动开_v2.lua
 -- 基于完整破解的算法骨架:
 --   FS-set: rawSeed = (fs + 500000) % 1_000_000, sc = fixed only
---   nil-FS: rawSeed = (refresh + user + 400000) % 1_000_000, sc = fixed + N filler (N=18 默认)
+--   nil-FS: rawSeed = (user + refresh) % 100_000  ← 已确认 5/5 样本 (注意是 %1e5 不是 %1e6!)
+--           sc = fixed + N filler (N=18 默认)
 -- 算法流程:
 --   rng = Random.new(rawSeed)
 --   __DoRewardGroup(rng)
@@ -25,14 +26,14 @@ task.wait(3)
 local CFG = {
     ACTIVITY_ID = 23,
     AUTO_OPEN = true,                  -- false=只预测不开
-    OPEN_INTERVAL = 0.05,
+    OPEN_INTERVAL = 0.25,
     NIL_FS_FILLER_COUNT = 18,          -- nil-FS 的 N 默认值
     REQUIRE_SYNC_VERIFY = true,         -- true=有 syncedMap 必须验证才开
     USE_PROBE_IF_NO_SYNC = false,       -- (OPEN_ALL_PLACEMENTS 模式下不需要探针)
     PROBE_TMPL = 1,
     -- 全开模式: 忽略白名单/绑定, 按 placement 位置开所有 size>=MIN_SIZE 的位置
     OPEN_ALL_PLACEMENTS = true,         -- true=按 placement 位置全开 (推荐当 binding 不准时)
-    OPEN_MIN_SIZE = 1,                  -- 只开 size>=N 的 placement (1=全部, 2=排除 size 1)
+    OPEN_MIN_SIZE = 2,                  -- 只开 size>=N 的 placement (1=全部, 2=排除 size 1)
     -- 下面 WHITELIST 在 OPEN_ALL_PLACEMENTS=false 时才用
     WHITELIST = {[9]=true,[10]=true,[11]=true,[12]=true,[13]=true,[14]=true,
                  [15]=true,[16]=true,[17]=true,[18]=true,[19]=true,[20]=true,
@@ -122,14 +123,16 @@ local okSeed, sv = safeCall(gp, "TreasureGridGetCustomRefreshSeed", CFG.ACTIVITY
 if okSeed then fs = sv end
 
 local function mod1e6(v) return ((v % 1000000) + 1000000) % 1000000 end
+local function mod1e5(v) return ((v % 100000) + 100000) % 100000 end
 
 local rawSeed, formulaName
 if fs and fs ~= 0 then
     rawSeed = mod1e6(fs + 500000)
     formulaName = "FS-set: (fs+500000)%1e6"
 else
-    rawSeed = mod1e6(refreshTick + userId + 400000)
-    formulaName = "nil-FS: (refresh+user+400000)%1e6"
+    -- 已确认 (5/5 样本): rawSeed = (user + refresh) % 100000  ← 是 1e5 不是 1e6!
+    rawSeed = mod1e5(userId + refreshTick)
+    formulaName = "nil-FS: (user+refresh)%1e5"
 end
 
 log("状态: fs=%s user=%d refresh=%d", tostring(fs), userId, refreshTick)
