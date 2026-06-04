@@ -29,6 +29,8 @@ local RewardSystem = require(findPath(ReplicatedStorage, {"CommonLibrary","Found
 local CfgActivity = require(findPath(ReplicatedStorage, {"CommonConfig","Activity","CfgActivity"}))
 local Constants = require(findPath(ReplicatedStorage, {"CommonLibrary","Constants"}))
 local ClientPlayerManager = require(findPath(ReplicatedStorage, {"CommonLibrary","Player","ClientPlayerManager"}))
+local ActivityTreasureGridSystem = require(findPath(ReplicatedStorage, {"CommonLogic","Activity","ActivityTreasureGridSystem"}))
+local ViewUtil = require(findPath(ReplicatedStorage, {"ClientLogic","View","ViewUtil"}))
 
 local function getGP()
     local s = os.clock()
@@ -91,6 +93,10 @@ for _ in pairs(expectedReds) do expectedRedCount += 1 end
 
 local syncedFixedCount = 0; for _ in pairs(syncedFixed) do syncedFixedCount += 1 end
 local syncedFillerCount = 0; for _ in pairs(syncedFillerSet) do syncedFillerCount += 1 end
+local syncedSizeMin = {}  -- 每个 size 至少需要的 fixedSizeCounts 数量
+for _, st in pairs(syncedFixed) do
+    syncedSizeMin[st.size] = (syncedSizeMin[st.size] or 0) + 1
+end
 
 log("user=%s refresh=%s fs=%s", tostring(userId), tostring(refreshTick), tostring(fs))
 log("syncedFixed=%d syncedFiller=%d expectedReds=%d", syncedFixedCount, syncedFillerCount, expectedRedCount)
@@ -171,7 +177,8 @@ local function gen(sizeCounts, random)
     return placements
 end
 
-local function evalSeedN(rawSeed, N)
+-- 阶段1: 只算 rl + reds 过滤 (轻). 通过 reds 的 seed 才进入 阶段2.
+local function evalSeedRl(rawSeed)
     local rng = Random.new(rawSeed)
     local rl = {}
     pcall(function() RewardSystem.__DoRewardGroup(nil, Rand, rl, rng, false, true) end)
@@ -185,14 +192,28 @@ local function evalSeedN(rawSeed, N)
             end
         end
     end
-    -- reds 过滤
     local rc = 0
     for t in pairs(drawnReds) do if not expectedReds[t] then return nil end; rc += 1 end
     if rc ~= expectedRedCount then return nil end
+    -- size 分布预过滤: drawn 必须能覆盖 synced
+    for size, need in pairs(syncedSizeMin) do
+        if (fixedSizeCounts[size] or 0) < need then return nil end
+    end
+    -- 还要确认每个 syncedFixed 的 tmpl 都被 draw 了
+    for tmpl, _ in pairs(syncedFixed) do
+        local found = false
+        for _, r in ipairs(rl) do if r.TmplId == tmpl then found = true; break end end
+        if not found then return nil end
+    end
+    local pSeed = rng:NextInteger(1, 1000000)
+    return pSeed, fixedSizeCounts, rl
+end
+
+-- 阶段2: 试 N, 跑 gen, 验证 syncedFixed/filler 位置
+local function tryN(fixedSizeCounts, pSeed, N)
     local sc = {}
     for s, c in pairs(fixedSizeCounts) do sc[s] = c end
     sc[1] = (sc[1] or 0) + N
-    local pSeed = rng:NextInteger(1, 1000000)
     local placements = gen(sc, Random.new(pSeed))
     if not placements then return nil end
     local placementsBySize = {}
@@ -211,33 +232,33 @@ local function evalSeedN(rawSeed, N)
         end
         if not found then return nil end
     end
-    if syncedFillerCount > 0 then
-        local size1Set = {}
-        for _, p in ipairs(placementsBySize[1] or {}) do size1Set[p.r.."_"..p.c] = true end
-        for cell in pairs(syncedFillerSet) do
-            if not size1Set[cell] then return nil end
-        end
-    end
-    return pSeed, placements, rl
+    -- 注: 不再检查 syncedFiller. filler 是 post-fill 独立步骤, 位置跟 placement 输出无关.
+    return placements
 end
 
-log("brute rawSeed 1..1e6 × N ∈ {%s} ...", table.concat(N_RANGE, ","))
+log("brute rawSeed 1..1e6 × N ∈ {%s} (阶段1过滤+阶段2验证) ...", table.concat(N_RANGE, ","))
 local startClock = os.clock()
 local hits = {}
+local stage1Pass = 0
 for rawSeed = 1, 1000000 do
-    for _, N in ipairs(N_RANGE) do
-        local pSeed, placements, rl = evalSeedN(rawSeed, N)
-        if pSeed then
-            table.insert(hits, {rawSeed=rawSeed, N=N, pSeed=pSeed, placements=placements, rl=rl})
-            log("HIT rawSeed=%d N=%d placementSeed=%d (耗时 %.2fs)", rawSeed, N, pSeed, os.clock()-startClock)
-            break
+    local pSeed, fixedSizeCounts, rl = evalSeedRl(rawSeed)
+    if pSeed then
+        stage1Pass += 1
+        for _, N in ipairs(N_RANGE) do
+            local placements = tryN(fixedSizeCounts, pSeed, N)
+            if placements then
+                table.insert(hits, {rawSeed=rawSeed, N=N, pSeed=pSeed, placements=placements, rl=rl})
+                log("HIT rawSeed=%d N=%d placementSeed=%d (耗时 %.2fs)", rawSeed, N, pSeed, os.clock()-startClock)
+                break
+            end
         end
+        if #hits >= 1 then break end
     end
-    if #hits >= 1 then break end
-    if rawSeed % 20000 == 0 then
+    if rawSeed % 1000 == 0 then task.wait() end
+    if rawSeed % 10000 == 0 then
         local rate = rawSeed / math.max(os.clock()-startClock, 0.001)
-        log("  progress %d rate=%.0f/s ETA=%.0fs", rawSeed, rate, (1000000-rawSeed)/rate)
-        task.wait()
+        log("  progress %d rate=%.0f/s ETA=%.0fs stage1Pass=%d",
+            rawSeed, rate, (1000000-rawSeed)/rate, stage1Pass)
     end
 end
 
@@ -273,20 +294,31 @@ end
 local _, fresh = safeCall(gp, "TreasureGridGetTreasureMap", ACTIVITY_ID)
 syncedMap = fresh or syncedMap
 
+local function isCellOpened(r, c)
+    local ok, opened = safeCall(gp, "TreasureGridIsCellOpened", ACTIVITY_ID, r, c)
+    return ok and opened
+end
+local function openCell(r, c)
+    local ok, result = pcall(ViewUtil.DoRequest, ActivityTreasureGridSystem.ClientOpenCell, ACTIVITY_ID, r, c)
+    return ok and result, result
+end
+
 for _, p in ipairs(hit.placements) do
     for dr = 0, p.size-1 do for dc = 0, p.size-1 do
         local r, c = p.r+dr, p.c+dc
-        if isAlreadyOpen(r, c) then
+        if isCellOpened(r, c) then
             skipped += 1
         else
-            local ok, ret = safeCall(gp, "TreasureGridOpenTreasure", ACTIVITY_ID, r, c)
-            if ok and ret then
+            local ok, ret = openCell(r, c)
+            if ok then
                 opened += 1; log("  opened (%d,%d)", r, c)
             else
                 failed += 1; log("  失败 (%d,%d): %s", r, c, tostring(ret))
+                if failed >= 5 then break end
             end
             task.wait(OPEN_DELAY)
         end
-    end end
+    end
+    if failed >= 5 then break end end
 end
 log("===== 完成. opened=%d skipped=%d failed=%d =====", opened, skipped, failed)
