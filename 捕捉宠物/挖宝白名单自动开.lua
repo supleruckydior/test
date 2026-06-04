@@ -26,14 +26,14 @@ task.wait(3)
 local CFG = {
     ACTIVITY_ID = 23,
     AUTO_OPEN = true,                  -- false=只预测不开
-    OPEN_INTERVAL = 0.25,
+    OPEN_INTERVAL = 0.05,
     NIL_FS_FILLER_COUNT = 18,          -- nil-FS 的 N 默认值
     REQUIRE_SYNC_VERIFY = true,         -- true=有 syncedMap 必须验证才开
     USE_PROBE_IF_NO_SYNC = false,       -- (OPEN_ALL_PLACEMENTS 模式下不需要探针)
     PROBE_TMPL = 1,
     -- 全开模式: 忽略白名单/绑定, 按 placement 位置开所有 size>=MIN_SIZE 的位置
     OPEN_ALL_PLACEMENTS = true,         -- true=按 placement 位置全开 (推荐当 binding 不准时)
-    OPEN_MIN_SIZE = 2,                  -- 只开 size>=N 的 placement (1=全部, 2=排除 size 1)
+    OPEN_MIN_SIZE = 1,                  -- 只开 size>=N 的 placement (1=全部, 2=排除 size 1)
     -- 下面 WHITELIST 在 OPEN_ALL_PLACEMENTS=false 时才用
     WHITELIST = {[9]=true,[10]=true,[11]=true,[12]=true,[13]=true,[14]=true,
                  [15]=true,[16]=true,[17]=true,[18]=true,[19]=true,[20]=true,
