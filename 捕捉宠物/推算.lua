@@ -57,11 +57,37 @@ local Rand, Tmpls = eftCfg.Rand, eftCfg.Tmpls
 local ROW_COUNT, COL_COUNT = eftCfg.MapRowCount, eftCfg.MapColCount
 local RED = Constants.ItemQuality.Red
 
+local Utils = require(findPath(ReplicatedStorage, {"CommonLibrary","Tool","Utils"}))
+local Workspace = game:GetService("Workspace")
+
 local userId = (gp.basicData and gp.basicData.UserId) or game.Players.LocalPlayer.UserId or 0
-local _, refreshTick = safeCall(gp, "TreasureGridGetRefreshTick", ACTIVITY_ID)
-refreshTick = refreshTick or 0
-local _, fs = safeCall(gp, "TreasureGridGetFreshSeed", ACTIVITY_ID)
+
+-- 本地复制 server 的 _calcRefreshTick (跟 v2 一致)
+if actCfg.StartTime == nil and actCfg.StartDate then
+    actCfg.StartTime = Utils.GetServerTimeFromStr(actCfg.StartDate)
+end
+local function localCalcRefreshTick(t)
+    local sum = t - actCfg.StartTime
+    local rt = eftCfg.DailyRefreshTime; local sp = eftCfg.DailyRefreshSpan or 86400
+    local cyc = math.floor(sum / sp)
+    if cyc > 0 then sum = sum - cyc * sp end
+    local cs = t - sum
+    for i, v in ipairs(rt) do
+        if sum < v then break end
+        local nxt = i < #rt and rt[i+1] or sp
+        if sum < nxt then return cs + v end
+    end
+    return cs - sp + rt[#rt]
+end
+local serverTime = Workspace:GetServerTimeNow()
+local refreshTick = localCalcRefreshTick(serverTime)
+-- 也试 server 暴露的 API (line 150 的 TreasureGrid_calcRefreshTick)
+local okApi, apiV1, apiV2 = safeCall(gp, "TreasureGrid_calcRefreshTick", ACTIVITY_ID)
+
+local _, fs = safeCall(gp, "TreasureGridGetCustomRefreshSeed", ACTIVITY_ID)
 if type(fs) ~= "number" then fs = nil end
+
+log("[refresh 诊断] localCalc=%s apiCalc=%s (应当一致)", tostring(refreshTick), tostring(apiV1))
 
 local _, syncedMap = safeCall(gp, "TreasureGridGetTreasureMap", ACTIVITY_ID)
 syncedMap = syncedMap or {}
@@ -272,6 +298,54 @@ log("")
 log("===== 样本记录 (积累用) =====")
 log("user=%s refresh=%s fs=%s → rawSeed=%d N=%d placementSeed=%d",
     tostring(userId), tostring(refreshTick), tostring(fs), hit.rawSeed, hit.N, hit.pSeed)
+
+-- 验证 v2 公式: (user + refresh + 400000) % 1e6 是否 = rawSeed
+log("")
+log("===== v2 公式验证 =====")
+local predicted = (userId + refreshTick + 400000) % 1000000
+log("  (user + localRefresh + 400000) %% 1e6 = %d, rawSeed = %d %s",
+    predicted, hit.rawSeed, predicted == hit.rawSeed and "✓ 公式正确!" or "❌ 公式不对")
+if predicted ~= hit.rawSeed then
+    local needRefresh = (hit.rawSeed - userId - 400000) % 1000000
+    if needRefresh < 0 then needRefresh += 1000000 end
+    log("  公式需要 refresh %% 1e6 = %d, 但 localCalc %% 1e6 = %d (diff=%d)",
+        needRefresh, refreshTick % 1000000, (needRefresh - refreshTick % 1000000) % 1000000)
+end
+log("")
+log("===== refresh 来源诊断 (帮我找 R 的真身) =====")
+local _, customSeed = safeCall(gp, "TreasureGridGetCustomRefreshSeed", ACTIVITY_ID)
+log("  CustomRefreshSeed = %s", tostring(customSeed))
+local _, refreshTime = safeCall(gp, "TreasureGridGetRefreshTime", ACTIVITY_ID)
+log("  RefreshTime = %s", tostring(refreshTime))
+local _, lastRefresh = safeCall(gp, "TreasureGridGetLastRefreshTick", ACTIVITY_ID)
+log("  LastRefreshTick = %s", tostring(lastRefresh))
+local _, actTick = safeCall(gp, "GetActivityTick", ACTIVITY_ID)
+log("  ActivityTick = %s", tostring(actTick))
+-- 玩家相关字段
+if gp.basicData then
+    log("  basicData.UserId = %s", tostring(gp.basicData.UserId))
+    log("  basicData.CreateTime = %s", tostring(gp.basicData.CreateTime))
+    log("  basicData.JoinTime = %s", tostring(gp.basicData.JoinTime))
+    log("  basicData.FirstLoginTime = %s", tostring(gp.basicData.FirstLoginTime))
+end
+-- 算出 R 让我们看一眼
+local rUserPart = hit.rawSeed - (userId % 1000000)
+if rUserPart < 0 then rUserPart += 1000000 end
+log("  推出的 R = (rawSeed - user) mod 1e6 = %d", rUserPart)
+log("  (如果 refresh > 0, 应该 ≈ refresh + 400000 mod 1e6)")
+-- 列出 gp.activity 里所有 treasure 相关函数, 帮我们发现新 API
+log("")
+log("===== gp.activity 里所有 treasure* 函数 =====")
+if gp and gp.activity then
+    local names = {}
+    for k, v in pairs(gp.activity) do
+        if type(v) == "function" and k:lower():find("treasure") then
+            table.insert(names, k)
+        end
+    end
+    table.sort(names)
+    for _, k in ipairs(names) do log("  %s", k) end
+end
 log("")
 log("===== 预测 %d 个 placement =====", #hit.placements)
 for i, p in ipairs(hit.placements) do
