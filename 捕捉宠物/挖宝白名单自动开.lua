@@ -2,7 +2,7 @@
 -- 挖宝白名单自动开_v2.lua
 -- 基于完整破解的算法骨架:
 --   FS-set: rawSeed = (fs + 500000) % 1_000_000, sc = fixed only
---   nil-FS: rawSeed = (user + refresh) % 100_000  ← 已确认 5/5 样本 (注意是 %1e5 不是 %1e6!)
+--   nil-FS: rawSeed = (user + refresh) % 200_000  ← 模数是 2e5! (sample1 验证69761 + sample6 N=0得170831)
 --           sc = fixed + N filler (N=18 默认)
 -- 算法流程:
 --   rng = Random.new(rawSeed)
@@ -26,14 +26,14 @@ task.wait(3)
 local CFG = {
     ACTIVITY_ID = 23,
     AUTO_OPEN = true,                  -- false=只预测不开
-    OPEN_INTERVAL = 0.05,
+    OPEN_INTERVAL = 0.25,
     NIL_FS_FILLER_COUNT = 18,          -- nil-FS 的 N 默认值
     REQUIRE_SYNC_VERIFY = true,         -- true=有 syncedMap 必须验证才开
     USE_PROBE_IF_NO_SYNC = false,       -- (OPEN_ALL_PLACEMENTS 模式下不需要探针)
     PROBE_TMPL = 1,
     -- 全开模式: 忽略白名单/绑定, 按 placement 位置开所有 size>=MIN_SIZE 的位置
     OPEN_ALL_PLACEMENTS = true,         -- true=按 placement 位置全开 (推荐当 binding 不准时)
-    OPEN_MIN_SIZE = 1,                  -- 只开 size>=N 的 placement (1=全部, 2=排除 size 1)
+    OPEN_MIN_SIZE = 2,                  -- 只开 size>=N 的 placement (1=全部, 2=排除 size 1)
     -- 下面 WHITELIST 在 OPEN_ALL_PLACEMENTS=false 时才用
     WHITELIST = {[9]=true,[10]=true,[11]=true,[12]=true,[13]=true,[14]=true,
                  [15]=true,[16]=true,[17]=true,[18]=true,[19]=true,[20]=true,
@@ -123,16 +123,17 @@ local okSeed, sv = safeCall(gp, "TreasureGridGetCustomRefreshSeed", CFG.ACTIVITY
 if okSeed then fs = sv end
 
 local function mod1e6(v) return ((v % 1000000) + 1000000) % 1000000 end
-local function mod1e5(v) return ((v % 100000) + 100000) % 100000 end
+local function mod2e5(v) return ((v % 200000) + 200000) % 200000 end
 
 local rawSeed, formulaName
 if fs and fs ~= 0 then
     rawSeed = mod1e6(fs + 500000)
     formulaName = "FS-set: (fs+500000)%1e6"
 else
-    -- 已确认 (5/5 样本): rawSeed = (user + refresh) % 100000  ← 是 1e5 不是 1e6!
-    rawSeed = mod1e5(userId + refreshTick)
-    formulaName = "nil-FS: (user+refresh)%1e5"
+    -- 已确认: rawSeed = (user + refresh) % 200000  ← 模数是 2e5(20万)!
+    -- sample1 (11/11验证) =69761, sample6 (N=0多格)=170831, 两点唯一确定 M=200000
+    rawSeed = mod2e5(userId + refreshTick)
+    formulaName = "nil-FS: (user+refresh)%2e5"
 end
 
 log("状态: fs=%s user=%d refresh=%d", tostring(fs), userId, refreshTick)
@@ -284,13 +285,12 @@ local function quickValidate(predMap)
 end
 
 local predMap, placementSeed, rawPlacements
-local bestSortName, bestN = "default", CFG.NIL_FS_FILLER_COUNT
+local bestSortName, bestN = "default", 0
 do
-    -- nil-FS 时 brute (sort, N) 联合; FS-set 时只 brute sort (无 filler)
-    local nRange = (not fs or fs == 0) and {} or {0}
-    if not fs or fs == 0 then
-        for n = 0, 40 do table.insert(nRange, n) end
-    end
+    -- N 恒为 0: filler(1000) 是 post-fill 独立步骤, 不进 placement 计算.
+    -- sample6 用正确 rawSeed(170831) 时 N=0 即匹配, 证明固定奖励就该 N=0.
+    -- 只 brute sort (影响 tmpl 绑定显示), N 不再暴搜 (避免少格时撞错 N 开空格).
+    local nRange = {0}
     local bestHit, bestChecked = -1, 0
     local startC = os.clock()
     local tried = 0
