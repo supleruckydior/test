@@ -10,7 +10,7 @@ end
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
-
+wait(6)
 local TAG = "[HatchUI]"
 
 local Players = game:GetService("Players")
